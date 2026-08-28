@@ -1,4 +1,4 @@
-* chez-httparse
+* chez-httpars
 
 (CI badge goes here)
 
