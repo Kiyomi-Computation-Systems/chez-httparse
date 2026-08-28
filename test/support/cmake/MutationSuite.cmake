@@ -16,114 +16,26 @@
 # will tell you when a pattern has drifted; it will not tell you when a new,
 # untested decision has been added.
 #
-# ONE PASS, SEVENTY-TWO MUTATIONS
+# ONE PASS, SEVENTY-THREE MUTATIONS
 #
-# Every mutation above is declared before the single httparse_mutation_run
+# Every mutation below is declared before the single httparse_mutation_run
 # call at the end of this file, so this suite is one pass by construction.
 # EXPECTED_MUTATIONS below is compared against the accumulated total from
-# httparse_mutation_totals once that call returns: it is what would have
-# caught a whole-branch review finding that deleting an entire pass group from
-# SchemeMutationSuite.cmake left that file's own suite at 37/37 -- the same
-# blind spot exists here for a single deleted httparse_mutation() call,
-# which SITES cannot see either, since a missing declaration is not a pattern
-# that failed to match.
+# httparse_mutation_totals once that call returns: SITES tells you when a
+# pattern has drifted, but a deleted httparse_mutation() declaration is not
+# a pattern that failed to match, and only the totals check can see one.
 #
-# Ninety-seven was eighty-nine plus eight: five for MutationRunner's own
-# verdict decision and the registration guard beside it (the "MutationRunner"
-# section below), two for the other direction of the WORKING_DIRECTORY
-# forwarding conditional in HttparseExpectExit.cmake and
-# HttparseSchemeLane.cmake, which until a re-review only had the if(FALSE)
-# half of its two mutations, and one for the WRONG_FINGERPRINT branch in
-# HttparseSchemeLane.cmake's manifest block, which had no mutation until a
-# review found the routing decision unwitnessed.
-#
-# Ninety-four is ninety-seven minus three: the pairing rule's own mutations
-# left with the rule they tested, when the Chez-only simplification's Task 2
-# removed httparse_guard_missing_wrappers and its enforcement from
-# HttparsePortabilityGuard.cmake. "guard: only the Chez wrapper is
-# required" mutated a foreach that no longer exists, "guard: a missing
-# wrapper is reported without stopping the build" mutated a FATAL_ERROR that
-# no longer exists, and "guard: wrappers are demanded of the shared
-# directories, not the wrapped ones" mutated the WRAPPED_DIRS-only
-# accumulator branch that fed that FATAL_ERROR -- also gone. The basename-
-# uniqueness rule's own mutations were untouched by Task 2; "guard: bodies
-# are collected from the shared directories only" survived it with a new
-# anchor and a new witness, since its old witness (a WRAPPED_DIRS body
-# missing a wrapper) went with the rule that reported it. It did not survive
-# Task 5: the guard it belonged to left whole with the include collapse
-# (decision 0006), named below.
-#
-# Seventy-five is ninety-four minus twenty plus one: the Chez-only
-# simplification's Task 4 removed the second Scheme backend's toolchain layer
-# entirely. Eleven mutations left with its discovery module, deleted
-# outright. Eight more left with its execution branch and search-root
-# helper, removed from HttparseSchemeLane.cmake: the initialization-skip
-# flag, the undiscovered-runtime guard, the no-runtime message, the search
-# root's comma and relative-path checks, the search-root separator, the
-# up-front output clear, and the check-reordering case. The last left with
-# the removed backend's own mode-vocabulary entry in HttparseTesting.cmake,
-# the variable it mutated.
-#
-# Sixty-six is seventy-five minus twelve plus three: the include collapse
-# (decision 0006) deleted HttparsePortabilityGuard.cmake whole -- eleven
-# of its twelve mutations tested a repository-wide basename namespace that no
-# longer exists once nothing resolves includes through source-directories --
-# and added three for what survives it, narrowed to one lane:
-# httparse_lane_duplicate_basenames, the registrar refusal it feeds, and
-# the accumulator-initialization hazard that moved with the function's body
-# rather than dying with the module.
-#
-# What did NOT leave: the registration-time status guard narrowed from four
-# clauses to two, not to nothing. comma-in-path and relative-path died with
-# the search function that produced them, and a chez-only tree cannot
-# produce either through any call path -- the two mutations that once
-# exercised them (the removed backend's own search-root full-registration
-# cases) are gone, and rightly so. unknown-mode did not die:
-# httparse_add_scheme_lane never compares BACKEND against the NAME's own
-# backend segment, so a name whose backend segment is cmake -- valid, since
-# httparse_test_name_parse checks it against cmake's own mode vocabulary
-# -- paired with BACKEND chez still reaches the chez branch carrying a mode
-# it cannot build. A first pass at this removal deleted "a refused search
-# list does not stop registration" outright on the theory that narrowing the
-# guard to unknown-backend alone had nothing left to witness it; that theory
-# was wrong, and "scheme-lane: an unknown mode does not stop registration"
-# restores the coverage on a new witness, HttparseSchemeLaneSpec.cmake's
-# "lane-rejects-unknown-mode" case, built on exactly that name/backend
-# mismatch. Two more mutations were re-anchored rather than removed: "the
-# unknown-backend message is garbled" and "an unknown backend no longer
-# stops registration" now match the two-clause guard and the message text
-# chez alone leaves behind.
-#
-# The plus one: "the unknown-mode message is garbled" was missing even
-# before Task 4 -- the "diagnostic wording" comment above claimed a mutation
-# for each of three messages the functional core produces while only
-# covering two, and restoring "an unknown mode does not stop registration"
-# is what made the gap worth closing rather than footnoting, since the
-# unknown-mode message it names is already asserted exactly by
-# HttparseSchemeLaneSpec.cmake's "unknown mode message" case. Cheap and
-# genuinely witnessable, so it was added rather than left as a known gap.
-#
-# Seventy-two is sixty-six plus six: the slice 5b remainder plan's Task 4
-# added one mutation per decision the three aot lanes and the staleness lane
-# (Tasks 1 and 3) put into HttparseSchemeLane.cmake. C1 turns off
-# fingerprinting the build's own copies, so a compiled lane's measurement
-# collapses back onto the declared sources -- Protium's actual defect,
-# decision record 0004. C2 reverses the order
-# httparse_lane_measured_copies builds its list in, witnessed only by a
-# two-or-more-source manifest. C4 puts the literal "source" back as the
-# environment's execution mode for every lane, aot included, the mode
-# plumbing's own regression case. The builder call-site guard gets both
-# directions, per the WORKING_DIRECTORY precedent: if(FALSE) so no aot lane
-# ever reaches httparse_lane_chez_aot_artifacts, if(TRUE) so every source
-# lane does. The last drops STALE_LIBRARY_ROOT between parsing it and
-# forwarding it to that same builder -- exactly the forwarding bug that would
-# let the permanently-registered staleness lane compile the real text and
-# exit 0.
+# Measured on this tree when the harness was ported (Slice 1, 2026-08-28):
+# seventy-two mutations arrived with the port, their FIND/REPLACE literals
+# renamed in lockstep with the modules they mutate -- the upstream tree
+# carries the full derivation history of that number, which this file
+# deliberately does not restate -- plus one of this repository's own, the
+# rename-audit witness at the bottom of the manifest. 72 + 1 = 73.
 
 cmake_minimum_required(VERSION 3.26)
 
 set(EXPECTED_PASSES 1)
-set(EXPECTED_MUTATIONS 72)
+set(EXPECTED_MUTATIONS 73)
 
 include("${CMAKE_CURRENT_LIST_DIR}/MutationRunner.cmake")
 
@@ -640,7 +552,7 @@ httparse_mutation(
 # and nothing anywhere failed, because neither registrar this block feeds was
 # ever asked whether it received WORKING_DIRECTORY at all.
 #
-# That matrix retired with the include mechanism (decision 0006), and no lane
+# That matrix retired with the include mechanism (upstream decision 0006), and no lane
 # overrides its run directory today, so a forwarding break is now invisible to
 # every registration in the tree. What can still see it is exactly what the
 # incident proved was missing: HttparseSchemeLaneSpec.cmake's absent/present
@@ -669,7 +581,7 @@ httparse_mutation(
 # The run directory decides where every lane launches from; the three
 # decisions inside httparse_test_run_directory each get their own
 # mutation. (The include-era matrix that first hung off this function is
-# gone -- decision 0006 -- but an override that silently stops arriving, or
+# gone -- upstream decision 0006 -- but an override that silently stops arriving, or
 # arrives empty, still launches lanes from the wrong place.)
 httparse_mutation(
   FILE cmake/HttparseTesting.cmake SPEC HttparseTestingSpec.cmake
@@ -731,7 +643,7 @@ httparse_mutation(
 # C1. Protium's actual behaviour for its Chez aot lane: fingerprint the
 # repository originals. Under it the staleness lane's expectation and its
 # measurement read the same files again, they agree, and the lane that
-# exists to exit 3 exits 0 -- the whole defect decision record 0004
+# exists to exit 3 exits 0 -- the whole defect upstream decision record 0004
 # demonstrated and this slice closes. Witnessed with no runtime present by
 # the spec's two-source aot case and its one-source registration case.
 httparse_mutation(
@@ -790,6 +702,22 @@ httparse_mutation(
   LABEL "scheme-lane: STALE_LIBRARY_ROOT is parsed and never forwarded"
   FIND [[      "${arg_NAME}" "${arg_PROGRAM}" "${arg_STALE_LIBRARY_ROOT}" ${arg_SOURCES})]]
   REPLACE [[      "${arg_NAME}" "${arg_PROGRAM}" "" ${arg_SOURCES})]])
+
+# --- RenameAudit ------------------------------------------------------------
+#
+# The audit exists to catch the upstream project's name leaking back into the
+# build/test tree (decision 0003, exit criterion 5), so its witness is exactly
+# that: a leaked token planted in a scanned module. The planted text is
+# assembled with string(CONCAT) because this manifest is itself inside the
+# audit's scan surface -- written literally, the mutation's own declaration
+# would trip the audit on the pristine tree.
+string(CONCAT RENAME_AUDIT_PLANT "# imported from " "byte" "-machine")
+httparse_mutation(
+  FILE cmake/HttparseTesting.cmake SPEC RenameAuditSpec.cmake
+  LABEL "rename-audit: an upstream token leaked into a scanned module"
+  FIND [[# httparse test registration.]]
+  REPLACE "${RENAME_AUDIT_PLANT}"
+  EXPECT_OUTPUT_MATCHES "upstream project token leaked")
 
 httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 

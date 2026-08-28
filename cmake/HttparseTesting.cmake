@@ -22,7 +22,7 @@ include_guard(GLOBAL)
 
 # --- Vocabulary ------------------------------------------------------------
 #
-# Layers follow the parent plan's testing strategy (section 22) rather than a
+# Layers follow the upstream plan's testing strategy (section 22) rather than a
 # generic unit/integration split, so a preset can select exactly the evidence a
 # given CI stage needs.
 
@@ -167,7 +167,7 @@ endfunction()
 #
 # A lane that overrides this is making a claim about where it must launch
 # from; none currently does (the include-era working-directory matrix retired
-# with decision 0006), and the never-from-the-repository default stays
+# with upstream decision 0006), and the never-from-the-repository default stays
 # because it costs nothing and forecloses a class of accident. Pure, so that
 # the choice can be specified without registering a test or creating a
 # directory.
@@ -192,7 +192,7 @@ endfunction()
 # WORKING_DIRECTORY names an existing directory of the caller's choosing. That is
 # not tidiness: it is what keeps a test's outcome independent of where the
 # developer happened to stand, and it predates -- and outlives -- the include
-# mechanism whose working-directory hazards first forced it (decision 0006).
+# mechanism whose working-directory hazards first forced it (upstream decision 0006).
 function(httparse_add_test)
   cmake_parse_arguments(PARSE_ARGV 0 arg "" "NAME;TIMEOUT;WORKING_DIRECTORY" "COMMAND;LABELS;ENVIRONMENT")
 

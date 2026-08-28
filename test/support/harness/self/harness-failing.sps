@@ -1,5 +1,5 @@
 ;;; The failing body, as a program. Merged from its .chez.sps wrapper by the
-;;; include collapse (decision 0006).
+;;; include collapse (upstream decision 0006).
 
 (import (rnrs) (httparse test harness))
 

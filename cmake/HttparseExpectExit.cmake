@@ -3,7 +3,7 @@
 # WHY NOT WILL_FAIL
 #
 # CTest's WILL_FAIL only distinguishes zero from nonzero. The harness gives each
-# status a distinct meaning (docs/plans/milestone-0-slice-2-test-harness.md
+# status a distinct meaning (upstream docs/plans/milestone-0-slice-2-test-harness.md
 # section 5.2), so a test proving "an assertion failed" must compare 1 exactly:
 # under WILL_FAIL a segfault, a missing library, or a launcher that never
 # started would all count as proof, and the test would keep passing after the

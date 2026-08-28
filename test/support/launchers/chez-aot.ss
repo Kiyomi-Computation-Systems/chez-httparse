@@ -68,7 +68,7 @@
 ;;; prevents and the backstop does not. What the guard does not settle:
 ;;; whether Chez can still judge a correctly-paired, genuinely-compiled
 ;;; object stale by some rule of its own and act on that -- protium records a
-;;; locatability rule for this, decision record 0004 records a timestamp
+;;; locatability rule for this, upstream decision record 0004 records a timestamp
 ;;; rule, the two are different, and neither has been reproduced in this
 ;;; repository. Section 5.3 of the slice design tracks it as unmeasured.
 ;;;
@@ -78,7 +78,7 @@
 ;;; run once with (source-directories '()) and once left at Chez's unset
 ;;; default ((".")), produces byte-identical outcomes. Library resolution
 ;;; goes through library-directories, not source-directories, and no Scheme
-;;; file in this tree includes another (decision 0006) -- so nothing this
+;;; file in this tree includes another (upstream decision 0006) -- so nothing this
 ;;; launcher does today depends on the line above. It is kept anyway: it
 ;;; still narrows what a `load` or top-level `include` added to this file
 ;;; later could reach, and an empty list costs nothing to state. It is not,

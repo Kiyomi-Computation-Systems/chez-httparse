@@ -36,7 +36,7 @@ endfunction()
 # httparse_lane_duplicate_basenames(<out_duplicates> <path>...)
 #
 # Basenames appearing more than once, each reported once however often they
-# repeat. Narrowed from the retired repository-wide guard (decision 0006) to
+# repeat. Narrowed from the retired repository-wide guard (upstream decision 0006) to
 # the one invariant that survives it: httparse_lane_measured_copies keys
 # a compiled lane's fingerprint/ copies by basename, so within one lane's
 # manifest a repeated basename would make one copy silently overwrite the
@@ -76,7 +76,7 @@ function(httparse_chez_aot_paths name program out_object_dir out_compiled)
   set(${out_object_dir} "${dir}" PARENT_SCOPE)
   # NAME_WLE strips one extension: harness-self-tests.sps yields
   # harness-self-tests. (The .chez filename infix this comment once preserved
-  # retired with the merged wrappers -- decision 0006.)
+  # retired with the merged wrappers -- upstream decision 0006.)
   get_filename_component(stem "${program}" NAME_WLE)
   set(${out_compiled} "${dir}/${stem}.so" PARENT_SCOPE)
 endfunction()
@@ -188,7 +188,7 @@ endfunction()
 # a compile input (compile-imported-libraries), so every one of them must be
 # able to re-trigger this command; a library missing from this list would
 # leave the artifact -- and its copies -- describing the previous text, which
-# is the exact defect class decision 0004 demonstrated.
+# is the exact defect class upstream decision 0004 demonstrated.
 #
 # <stale_library_root> is empty for every lane that is meant to pass. When it
 # is set (the staleness lane, Task 3 of the remainder plan), it is prefixed
@@ -355,7 +355,7 @@ function(httparse_add_scheme_lane)
   # Within one lane's manifest, basenames must be unique: the flat
   # fingerprint/ copy directory of the aot branch keys measured copies by
   # basename. This replaced the repository-wide basename guard when the
-  # include namespace it policed retired (decision 0006).
+  # include namespace it policed retired (upstream decision 0006).
   httparse_lane_duplicate_basenames(duplicate_basenames ${arg_SOURCES})
   if(duplicate_basenames)
     message(FATAL_ERROR

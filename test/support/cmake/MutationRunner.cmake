@@ -44,7 +44,7 @@ set(HTTPARSE_MUTATION_VERIFY_COMMAND "")
 # working-directory matrix, which needed a pass per launch directory because
 # what it asserted was that the launch directory does not matter -- a claim no
 # command run from one fixed place can make. That matrix retired with the
-# include mechanism (decision 0006); the hook is kept for the next caller that
+# include mechanism (upstream decision 0006); the hook is kept for the next caller that
 # has to run a verify command from somewhere other than the stage.
 set(HTTPARSE_MUTATION_VERIFY_WORKING_DIRECTORY "")
 

@@ -4,7 +4,7 @@
 ;;; artifact or a copied variant is detectable rather than merely unlikely. A
 ;;; matching fingerprint means the declared text is unchanged -- not that the
 ;;; run loaded exactly those files; the manifest is declared, not observed
-;;; (decision 0004, unchanged by the include collapse).
+;;; (upstream decision 0004, unchanged by the include collapse).
 ;;;
 ;;; This is a change detector, not a cryptographic digest. It is a polynomial
 ;;; rolling hash modulo the Mersenne prime 2^61-1. Do not use it for anything
@@ -16,7 +16,7 @@
 ;;; fingerprint-manifest.ss imports it to compute build-time expectations.
 ;;; That is why this is a library of its own rather than text inlined into
 ;;; the harness: the expectation and the runner share one implementation
-;;; through the module system, so they cannot drift apart (decision 0006).
+;;; through the module system, so they cannot drift apart (upstream decision 0006).
 ;;;
 ;;; The arithmetic is deliberately not bitwise: the algorithm needs nothing
 ;;; beyond exact integers of unbounded range, which R6RS guarantees.

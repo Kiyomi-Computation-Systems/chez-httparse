@@ -1,5 +1,5 @@
 ;;; The runner's self-tests, as a program. Merged from its .chez.sps wrapper
-;;; by the include collapse (decision 0006).
+;;; by the include collapse (upstream decision 0006).
 
 (import (rnrs) (httparse test harness))
 
@@ -375,8 +375,8 @@
                            (adapter-architecture) expect-arch)
               (check-not-equal "the architecture is identified"
                                (adapter-architecture) "unknown")))
-        ;; The vocabulary, not a fixed mode. Slice 5b gives this program more
-        ;; than one lane to run under, so an equality against any single mode
+        ;; The vocabulary, not a fixed mode. This program runs under more
+        ;; than one lane, so an equality against any single mode
         ;; would be false on some lane that is behaving correctly. The narrower
         ;; claim -- that this lane really is the mode it declares -- is not
         ;; made here: this same program is also staged and run under the Scheme

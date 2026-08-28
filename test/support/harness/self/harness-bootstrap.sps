@@ -1,5 +1,5 @@
 ;;; The bootstrap body, as a program. Merged from its .chez.sps wrapper by
-;;; the include collapse (decision 0006).
+;;; the include collapse (upstream decision 0006).
 ;;;
 ;;; harness-begin is deliberately not called: the bootstrap judges the
 ;;; runner without using its suite lifecycle.

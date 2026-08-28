@@ -87,6 +87,18 @@ httparse_add_test(
   TIMEOUT 120
   LABELS unit)
 
+# This harness was ported from another repository under a mechanical rename
+# (decision 0001); Slice 1's exit criteria require zero upstream-name
+# references in the build/test tree (decision 0003). The audit is a
+# registered check rather than a review rule so that the next file copied
+# from upstream fails the build, not a review.
+httparse_add_test(
+  NAME httparse.harness.rename-audit.cmake.direct
+  COMMAND "${CMAKE_COMMAND}" -P
+          "${CMAKE_CURRENT_LIST_DIR}/support/cmake/RenameAuditSpec.cmake"
+  TIMEOUT 120
+  LABELS unit)
+
 # --- Harness paths ---------------------------------------------------------
 
 set(HTTPARSE_HARNESS_DIR "${CMAKE_CURRENT_LIST_DIR}/support/harness")

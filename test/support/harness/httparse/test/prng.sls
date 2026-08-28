@@ -1,4 +1,4 @@
-;;; A deterministic in-tree PRNG (parent §22.6): no host `random`, no global
+;;; A deterministic in-tree PRNG (upstream §22.6): no host `random`, no global
 ;;; state, seed reproducible. 64-bit LCG (Knuth MMIX constants) masked to 63 bits;
 ;;; prng-next returns a value in [0,bound) and the next state, so callers thread
 ;;; state explicitly and a failing seed replays exactly.

@@ -5,7 +5,7 @@
 ;;; export here must make the self-tests fail (spec section 9.1).
 ;;;
 ;;; The library contains its own text -- the adapter section first, the
-;;; runner inlined below it (decision 0006) -- and imports (httparse test
+;;; runner inlined below it (upstream decision 0006) -- and imports (httparse test
 ;;; fingerprint). Nothing here resolves through source-directories.
 
 (library (httparse test harness)
@@ -167,7 +167,7 @@
   (define (adapter-flush-output) (flush-output-port (current-output-port)))
 
 ;; ---------------------------------------------------------------------------
-;; The runner. Inlined here by the include collapse (decision 0006); formerly
+;; The runner. Inlined here by the include collapse (upstream decision 0006); formerly
 ;; test/support/harness/shared/harness-runner.scm, this library's sole
 ;; included body. Everything below stays plain R6RS out of habit and
 ;; stability, not law: records as tagged lists, no hash tables, no

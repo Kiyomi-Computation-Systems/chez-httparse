@@ -140,11 +140,11 @@
 ;; add a second compiled-artifact shape (a .wpo file) for the fingerprint
 ;; binding mechanism to track, and a portability proof does not need the
 ;; extra optimisation it buys. See "Explicitly deferred" in the slice
-;; design, docs/plans/milestone-0-slice-5b-5c-compiled-lanes.md section 10.
+;; design, upstream docs/plans/milestone-0-slice-5b-5c-compiled-lanes.md section 10.
 (generate-wpo-files #f)
 
 ;; Nothing includes, so nothing resolves through source-directories at all
-;; (decision 0006; measured inert for the aot launcher as mutation C3b, and
+;; (upstream decision 0006; measured inert for the aot launcher as mutation C3b, and
 ;; extended here by the absence of any include form). Emptied rather than
 ;; left at Chez's CWD-containing default: it still narrows what a later
 ;; top-level load or include added to this file could reach, and an empty

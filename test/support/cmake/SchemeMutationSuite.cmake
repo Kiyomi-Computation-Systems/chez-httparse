@@ -60,7 +60,7 @@
 #
 # The three working-directory-matrix passes that used to sit between the
 # parse decisions and the consumer pass retired with the include mechanism
-# (decision 0006): with library roots absolute and source-directories empty,
+# (upstream decision 0006): with library roots absolute and source-directories empty,
 # there is no resolution step left for a launch directory to change, so the
 # claim the matrix witnessed empirically is now structural.
 #
@@ -425,7 +425,7 @@ httparse_mutation(
 # Not every export is load-bearing, and pretending otherwise would be the more
 # comfortable lie. harness-summary, harness-empty-selection-error, and
 # harness-failure-context are used only from the runner section of harness.sls
-# itself, inlined there by the include collapse (decision 0006); an internal
+# itself, inlined there by the include collapse (upstream decision 0006); an internal
 # reference resolves against the definition, never through the export list.
 # Dropping any of the three therefore changes nothing any lane can observe --
 # and with one adapter there is no second export list to keep in step with, so
@@ -460,7 +460,7 @@ httparse_mutation(
   FIND [[(source-directories '())]]
   REPLACE [[;; deleted]]
   EXPECT_SURVIVES
-    "measured inert (decision 0006, extending 5b's C3b): no include form exists anywhere, library resolution runs through library-directories, and no lane's outcome differs between an empty source path and Chez's default; the line is kept as narrowing, not as behavior")
+    "measured inert (upstream decision 0006, extending 5b's C3b): no include form exists anywhere, library resolution runs through library-directories, and no lane's outcome differs between an empty source path and Chez's default; the line is kept as narrowing, not as behavior")
 
 # --- The adapter's os-table -------------------------------------------------
 
@@ -726,7 +726,7 @@ string(REPLACE "${POISON_FIND}" "${POISON_REPLACE}" POISON_MUTATED "${POISON_PRI
 # The object is preferred only while it is not older than the .sls beside
 # it -- and, transitively, while its imported fingerprint library also
 # resolves to a non-stale object (the MEASURED note below). What died with
-# the include (decision 0006) is the include-era caveat this paragraph used
+# the include (upstream decision 0006) is the include-era caveat this paragraph used
 # to carry: no STAGED file's mtime participates any more, because the
 # library no longer re-resolves harness-runner.scm at load time.
 file(WRITE "${POISON_ROOT}/httparse/test/harness.sls" "${POISON_PRISTINE}")
@@ -1458,7 +1458,7 @@ httparse_mutation(
   REPLACE [[(source-directories (list "."))
 ]]
   EXPECT_SURVIVES
-    "measured inert 2026-08-17 and re-measured through the shipped lane: library resolution runs through library-directories, no file in the inline tree includes another (decision 0006), so this line narrows nothing reachable today; kept in the launcher because it costs one line and guards a future load or include added to the launcher itself. Reopening condition: a Chez that re-resolves a compiled library's sources at load time.")
+    "measured inert 2026-08-17 and re-measured through the shipped lane: library resolution runs through library-directories, no file in the inline tree includes another (upstream decision 0006), so this line narrows nothing reachable today; kept in the launcher because it costs one line and guards a future load or include added to the launcher itself. Reopening condition: a Chez that re-resolves a compiled library's sources at load time.")
 
 httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 

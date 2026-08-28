@@ -40,9 +40,10 @@ include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/HttparseProbe.cmake")
 
 # The floor is what this project has actually verified, not what it guesses it
-# could tolerate. Milestone 0 question 1 (parent plan section 30) is answered by
-# CI, and lowering this pin is that answer's job; raising it needs a reason
-# recorded in docs/decisions.
+# could tolerate: CI builds exactly this version from source on Linux and
+# records the brew-installed version on macOS. Lowering the pin means CI has
+# verified something older; raising it needs a reason recorded in
+# .plans/decisions.
 set(HTTPARSE_CHEZ_MINIMUM_VERSION "10.4.1")
 
 # Searched in this order. `scheme` is first because it is what upstream installs,
@@ -121,7 +122,7 @@ function(httparse_chez_classify output path
   endif()
   set(version "${CMAKE_MATCH_1}")
 
-  # A floor, not an equality: the parent plan's Tier 2 matrix explicitly
+  # A floor, not an equality: the upstream plan's Tier 2 matrix explicitly
   # includes additional implementation versions, so exact-matching would
   # contradict it.
   # The floor must be present before it can be enforced. `if(x VERSION_LESS "")`
