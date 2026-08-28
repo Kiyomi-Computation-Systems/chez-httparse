@@ -39,3 +39,30 @@ no-scheme step), 4m40s.
 
 SLICE 1 EXIT CRITERIA: all five met. Awaiting review; closing ritual not
 run (PR #1 left as draft for the human pass).
+
+MERGE GATE (2026-08-28): PR #1 squash-merged as 99839ab "feat: Gate 0 +
+Slice 1 — bootstrap on the byte-machine harness (#1)". Clean rebuild of
+merged main: release preset 35/35, no-scheme preset 9/9 (Darwin 25.5.0
+arm64, Chez 10.4.1 tarm64osx, CMake 4.3.3). CI on the PR head: run
+33213389847, both cells success.
+https://github.com/Kiyomi-Computation-Systems/chez-httparse/pull/1
+
+CLOSING RITUAL COMPLETE (2026-08-28; steps 1-4). Step 1: squash merge of
+PR #1 (origin/main was first fast-forwarded b3fc6d8..1e0c336 so the squash
+base was current). Step 2: local main fast-forwarded to 99839ab. Step 3:
+feat/gate0-harness-port deleted locally (-D after an empty diff against
+main) and on origin. Step 4 (retrospective, not a summary): what held up —
+the survey-first port map made the rename mechanical and the ported
+mutation suites did their job as the safety net (SITES caught nothing
+because the literals moved in lockstep; the totals checks forced honest
+recounts, 118->59 and 72->73 measured rather than carried). What nearly
+slipped — two rename-miss classes the four-pass map cannot see (a fused
+token with no separator; a token split across a comment line break), both
+now Traps in AGENTS.md, and the first was caught by the new rename-audit
+spec on its first clean-tree run, which is the prefer-a-check rule paying
+for itself immediately. Standards routed to AGENTS.md this close: a
+pointer to this ledger (nothing in the repo previously told a fresh
+session it exists) and the push-main-before-squash-merge caveat learned in
+step 1. Nothing routed to memory: every finding is recorded in the tree
+(AGENTS.md, the ADRs, this ledger), which is where the discipline says it
+belongs.

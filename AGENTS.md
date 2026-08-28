@@ -13,6 +13,9 @@
 ### Layout, process & libraries
 
 * Plans live in `/.plans`, decision records in `/.plans/decisions`
+* The subagent-driven development ledger lives in `/.superpowers/sdd/` —
+  `progress.md` is the spine and `global-constraints.md` binds every task
+  brief. Read both before starting slice work; close-outs are recorded there.
 * Add entries to `CHANGELOG.md` for each release
 * `Makefile` should have a `help` command which lists all of its commands
 * Libraries are R6RS `.sls`; libraries and programs contain their own code —
@@ -128,7 +131,10 @@ each one left undone costs someone else later.
    history — the review trail, the fixes, the plan corrections they forced —
    stays readable in the PR.
 2. **Catch up local `main`.** Fetch and fast-forward, so the next branch starts
-   from what was actually merged rather than from where this one began.
+   from what was actually merged rather than from where this one began. If
+   local `main` was ahead of origin when the branch started, push it *before*
+   step 1: a squash merge onto a stale origin base bakes those commits into
+   the squash and leaves local `main` divergent instead of fast-forwardable.
 3. **Clean up branches.** Delete the merged branch locally and on the remote.
    A squash merge leaves the branch unreachable by ancestry, so `git branch -d`
    refuses it and `-D` is required — diff against `main` first to confirm
