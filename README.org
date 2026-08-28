@@ -1,0 +1,17 @@
+* chez-httparse
+
+(CI badge goes here)
+
+HTTP Parser for Chez Scheme
+
+#+begin_quote
+✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
+#+end_quote
+
+
+(content goes here)
+
+* License
+
+© [[https://kiyomicomputation.systems/][Kiyomi Computation Systems LLC]]. Licensed under BSD 3-Clause — see
+[[file:LICENSE][LICENSE]]
