@@ -11,10 +11,13 @@
 - Launcher diagnostics: refusals exit 2 with prefix `httparse-launcher:`
   (`httparse-fingerprint:` for the manifest launcher); harness output lines
   carry `httparse-harness:`.
-- Measured baseline: none yet — Slice 1 is the port that creates the first
-  counts. Every count that enters a record (mutation totals, lane counts,
-  suite sizes) is measured on this tree at the time of writing, dated and
-  platform-stamped; re-measure before writing any of them into a record.
+- Measured baseline (2026-08-28, Darwin 25.5.0 arm64, Chez 10.4.1 threaded
+  tarm64osx, CMake 4.3.3): release preset 35/35; no-scheme preset 9/9;
+  CMake mutation suite 1 pass / 73 mutations, all caught or declared;
+  Scheme mutation suite 28 passes / 59 mutations, all caught or declared;
+  fingerprint sample `1f2902297117b4a3`. Every count that enters a record
+  is re-measured on this tree at the time of writing, dated and
+  platform-stamped; do not carry these numbers forward by arithmetic.
 - Mutation-signature rule: EXPECT_STATUS/EXPECT_OUTPUT_MATCHES only where the
   status/output was measured; EXPECT_SURVIVES only with a written reason the
   suite re-prints; an uncaught mutation strengthens a test, never loosens it.
