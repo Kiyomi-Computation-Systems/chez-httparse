@@ -32,5 +32,10 @@ re-anchored with an "upstream" qualifier; Chez floor re-justified by this
 repo's CI cells.
 
 Exit criteria 1-3 and 5 measured green locally (make dev/test/test-all
-35/35, no-scheme 9/9, closing rg sweep clean); criterion 4 (CI green on
-both cells) pending the branch's PR.
+35/35, no-scheme 9/9, closing rg sweep clean). Criterion 4 met 2026-08-28:
+CI run 33213389847 on PR #1 (draft) completed success on both cells
+(macos-arm64 brew cell; linux-amd64 source-built 10.4.1 cell including the
+no-scheme step), 4m40s.
+
+SLICE 1 EXIT CRITERIA: all five met. Awaiting review; closing ritual not
+run (PR #1 left as draft for the human pass).
