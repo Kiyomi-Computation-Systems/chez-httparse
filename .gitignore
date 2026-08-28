@@ -1,0 +1,31 @@
+# Build trees. All generated objects and binaries live here and never share a
+# source directory. Compiled artifacts are additionally partitioned by runtime
+# version and machine type (HTTPARSE_CHEZ_OBJECT_ROOT), so objects never
+# outlive the runtime that produced them.
+/build/
+/build-*/
+
+# Developer-local preset overrides
+CMakeUserPresets.json
+
+# Per-test working and temporary directories. httparse_add_test puts these
+# under CMAKE_BINARY_DIR, so a tree here means someone configured with the
+# binary directory set to the repository root. Ignored rather than left
+# untracked because a directory holding only empty directories is invisible to
+# `git status`.
+/test-run/
+
+# Compiled Scheme objects must never appear in a source directory. Chez's
+# compile-library and compile-program emit .so; declining generate-wpo-files
+# (chez-compile.ss) keeps .wpo out of the picture today, but the pattern
+# stays in case that is ever revisited. A stale object found in tree is a
+# correctness hazard, not just a commit hazard, because a lane could load it
+# instead of the body the build staged.
+*.so
+*.wpo
+
+# Editor and platform noise
+.DS_Store
+*~
+\#*\#
+.\#*

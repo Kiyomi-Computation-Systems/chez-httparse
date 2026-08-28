@@ -1,4 +1,4 @@
-* chez-httpars
+* chez-httparse
 
 (CI badge goes here)
 
@@ -8,8 +8,36 @@ HTTP Parser for Chez Scheme
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
+Status: pre-release. The test harness and build layer are in place (ported
+from [[https://github.com/Kiyomi-Computation-Systems/byte-machine][byte-machine]], whose state-machine generator this parser will be built
+on — see =.plans/decisions/=); the parser itself has not started.
 
-(content goes here)
+* Requirements
+
+- CMake 3.26 or newer (4.3.3 is what has actually been exercised)
+- Chez Scheme 10.4.1 or newer for the Scheme test lanes (=scheme=, =chez=,
+  and =chezscheme= are all probed; Petite is rejected). The CMake-layer
+  specifications run with no Scheme installed via the =no-scheme= preset.
+
+* Building and testing
+
+Run =make= (or =make help=) for the full target list. The main entries:
+
+| =make build=    | configure and build the development preset      |
+| =make dev=      | build, then run the harness self-tests          |
+| =make test=     | build, then run the pull-request selection      |
+| =make test-all= | build, then run the complete selection          |
+| =make clean=    | remove all build trees                          |
+
+Every target is a thin wrapper over checked-in CMake presets, so
+=cmake --preset dev= and =ctest --preset pr= work identically everywhere,
+including on Windows where =make= is not in the base install.
+
+* Documentation
+
+- =.plans/= — the governing architecture document and slice designs
+- =.plans/decisions/= — decision records
+- =CHANGELOG.md= — release history
 
 * License
 
