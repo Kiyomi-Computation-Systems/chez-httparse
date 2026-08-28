@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos-arm64:
+    runs-on: macos-14           # Apple silicon runner (arm64)
+    env:
+      HTTPARSE_EXPECT_OS: darwin
+      HTTPARSE_EXPECT_ARCH: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Chez Scheme
+        run: brew install chezscheme
+      - name: Record the runtime identity
+        run: |
+          chez --version
+          echo '(display (machine-type))(newline)' | chez -q
+      - name: Configure and build
+        run: |
+          cmake --preset dev
+          cmake --build --preset dev
+      - name: Test (pr, then full)
+        run: |
+          ctest --preset pr --output-on-failure
+          ctest --preset release --output-on-failure
+
+  linux-amd64:
+    runs-on: ubuntu-latest       # x86-64 (amd64)
+    env:
+      HTTPARSE_EXPECT_OS: linux
+      HTTPARSE_EXPECT_ARCH: amd64
+      CHEZ_VERSION: "10.4.1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and install Chez Scheme from source (>= floor)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libx11-dev libncurses-dev uuid-dev git
+          git clone --depth 1 --branch "v${CHEZ_VERSION}" https://github.com/cisco/ChezScheme.git
+          cd ChezScheme
+          ./configure --threads
+          make -j"$(nproc)"
+          sudo make install
+      - name: Record the runtime identity
+        run: |
+          scheme --version
+          echo '(display (machine-type))(newline)' | scheme -q
+      - name: Configure and build
+        run: |
+          cmake --preset dev
+          cmake --build --preset dev
+      - name: Test (pr, then full)
+        run: |
+          ctest --preset pr --output-on-failure
+          ctest --preset release --output-on-failure
+      - name: Build-layer specs without a Scheme runtime
+        run: |
+          cmake --preset no-scheme
+          ctest --preset no-scheme --output-on-failure
