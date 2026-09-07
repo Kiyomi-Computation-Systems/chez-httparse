@@ -1,33 +1,16 @@
 name: CI
 
+# macOS is verified locally on the maintainer's arm64 laptop, not here: a hosted
+# macOS runner bills at ten times the Linux rate, and the arm64 cell was
+# recording a brew-installed Chez rather than exercising the pinned floor.
+# CI therefore covers the Linux amd64 cell and the no-Scheme build layer.
+
 on:
   push:
     branches: [main]
   pull_request:
 
 jobs:
-  macos-arm64:
-    runs-on: macos-14           # Apple silicon runner (arm64)
-    env:
-      HTTPARSE_EXPECT_OS: darwin
-      HTTPARSE_EXPECT_ARCH: arm64
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Chez Scheme
-        run: brew install chezscheme
-      - name: Record the runtime identity
-        run: |
-          chez --version
-          echo '(display (machine-type))(newline)' | chez -q
-      - name: Configure and build
-        run: |
-          cmake --preset dev
-          cmake --build --preset dev
-      - name: Test (pr, then full)
-        run: |
-          ctest --preset pr --output-on-failure
-          ctest --preset release --output-on-failure
-
   linux-amd64:
     runs-on: ubuntu-latest       # x86-64 (amd64)
     env:
@@ -36,19 +19,70 @@ jobs:
       CHEZ_VERSION: "10.4.1"
     steps:
       - uses: actions/checkout@v4
+
+      # Building Chez from source is minutes; every other step in this job is
+      # seconds. The install prefix is under $HOME rather than /usr/local so the
+      # cache can be restored without root, and it is an absolute path that is
+      # identical on every hosted runner because the binary resolves its boot
+      # files by compiled-in path -- a prefix restored elsewhere would not run.
+      #
+      # The key pins the version because the prefix holds a version-stamped boot
+      # directory (lib/csv$CHEZ_VERSION): a bumped CHEZ_VERSION must miss the
+      # cache rather than merge into an existing prefix. No restore-keys, for
+      # the same reason -- a partial match here would be a wrong Chez, not a
+      # warm start.
+      - name: Restore cached Chez Scheme
+        id: chez-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.local/chez
+          key: chez-${{ runner.os }}-${{ runner.arch }}-${{ env.CHEZ_VERSION }}-threads
+
       - name: Build and install Chez Scheme from source (>= floor)
+        if: steps.chez-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libx11-dev libncurses-dev uuid-dev git
-          git clone --depth 1 --branch "v${CHEZ_VERSION}" https://github.com/cisco/ChezScheme.git
-          cd ChezScheme
-          ./configure --threads
+          git clone --depth 1 --branch "v${CHEZ_VERSION}" \
+            https://github.com/cisco/ChezScheme.git "${RUNNER_TEMP}/ChezScheme"
+          cd "${RUNNER_TEMP}/ChezScheme"
+          ./configure --threads --installprefix="${HOME}/.local/chez"
           make -j"$(nproc)"
-          sudo make install
+          make install
+
+      # A restored prefix carries the binary and its boot files but nothing from
+      # apt, and the cache-hit path never runs the install above. These are the
+      # shared libraries the built `scheme` links against; they are present on
+      # the hosted image today, so this is a cheap guard against an image that
+      # drops one, not a known gap.
+      - name: Install Chez runtime libraries
+        if: steps.chez-cache.outputs.cache-hit == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-6 libncurses6 libuuid1
+
+      - name: Put Chez on PATH
+        run: echo "${HOME}/.local/chez/bin" >> "${GITHUB_PATH}"
+
+      # Runs on both paths: on a cache hit this is what proves the restored
+      # prefix is a working runtime before anything downstream depends on it,
+      # and on a miss it is the gate the save below waits for.
       - name: Record the runtime identity
         run: |
           scheme --version
           echo '(display (machine-type))(newline)' | scheme -q
+
+      # Saved here rather than by the cache action's own post-step, which would
+      # also run after a failed build and could publish a half-installed prefix
+      # under the key -- poisoning every later run until the version changes.
+      # Reaching this step means the prefix above answered as a working Chez.
+      - name: Cache the Chez build
+        if: steps.chez-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.local/chez
+          key: ${{ steps.chez-cache.outputs.cache-primary-key }}
+
       - name: Configure and build
         run: |
           cmake --preset dev
