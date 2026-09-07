@@ -43,8 +43,10 @@ No parser code yet.
   fingerprint `1f2902297117b4a3` measured under Chez 10.4.1 threaded
   tarm64osx, 2026-08-28, and cross-checked against an independent
   reimplementation) and a regenerated stale-root provenance fixture.
-- CI: macOS arm64 (brew Chez) and Linux amd64 (Chez 10.4.1 built from
-  source) cells, the latter closing with the no-scheme lane.
+- CI: the Linux amd64 cell (Chez 10.4.1 built from source, cached across
+  runs under `~/.local/chez` and keyed on the pinned version), closing with
+  the no-scheme lane. macOS arm64 is verified locally on the maintainer's
+  laptop rather than on a hosted runner.
 
 ### Changed
 
