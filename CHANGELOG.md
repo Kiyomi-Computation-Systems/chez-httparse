@@ -47,6 +47,11 @@ No parser code yet.
   runs under `~/.local/chez` and keyed on the pinned version), closing with
   the no-scheme lane. macOS arm64 is verified locally on the maintainer's
   laptop rather than on a hosted runner.
+- Decision record
+  ([0004](.plans/decisions/0004-ci-covers-the-linux-cell-alone.md)) amending
+  [0003](.plans/decisions/0003-slice-1-scope-and-exit-criteria.md)'s criterion
+  4: from this date, a slice closes on the Linux cell green in CI plus a
+  recorded local macOS run, not on two CI cells.
 
 ### Changed
 

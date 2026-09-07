@@ -2,7 +2,14 @@
 
 Date: 2026-08-28
 Status: accepted
+Amended by: [0004](0004-ci-covers-the-linux-cell-alone.md), criterion 4
 Milestone: Gate 0 (.plans/2026-08-28-gate0-slice1-harness-port-design.md)
+
+> **Criterion 4 is amended by [0004](0004-ci-covers-the-linux-cell-alone.md)
+> (2026-09-07).** The macOS arm64 cell is retired: CI covers the Linux cell
+> alone, and macOS is verified by a local run recorded in the slice report.
+> Slice 1's own exit is unchanged — it was met on this slice's pull request
+> against the two-cell workflow described below, which is left as written.
 
 ## Context
 
