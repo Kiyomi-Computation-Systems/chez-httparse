@@ -700,3 +700,33 @@ httparse_add_scheme_lane(
   EXPECT_EXIT 3
   TIMEOUT 120
   LABELS expected-red)
+
+# --- The corpus harness (M1) ------------------------------------------------
+#
+# Decision 0008 makes the vendored corpus the oracle, which puts the reading of
+# it on the critical path: a decoder that is one byte off makes every offset in
+# a fixture wrong, and the failure reads as a parser defect. These lanes judge
+# the reading machinery on hand-built inputs, before any HTTP byte is parsed.
+
+set(HTTPARSE_CORPUS_DECODE
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/corpus-decode.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.corpus-decode.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_DECODE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.corpus-decode.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_DECODE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
