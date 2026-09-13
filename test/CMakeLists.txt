@@ -873,3 +873,18 @@ httparse_add_scheme_lane(
           "${CMAKE_CURRENT_LIST_DIR}/common/generator-abi-tests.sps"
   TIMEOUT 180
   LABELS unit)
+
+# --- The grammar (M2) -------------------------------------------------------
+
+set(HTTPARSE_GRAMMAR "${CMAKE_SOURCE_DIR}/src/httparse/grammar.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.request-line.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GRAMMAR}
+          "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
+  TIMEOUT 180
+  LABELS unit)

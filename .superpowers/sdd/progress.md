@@ -317,3 +317,43 @@ library root per library family it imports, and the count grows with each
 slice."
 
 Evidence: make test-all 47/47, no-scheme 10/10.
+
+M2 SLICE ① (2026-09-13): the request-line grammar. src/httparse/grammar.sls is
+this repository's first product code — a byte-machine source machine for
+`method SP request-target SP HTTP-version CRLF`, run here through the
+reference interpreter.
+
+THE EVENT OFFSETS ARE ASYMMETRIC AND THE ASYMMETRY IS REAL. Read off
+request/sample.md: method, protocol and version complete fire AT their
+delimiter, unconsumed, while url complete fires one byte PAST its space, which
+is consumed. So `after-method` fires the event and then consumes the SP, while
+`after-url` consumes the SP and then fires. All nine events for
+`OPTIONS /url HTTP/1.1` land on the corpus's exact offsets, including
+url-complete at 13 where the SP is at 12. Making the four uniform would shift
+every url offset in the corpus by one, and that mutation is one of the three
+the lane catches.
+
+Adapter rule discovered here and needed by the conformance driver: a span
+fragment's ABSOLUTE start is (parser-stream-offset - (to - from)). The
+span-data callback receives buffer indices and fires having already advanced
+past the bytes it is handed, so `from` is only the absolute offset when the
+feed started at zero.
+
+Two findings recorded for later slices:
+
+  1. The runtime SUPPRESSES EMPTY SPAN FRAGMENTS (runtime.sls:682, `(if (or
+     (>= from to) ...)`). llhttp does not — request/uri.md#11 expects
+     `off=9 len=0 span[protocol]=""`. Reproducing that fixture will need
+     either a grammar shape that avoids an empty span or an upstream change
+     under decision 0006; it is not yet clear which, and the slice that hits
+     it decides.
+  2. Callback declarations are `required?`, so a parser must bind every one
+     even when a case ignores what they report. Two test cases were written
+     with an empty binding list and the parser refused them — the declaration
+     doing its job.
+
+Three mutations, all caught: making url-complete uniform with the other three,
+consuming the delimiter before closing the method span, and accepting a bare
+LF as a line ending.
+
+Evidence: make test-all 48/48, no-scheme 10/10.
