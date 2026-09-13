@@ -252,4 +252,62 @@
                          '((message-begin 0) (method-complete 7) (url-complete 13)
                            (protocol-complete 17) (version-complete 21)))))))))
 
+(harness-group "the method table"
+  (lambda ()
+    (harness-case "every method in the table parses as itself"
+      (lambda ()
+        ;; 47 names, each fed as a complete request line. A trie that dropped or
+        ;; mis-wired one name would show up here rather than in whichever
+        ;; fixture happened to use it.
+        (check-equal "methods that did not round-trip"
+                     (filter
+                      (lambda (name)
+                        (let ((events (events-of (string-append name " / HTTP/1.1\r\n"))))
+                          (not (equal? (assq 'method events)
+                                       (list 'method 0 (string-length name) name)))))
+                      httparse-method-names)
+                     '())))
+    (harness-case "the table is the one llhttp knows"
+      (lambda ()
+        (check-equal "count" (length httparse-method-names) 47)))
+    (harness-case "MKCOLA matches MKCOL and then rejects the A"
+      (lambda ()
+        ;; request/invalid.md: `off=0 len=5 span[method]="MKCOL"`,
+        ;; `off=5 method complete`, `off=5 error`. A tchar loop would take
+        ;; MKCOLA whole and accept it, which is the point of the table.
+        (check-equal "events"
+                     (events-of "MKCOLA / HTTP/1.1\r\n")
+                     '((message-begin 0)
+                       (method 0 5 "MKCOL")
+                       (method-complete 5)))
+        (check-equal "status" (status-of "MKCOLA / HTTP/1.1\r\n") 'error)
+        (check-equal "offset" (error-offset-of "MKCOLA / HTTP/1.1\r\n") 5)))
+    (harness-case "GET-PARAMETER matches whole, though GET is a proper prefix of it"
+      (lambda ()
+        ;; This pair is why the table is a trie: make-sequence-dispatch-node
+        ;; rejects a case list where one entry is a proper prefix of another.
+        (check-equal "method" (assq 'method (events-of "GET-PARAMETER / HTTP/1.1\r\n"))
+                     '(method 0 13 "GET-PARAMETER"))))
+    (harness-case "GET followed by a space matches GET, not the longer name"
+      (lambda ()
+        (check-equal "method" (assq 'method (events-of "GET / HTTP/1.1\r\n"))
+                     '(method 0 3 "GET"))))
+    (harness-case "a hyphenated method matches"
+      (lambda ()
+        (check-equal "method" (assq 'method (events-of "M-SEARCH * HTTP/1.1\r\n"))
+                     '(method 0 8 "M-SEARCH"))))
+    (harness-case "an unknown method is rejected inside the table walk"
+      (lambda ()
+        ;; `F` begins FLUSH, so the trie advances one byte and then finds no
+        ;; continuation for `O`.
+        (check-equal "status" (status-of "FOO / HTTP/1.1\r\n") 'error)
+        (check-equal "no method span"
+                     (filter (lambda (e) (eq? (car e) 'method))
+                             (events-of "FOO / HTTP/1.1\r\n"))
+                     '())))
+    (harness-case "a method that is only a prefix of a real one is rejected"
+      (lambda ()
+        ;; `MKCO` is a prefix of MKCOL but is not itself a method.
+        (check-equal "status" (status-of "MKCO / HTTP/1.1\r\n") 'error)))))
+
 (harness-finish)

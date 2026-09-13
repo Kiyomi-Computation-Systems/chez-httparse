@@ -357,3 +357,40 @@ consuming the delimiter before closing the method span, and accepting a bare
 LF as a line ending.
 
 Evidence: make test-all 48/48, no-scheme 10/10.
+
+M2 SLICE ② (2026-09-13): the method table. llhttp matches the method against a
+TABLE, not `1*tchar`, and the difference is observable — `MKCOLA / HTTP/1.1`
+records span[method]="MKCOL" and errors at offset 5, where a tchar loop takes
+MKCOLA whole and accepts it. Our grammar now reproduces that exactly.
+
+`make-sequence-dispatch-node` CANNOT express the table: it rejects a case list
+where one entry is a proper prefix of another, and GET is a proper prefix of
+GET-PARAMETER — measured over llhttp's 47-name union, which is the only such
+pair. So the table is a generated trie, the same shape the Gate 0 spike
+measured on close/closed.
+
+THIS IS THE SECOND INDEPENDENT REASON FOR THE SAME UPSTREAM PRIMITIVE, and it
+is stronger than the first. Case-insensitive header matching merely could not
+use make-sequence-dispatch-node's case-sensitivity; the method table cannot use
+the construct AT ALL. Gate 0 left open whether the eventual primitive should be
+a case-insensitive sequence or a trie; two independent consumers now both need
+a trie with an explicit terminator, and a case-insensitive sequence would
+inherit the prefix rejection and fail here. That hypothesis is no longer a
+hypothesis.
+
+The union is all 47 names including RTSP and HTTP/2: the corpus parses ANNOUNCE
+(RTSP-only) into a method span and rejects it only later by the
+method-versus-protocol rule, so the matcher accepts it and the compatibility
+check is a separate concern.
+
+A test feeds every one of the 47 names as a complete request line, so a trie
+that dropped or mis-wired a name fails there rather than in whichever fixture
+happened to use it.
+
+FOURTH INSTANCE OF THE MUTATION-DID-NOT-APPLY TRAP. The drop-a-method mutation
+first reported GREEN because the edit appended a comment at a line end and
+removed nothing. Re-run with an assertion that the occurrence count actually
+changed, it was caught. The rule stands: assert the edit landed before reading
+the result.
+
+Evidence: make test-all 48/48.
