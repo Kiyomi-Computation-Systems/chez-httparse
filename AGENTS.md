@@ -55,3 +55,18 @@ None is obvious from reading the code.
   (`vendor/chez-srfi/%3a64/testing-impl.scm:568-571`: the R6RS
   `%test-evaluate-with-catch` is `(guard (ex (else #F)) …)`).
 * Chez evaluates argument expressions right-to-left in compiled library code
+
+## Claims about other people's code
+
+A claim about a dependency's behaviour is **run before it enters a decision
+record**. Not read, not remembered — run. Gate 0 drafted three such claims and
+all three were wrong: a decision targeting an upstream constructor that had
+since become a tombstone refusing every version; "the case-folding workaround
+is semantically lossy", which is false because a trie disambiguates
+`close`/`closed` where `make-sequence-dispatch-node` rejects the pair; and a
+corpus fixture count taken from the wrong block type. Each was plausible, each
+was written down, and each was caught only by executing the specific claim.
+
+This is `prefer a check to a comment` pointed outward. The traps above are all
+about our own code being surprising; these are about someone else's code
+differing from its documentation, or from what it did last month.

@@ -136,3 +136,138 @@ Gate 0 rather than at M4.
 CONSEQUENCE: M4 is not blocked and no byte-machine work is scheduled ahead of
 it. The primitive is scheduled after M4 lands, when the grammar can specify it
 and a before/after node count (91 -> ~3 for eight keywords) can price it.
+
+GATE 0 MERGE GATE (2026-09-13): PR #4 squash-merged as 8cad258 "docs: Gate 0
+— the HTTP parser milestone plan and decisions 0005-0010 (#4)". Local main
+fast-forwarded; branch deleted locally and on origin.
+
+MERGED ON A RED CHECK, NAMED PER DECISION 0004: billing refusal, not a test
+result. The linux-amd64 check on run 34760173445 reported failure with 0 steps
+and no retrievable logs after 4 seconds; every run in this repository since
+2026-09-07 has that same shape, including pushes to main carrying no code. The
+account's Actions minutes for this month are exhausted and will refuse until
+billing resets (confirmed by the maintainer). Evidence in its place, per
+0004's macOS sub-decision: Darwin 25.6.0 arm64, Chez Scheme Version 10.4.1,
+(machine-type) tarm64osx, CMake/CTest 4.3.3, make test-all 35/35 green in
+14.50s. The change touched .plans/ and .superpowers/ only.
+
+CLOSING RITUAL COMPLETE (steps 1-4). Step 4 (retrospective, not a summary).
+
+What held up: measuring instead of reasoning. Two questions that looked like
+judgement calls — is M4 blocked on upstream, and is the trie workaround
+semantically lossy — were both answered by building the thing and running it
+through the generated lane. Both answers contradicted the draft record, and
+the record was corrected before it merged rather than after. Separately,
+reimplementing llhttp's input decoder independently, rather than only reading
+its source, surfaced two loader constraints (prose between the http and log
+blocks; zero use of the ${...} escape) that a reading pass had missed.
+
+What nearly slipped, three of them, all the same shape — a plausible claim
+about someone else's code, written down before being run:
+
+  1. Decision 0002's ABI clause named a constructor upstream has since retired
+     to a tombstone. A slice written against it would have failed at
+     construction. Found only by reading the pinned tree instead of trusting
+     the record.
+  2. "The workaround is semantically lossy" was drafted into 0006 on the
+     strength of a survey. It is false: the trie disambiguates close/closed,
+     which make-sequence-dispatch-node rejects outright. Caught because the
+     specific claim was tested before being asserted.
+  3. The first corpus census counted meta blocks and would have put 257 into
+     the plan as the fixture count. Reconciling meta against http and log
+     counts found url.md carries 21 fixtures behind 4 metas; the HTTP corpus
+     is 253.
+
+Standard routed to AGENTS.md this close: a claim about a dependency's
+behaviour is run before it enters a decision record. This is the
+prefer-a-check rule pointed outward — the existing traps are all about our own
+code being surprising, and all three near-misses above were about someone
+else's code being different from its documentation or from memory.
+
+M1 (the corpus harness, with no parser) starts now on branch
+feat/m1-corpus-harness.
+
+M1 SLICES ⓪-② (2026-09-13, branch feat/m1-corpus-harness).
+
+Slice ⓪ vendored the corpus: 24 files from llhttp v9.4.3-1-gee51043,
+byte-identical, PROVENANCE with a SHA-256 per file, a registered spec watched
+failing on all four defect classes (edited fixture, unrecorded file, deleted
+file, dropped PROVENANCE entry), and `make corpus-refresh`. The refresh script
+was written first and used to perform the initial vendor, so the first copy
+and every later refresh run identical code. .gitattributes gained
+test/vendor/** -text. The rename audit caught the new cmake module leaking the
+generator's name into a comment — second time that spec has paid for itself on
+a clean tree.
+
+Slice ① is the input decoder, slice ② the loader. Both are pure functions with
+hand-built input/output tests and both were mutation-tested: six mutations
+against the decoder and four against the loader, every one turning its lane
+red. The loader mutation that matters most is adjacency-modulo-blank-lines
+pairing, which is the plausible wrong implementation and loses the five
+fixtures that carry prose between their input and log blocks.
+
+THREE FINDINGS, ALL THE SAME SHAPE AS GATE 0'S NEAR-MISSES — a plausible claim
+about someone else's format, believed before being run:
+
+  1. Escapes yield CODE POINTS which are then UTF-8 encoded: \xff reaches the
+     parser as C3 BF, not as the byte FF. Established, not assumed —
+     request/sample.md records off=49 len=8 for a seven-character value, and
+     across all 253 fixtures the UTF-8 reading produces no offset exceeding
+     its fixture's length while the raw-byte reading produces four.
+  2. Gate 0's corpus figures were wrong. The throwaway script that produced
+     them used a regex whose $ also matches before a trailing newline, so it
+     stripped two newlines where the reference strips one, shortening nearly
+     every fixture by a byte. Corrected from the in-tree tested libraries:
+     22,930 input bytes (was 22,598), longest 2,044 (was 2,042), full-scan
+     21,630 parser runs (was 21,326), ~7.28M bytes fed. Fixture counts,
+     median 63 and 4,754 expected trace lines were unaffected.
+  3. Decision 0007's claim that two expectation lines are regular expressions
+     is FALSE. Zero are. The two /.../ lines in url.md are URL *inputs*
+     (/foo\tbar/ and /foo\fbar/), miscounted by a grep that ignored block
+     structure; the loader, which knows which fence it is inside, reports
+     zero. The comparator may therefore compare literal text only, and the
+     loader still recognises a pattern so a refresh introducing a real one is
+     a red lane rather than a silent mismatch.
+
+0007, 0008 and the milestone plan were corrected in place on this branch, each
+carrying why. The run-it-first standard routed to AGENTS.md at the Gate 0 close
+has now caught three more instances in the slice immediately after it.
+
+M1 SLICES ③-⑤ COMPLETE (2026-09-13). Trace formatter, scan schedule and
+comparator, ratchet. Every library is a pure function with hand-built
+input/output tests, and every one was mutation-tested: 6 against the decoder,
+4 the loader, 4 the formatter, 4 the comparator/schedule, 4 the ratchet — 22
+mutations, all caught.
+
+The formatter reproduces two upstream behaviours that are not obvious and both
+decide which traces match: spans split at CR and LF with an EMPTY span still
+printing one empty quoted line, and contiguous fragments coalescing with the
+merged line MOVED TO THE END, so anything between two fragments of one span
+precedes the merged line. Merging in place would invert those two lines on
+every chunked-body fixture.
+
+Ratchet: 274 entries, 190 in scope and 84 deferred, matching decision 0009's
+partition. The in-scope/deferred class is DERIVED from each fixture's own meta
+and checked against the manifest, so a refresh cannot smuggle a lenient
+fixture in as not-yet and have it counted against v0.1's bar.
+
+TWO MEASUREMENT TRAPS HIT AGAIN IN THIS SLICE, both the same shape as the
+earlier ones and both caught only by checking whether the mutation applied
+before believing its result: a BSD sed that silently does nothing because it
+does not support \b, and a manifest mutation whose replacement string assumed
+single spaces where the file is column-padded. Each first reported GREEN. A
+mutation that does not apply is not a passing test; the discipline is to
+assert the edit landed, not to read the result.
+
+PLAN CORRECTED: M1's bullet said the byte-machine submodule lands here. That
+contradicts decision 0002 item 2 — the submodule is added in the first slice
+that actually invokes the emitter, since an unused pin only rots. M1 builds no
+grammar and emits nothing, so the pin and its ABI-5 assertion move to M2. The
+plan was wrong and the decision was right.
+
+M1 EXIT: all 274 fixtures load and decode; the ratchet covers them exactly
+with derived classes checked; the comparator and formatter are
+mutation-witnessed. make test-all 46/46, no-scheme 10/10 (Darwin 25.6.0 arm64,
+Chez 10.4.1 tarm64osx, CMake 4.3.3). CI is refusing on exhausted Actions
+minutes for the month, so the Linux cell cannot be observed on this branch;
+that is a billing refusal, not a test result (decision 0004).

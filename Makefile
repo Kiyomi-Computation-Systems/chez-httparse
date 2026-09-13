@@ -18,7 +18,7 @@ CTEST_FLAGS ?= --output-on-failure --no-tests=error
 # Bare 'make' prints the target list rather than building; 'make all' still builds.
 .DEFAULT_GOAL := help
 
-.PHONY: all help doctor configure build dev test test-all prod clean
+.PHONY: all help doctor configure build dev test test-all prod clean corpus-refresh
 
 all: build   ## build the development preset
 
@@ -59,3 +59,11 @@ prod:   ## configure and build the release preset
 
 clean:   ## remove all build trees
 	$(CMAKE) -E rm -rf build
+
+# The vendored llhttp corpus is upstream's bytes and is never hand-edited
+# (decision 0007). This is the only way they are written: the initial vendor
+# and every refresh run the same script, so a refresh cannot drift from
+# however the first copy happened to be made. The source checkout is named
+# here, never in the tree.
+corpus-refresh:   ## re-vendor the llhttp corpus (needs LLHTTP_ROOT=/path/to/llhttp)
+	$(CMAKE) -DLLHTTP_ROOT="$(LLHTTP_ROOT)" -P cmake/HttparseCorpusRefresh.cmake

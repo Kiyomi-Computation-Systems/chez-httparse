@@ -99,6 +99,17 @@ httparse_add_test(
   TIMEOUT 120
   LABELS unit)
 
+# The vendored llhttp corpus is upstream's bytes and is never edited
+# (decision 0007 item 6). This lane is what makes that true rather than
+# merely stated; it needs no Scheme runtime, so it also holds under the
+# no-scheme preset.
+httparse_add_test(
+  NAME httparse.harness.corpus-provenance.cmake.direct
+  COMMAND "${CMAKE_COMMAND}" -P
+          "${CMAKE_CURRENT_LIST_DIR}/support/cmake/CorpusProvenanceSpec.cmake"
+  TIMEOUT 120
+  LABELS unit)
+
 # --- Harness paths ---------------------------------------------------------
 
 set(HTTPARSE_HARNESS_DIR "${CMAKE_CURRENT_LIST_DIR}/support/harness")
@@ -689,3 +700,139 @@ httparse_add_scheme_lane(
   EXPECT_EXIT 3
   TIMEOUT 120
   LABELS expected-red)
+
+# --- The corpus harness (M1) ------------------------------------------------
+#
+# Decision 0008 makes the vendored corpus the oracle, which puts the reading of
+# it on the critical path: a decoder that is one byte off makes every offset in
+# a fixture wrong, and the failure reads as a parser defect. These lanes judge
+# the reading machinery on hand-built inputs, before any HTTP byte is parsed.
+
+set(HTTPARSE_CORPUS_DECODE
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/corpus-decode.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.corpus-decode.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_DECODE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.corpus-decode.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_DECODE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+set(HTTPARSE_CORPUS_LOAD
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/corpus-load.sls")
+set(HTTPARSE_CORPUS_DIR "${CMAKE_CURRENT_LIST_DIR}/vendor/llhttp")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.corpus-load.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/corpus-load-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_DECODE}
+          ${HTTPARSE_CORPUS_LOAD}
+          "${CMAKE_CURRENT_LIST_DIR}/common/corpus-load-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.corpus-load.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/corpus-load-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_DECODE}
+          ${HTTPARSE_CORPUS_LOAD}
+          "${CMAKE_CURRENT_LIST_DIR}/common/corpus-load-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+  TIMEOUT 120
+  LABELS unit)
+
+set(HTTPARSE_TRACE_FORMAT
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/trace-format.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.trace-format.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_TRACE_FORMAT}
+          "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.trace-format.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_TRACE_FORMAT}
+          "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+set(HTTPARSE_CONFORMANCE
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/conformance.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.conformance.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_CONFORMANCE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.conformance.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_CONFORMANCE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+set(HTTPARSE_RATCHET_LIB
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/ratchet.sls")
+set(HTTPARSE_RATCHET_FILE "${CMAKE_CURRENT_LIST_DIR}/conformance/ratchet.txt")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.ratchet.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/ratchet-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_RATCHET_LIB}
+          "${CMAKE_CURRENT_LIST_DIR}/common/ratchet-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+              "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.ratchet.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/ratchet-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_RATCHET_LIB}
+          "${CMAKE_CURRENT_LIST_DIR}/common/ratchet-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+              "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
+  TIMEOUT 120
+  LABELS unit)

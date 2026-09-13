@@ -17,3 +17,12 @@
 # plausible message while testing the wrong grammar.
 test/fixtures/** -text
 *.expected -text
+
+# The vendored llhttp corpus (decision 0007) is upstream's bytes, checksummed
+# in test/vendor/llhttp/PROVENANCE and verified by a registered spec. It is
+# marked binary for the same reason as the fixtures above, one step earlier:
+# no fixture in it contains a CR byte *today*, so eol=lf would be harmless
+# now -- but these are HTTP fixtures, upstream adds to them, and the first one
+# carrying a literal CR would either break every checksum or, worse, parse as
+# a plausible message while testing the wrong grammar. -text is enough forever.
+test/vendor/** -text

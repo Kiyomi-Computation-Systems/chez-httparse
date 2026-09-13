@@ -51,13 +51,13 @@ The corpus is not a list of inputs; it is llhttp's recorded behaviour
 ([0007](decisions/0007-llhttp-corpus-vendored-as-data.md)). Measured at
 llhttp `v9.4.3`:
 
-- 253 HTTP fixtures in 23 files, 288K; 22,598 input bytes total; median fixture
-  63 bytes, longest 2,042.
+- 253 HTTP fixtures in 23 files, 288K; 22,930 input bytes total; median fixture
+  63 bytes, longest 2,044.
 - Each fixture is `input → exact byte-offset event trace`, ~20 distinct line
   shapes over 4,754 expected lines.
 - Upstream replays each fixture at **every chunk size from 1 to its length**, so
   resumability across arbitrary input boundaries is the corpus, not an extra
-  suite. Full scan is 21,326 parser runs; whole-buffer-only is 253.
+  suite. Full scan is 21,630 parser runs; whole-buffer-only is 253.
 
 Reading it needs four pure functions, each with its own input→output tests:
 
@@ -88,19 +88,32 @@ not-yet-passing to passing, and nothing else moves
 
 Vendor the corpus under `test/vendor/llhttp/` with `LICENSE`, `PROVENANCE` and a
 checksum manifest. Build the four pure functions above, the ratchet, and the
-`pr`/`release` chunk-size split. Wire the byte-machine submodule at the
-[0005](decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md) pin and
-assert ABI 5 as a check in the tree.
+`pr`/`release` chunk-size split.
+
+**The byte-machine submodule does NOT land here.** This bullet originally said
+it did, which contradicts [0002](decisions/0002-byte-machine-consumption-and-abi.md)
+item 2 — the submodule is added in the first slice that actually invokes the
+emitter, because "adding an unused pin now would only rot". M1 builds no
+grammar and emits nothing, so the pin and its ABI-5 assertion move to **M2**,
+which is the first slice that does. The plan was wrong and the decision was
+right.
 
 **Exit**: all 274 fixtures (253 HTTP + 21 URL) load and decode; the ratchet
-lists them all with a status; the comparator is mutation-witnessed — a
-deliberately corrupted trace must fail it. No HTTP parsing in this milestone.
+lists them all with a status, 190 in scope and 84 deferred, each entry's class
+checked against the one derived from its fixture's own meta; the comparator is
+mutation-witnessed — a deliberately corrupted trace must fail it. No HTTP
+parsing in this milestone.
 
 ### M2 — the request line
 
 `message begin`; `method`, `url`, `protocol`, `version` spans and their
 `complete` events; the strict CRLF rule; `invalid-method`, `invalid-version`,
 `invalid-url`, `invalid-constant`.
+
+This is the first slice that invokes the emitter, so it is where the
+byte-machine submodule lands at the
+[0005](decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md) pin,
+with ABI 5 asserted as a check in the tree rather than restated in prose.
 
 **Reachable ceiling**: the 17 strict request fixtures whose expected trace ends
 in the start line.
@@ -202,8 +215,8 @@ message-complete fixture may need chunked (M5) rather than only framing (M4):
   waits on a byte-machine release. What remains is the ordinary risk that the
   trie generator has a bug the verifier cannot catch, which is why it is tested
   here as a pure function from keyword list to node list.
-- **Full-scan wall time.** 21,326 runs are dominated by per-run setup and trace
-  formatting, not by the 7.2M bytes. Re-measure once the lane exists; the
+- **Full-scan wall time.** 21,630 runs are dominated by per-run setup and trace
+  formatting, not by the 7.28M bytes. Re-measure once the lane exists; the
   `pr`/`release` split exists to absorb it.
 - **Unseen-input divergence is uncovered until M8.** Accepted and bounded — see
   [0010](decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md).
