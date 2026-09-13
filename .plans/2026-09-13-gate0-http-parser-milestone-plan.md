@@ -122,10 +122,16 @@ bitfield; `after_headers_complete` as a pure decision callback; the fixed-length
 body via counted consumption.
 
 **This is where the case-insensitivity gap surfaces** — the first point a header
-*name* drives a decision rather than a span. Resolve it under
-[0006](decisions/0006-upstream-first-for-general-gaps.md): the likely shape is a
-case-insensitive sequence matcher upstream, but the design belongs to this
-slice, with real constraints in hand, not to Gate 0.
+*name* drives a decision rather than a span — **and it does not block.** Gate 0
+built and measured the downstream trie workaround through the generated lane:
+52 nodes for the four header names, 28 for the `Connection` values, 11 for
+`chunked`; all verify and compile on the public v0.1 API, and all behave
+correctly across case and at the `Connection-Foo:` / `conten:` boundaries. M4
+ships with that trie. The byte-machine primitive is scheduled *after* M4, per
+[0006](decisions/0006-upstream-first-for-general-gaps.md), when the grammar can
+specify it — and Gate 0 already found one constraint on its design: a
+case-insensitive `make-sequence-case` would inherit `ambiguous-sequence-prefix`
+and so reject the `close` / `closed` pair the trie handles today.
 
 **Reachable ceiling**: +15 fixtures that stop at `headers complete`, plus the
 fixed-body share of the 63 that reach `message complete`.
@@ -191,10 +197,11 @@ message-complete fixture may need chunked (M5) rather than only framing (M4):
 
 ## Standing risks
 
-- **The upstream round trip.** M4 may block on a byte-machine change, release
-  and pin bump. [0006](decisions/0006-upstream-first-for-general-gaps.md)
-  sequences work so this is not on the critical path in more than one place at
-  a time; M3 deliberately reaches M4 with the header machinery already proven.
+- **The upstream round trip — retired as a risk for M4 by measurement.** The
+  trie workaround verifies, compiles and behaves, so no milestone in this plan
+  waits on a byte-machine release. What remains is the ordinary risk that the
+  trie generator has a bug the verifier cannot catch, which is why it is tested
+  here as a pure function from keyword list to node list.
 - **Full-scan wall time.** 21,326 runs are dominated by per-run setup and trace
   formatting, not by the 7.2M bytes. Re-measure once the lane exists; the
   `pr`/`release` split exists to absorb it.

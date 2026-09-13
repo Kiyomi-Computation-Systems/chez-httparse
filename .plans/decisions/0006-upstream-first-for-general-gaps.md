@@ -27,13 +27,39 @@ of byte values, and `make-sequence-dispatch-node` is the construct whose whole
 purpose is matching fixed byte sequences. llhttp gets this from llparse's
 `toLowerUnsafe()` transform, which byte-machine has no analogue of.
 
-It can be worked around downstream — a chain of byte-dispatch nodes with a
-two-element byte set per letter, generated programmatically from a Scheme
-string. But that workaround abandons `make-sequence-dispatch-node` entirely for
-every case-insensitive keyword, and with it the verifier's
-`ambiguous-sequence-prefix` guarantee, hand-rolling a trie in its place. That
-is a lot of machinery to reimplement in a consumer, and the next byte-oriented
-protocol with case-insensitive keywords would reimplement it again.
+It can be worked around downstream — a trie of byte-dispatch nodes with a
+two-element byte set per letter, generated programmatically from a list of
+keyword strings. **Gate 0 built that workaround and measured it** rather than
+reasoning about it, against byte-machine at the 0005 pin, through the generated
+lane and not only the interpreter:
+
+| trie | keywords | nodes | emitted |
+|---|---|---|---|
+| header names (`content-length`, `transfer-encoding`, `connection`, `upgrade`) | 4 | 52 | 22,118 B |
+| `Connection` values (`keep-alive`, `close`, `upgrade`) | 3 | 28 | 11,489 B |
+| `Transfer-Encoding` value (`chunked`) | 1 | 11 | 4,368 B |
+
+All verify and compile through the public API alone. Behaviour is correct across
+case (`cOnTeNt-LeNgTh:` → the same terminal as `content-length:`), and correct
+at the boundaries that matter: `Connection-Foo:` and `conten:` both fall to the
+not-a-known-keyword branch rather than matching.
+
+Two findings change the shape of the argument.
+
+**The workaround is not lossy; it is unverified.** A trie with an explicit
+terminator byte disambiguates `close` from `closed` correctly in both cases —
+measured — where `make-sequence-dispatch-node` would *reject* that pair outright
+as `ambiguous-sequence-prefix`. So the trie is strictly *more* expressive than
+the construct it replaces. What is actually given up is not a guarantee about
+the grammar but a check on the builder: nothing verifies the trie generator, so
+a bug in it is caught only by this project's own tests.
+
+**A naive upstream primitive would be worse than the workaround.** Adding a
+case-insensitive flag to `make-sequence-case` would inherit that same
+prefix-ambiguity rejection, and would therefore fail on exactly the `close` /
+`closed` shape the trie handles today. That is a concrete constraint on any
+eventual design, and it is the kind of thing only a real grammar surfaces —
+which is the whole argument for item 3 below.
 
 ## Decision
 
@@ -42,10 +68,12 @@ protocol with case-insensitive keywords would reimplement it again.
    protocol grammar hit the same wall? Case-insensitive keyword matching passes
    that test. A table of HTTP method names does not.
 2. **A general gap goes upstream when the downstream workaround would be large,
-   or semantically lossy** — where lossy means it gives up a guarantee the
-   generator otherwise provides, the verifier's prefix-ambiguity check being the
-   live example. A small, local, guarantee-preserving workaround stays here even
-   if the gap is general; not every rough edge is worth a release.
+   or would leave a correctness-critical builder unchecked.** A small, local
+   workaround stays here even if the gap is general; not every rough edge is
+   worth a release. Case-insensitive matching goes upstream on *size and
+   generality* — 91 nodes and ~38 KB of generated code for eight keywords,
+   against roughly three nodes for a primitive — and on the unchecked-builder
+   argument, **not** on a claim that the workaround is wrong. It is not.
 3. **The upstream change is designed in the slice that hits it, not at Gate 0.**
    This record names the known gap and the policy. It deliberately does not
    specify the primitive, because the right shape depends on constraints —
@@ -64,7 +92,10 @@ protocol with case-insensitive keywords would reimplement it again.
 
 - Silently routing around a general gap because a workaround was quicker. The
   workaround may still win under item 2, but it wins on the record, not by
-  default.
+  default — as it does here for M4, measured.
+- Blocking a milestone on an upstream release that a measured workaround makes
+  unnecessary. Upstream-first is a rule about where a *fix* belongs, not a
+  licence to stall.
 - Adding primitives to byte-machine at Gate 0 on the strength of this survey.
   The case-insensitivity gap is named here as expected work, not as an approved
   design.
@@ -82,7 +113,13 @@ protocol with case-insensitive keywords would reimplement it again.
 - byte-machine gains a consumer-driven changelog: entries that exist because a
   real grammar needed them. That is the return on the shakeout, and it is worth
   more than this parser shipping a few weeks sooner.
-- The known gap is expected to surface in M4 (framing), where header-name
-  recognition first drives a parsing decision rather than only a span. M3
-  handles field names as opaque spans and does not need it, so the plan reaches
-  M4 with the rest of the header machinery already proven.
+- **M4 is not blocked.** The gap surfaces there — the first point a header
+  *name* drives a decision rather than only a span — but the measured workaround
+  means M4 ships with the trie and does not wait on an upstream release. The
+  byte-machine work is therefore scheduled *after* M4 lands, when the real
+  grammar can specify the primitive and a before/after node count can price it.
+- M3 handles field names as opaque spans and does not need the gap closed, so
+  the plan reaches M4 with the rest of the header machinery already proven.
+- The trie generator is this project's code until a primitive replaces it: it is
+  tested here as a pure function from keyword list to node list, and it sits
+  behind one procedure so the eventual swap is contained.

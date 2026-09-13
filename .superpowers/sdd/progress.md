@@ -109,3 +109,30 @@ binary as C strings).
 
 GATE 0 OPEN: decisions recorded, plan written, no code. M1 (the corpus
 harness, with no parser) is the next slice.
+
+GATE 0 SPIKE (2026-09-13): the case-insensitivity gap was measured, not
+argued. A trie of byte-dispatch nodes with a two-element byte set per letter,
+generated programmatically, was built against byte-machine at the 0005 pin and
+run through the GENERATED lane (emit, load, feed), not only the interpreter.
+Header names (content-length, transfer-encoding, connection, upgrade): 52
+nodes, 22,118 emitted bytes. Connection values (keep-alive, close, upgrade):
+28 nodes, 11,489 bytes. chunked: 11 nodes, 4,368 bytes. All verify and
+compile on the public v0.1 API. Behaviour correct across case, and correct at
+the boundaries — "Connection-Foo:" and "conten:" both fall through rather than
+matching.
+
+Two findings corrected 0006 as first drafted. (1) The workaround is NOT
+semantically lossy: a trie with an explicit terminator disambiguates
+close/closed in both cases, where make-sequence-dispatch-node would reject
+that pair as ambiguous-sequence-prefix — the trie is strictly more expressive
+than the construct it replaces. What is given up is a check on the builder,
+not a guarantee about the grammar. (2) A naive upstream primitive — a
+case-insensitive flag on make-sequence-case — would inherit that same
+rejection and fail on close/closed, so it would be worse than what we can
+build today. That is a real constraint on the eventual design, found only
+because a grammar pressed on it, which is 0006 item 3 paying for itself at
+Gate 0 rather than at M4.
+
+CONSEQUENCE: M4 is not blocked and no byte-machine work is scheduled ahead of
+it. The primitive is scheduled after M4 lands, when the grammar can specify it
+and a before/after node count (91 -> ~3 for eight keywords) can price it.
