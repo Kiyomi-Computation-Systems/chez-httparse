@@ -33,9 +33,18 @@ index, its `FLAGS` bitfield, and its `content_length`; errors print its `ERROR`
 code. Matching the corpus means speaking those numbers.
 
 Measured cost of the full scan, from the vendored corpus at `v9.4.3`: 253
-fixtures, 22,598 input bytes total, median fixture 63 bytes, longest 2,042
-(`test/request/sample.md`); **21,326 parser runs** across every chunk size,
-about 7.2M bytes fed. Whole-buffer-only is 253 runs.
+fixtures, 22,930 input bytes total, median fixture 63 bytes, longest 2,044
+(`test/request/sample.md`); **21,630 parser runs** across every chunk size,
+about 7.28M bytes fed. Whole-buffer-only is 253 runs.
+
+> **These figures were corrected on 2026-09-13.** The record first carried
+> smaller figures — 22,598 input bytes, 21,326 runs, longest 2,042 — taken from
+> a throwaway script whose trailing-newline strip removed two newlines where the
+> reference removes one, shortening nearly every fixture by a byte. The numbers
+> above come from the in-tree loader and decoder that the corpus lanes
+> exercise. That is the
+> point of AGENTS.md's run-it-first standard, and this is the measurement it
+> was written about.
 
 ## Decision
 
@@ -59,7 +68,7 @@ about 7.2M bytes fed. Whole-buffer-only is 253 runs.
    instrument cannot measure the parser.
 5. **Chunk-size coverage splits across the existing presets.** The `pr`
    selection runs chunk size 1 and the whole buffer — the two extremes, 506 runs
-   — and the `release` selection runs every chunk size, all 21,326. `noScan`
+   — and the `release` selection runs every chunk size, all 21,630. `noScan`
    fixtures run whole-buffer only in both, as upstream specifies. Any narrowing
    beyond this is recorded in the manifest with a reason, never taken silently
    for speed.
@@ -86,8 +95,8 @@ about 7.2M bytes fed. Whole-buffer-only is 253 runs.
 ## Consequences
 
 - The full-scan lane is a `release`-preset cost, not a per-push one. The
-  measured 21,326 runs are dominated by per-run setup and trace formatting
-  rather than by the 7.2M bytes; the plan re-measures wall time once the lane
+  measured 21,630 runs are dominated by per-run setup and trace formatting
+  rather than by the 7.28M bytes; the plan re-measures wall time once the lane
   exists rather than predicting it here.
 - Every milestone gets a concrete exit criterion of the form "these N fixtures
   move from not-yet-passing to passing", with the ratchet diff as its evidence.

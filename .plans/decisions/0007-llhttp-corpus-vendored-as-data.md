@@ -27,7 +27,13 @@ not the generated C. A Gate 0 survey of llhttp at `v9.4.3` (commit
   `\r \n \t \f \xHH` and octal escapes. The upstream driver also supports
   `${...}` inline JavaScript — **no fixture in the corpus uses it**.
 - Expected blocks expand `\t` and `\f`; a line beginning with `/` is a regular
-  expression. Exactly two such lines exist, both in `url.md`.
+  expression. **No expectation in the corpus is one.** (Two `/`-delimited lines
+  do appear in `url.md` — `/foo\tbar/` and `/foo\fbar/` — but they are URL
+  *inputs*, not expectations. They were first miscounted as expectations by a
+  grep that ignored block structure; the loader, which knows which fence it is
+  inside, reports zero.) So the comparator may compare literal text only, and
+  the loader still recognises a pattern so that a refresh introducing a real one
+  is a red lane rather than a silent mismatch.
 - Inputs reach the reference binary as C strings, so **no fixture contains a NUL
   byte**.
 

@@ -730,3 +730,31 @@ httparse_add_scheme_lane(
           "${CMAKE_CURRENT_LIST_DIR}/common/corpus-decode-tests.sps"
   TIMEOUT 120
   LABELS unit)
+
+set(HTTPARSE_CORPUS_LOAD
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/corpus-load.sls")
+set(HTTPARSE_CORPUS_DIR "${CMAKE_CURRENT_LIST_DIR}/vendor/llhttp")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.corpus-load.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/corpus-load-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_DECODE}
+          ${HTTPARSE_CORPUS_LOAD}
+          "${CMAKE_CURRENT_LIST_DIR}/common/corpus-load-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.corpus-load.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/corpus-load-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_DECODE}
+          ${HTTPARSE_CORPUS_LOAD}
+          "${CMAKE_CURRENT_LIST_DIR}/common/corpus-load-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+  TIMEOUT 120
+  LABELS unit)

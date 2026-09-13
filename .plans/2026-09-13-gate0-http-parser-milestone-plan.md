@@ -51,13 +51,13 @@ The corpus is not a list of inputs; it is llhttp's recorded behaviour
 ([0007](decisions/0007-llhttp-corpus-vendored-as-data.md)). Measured at
 llhttp `v9.4.3`:
 
-- 253 HTTP fixtures in 23 files, 288K; 22,598 input bytes total; median fixture
-  63 bytes, longest 2,042.
+- 253 HTTP fixtures in 23 files, 288K; 22,930 input bytes total; median fixture
+  63 bytes, longest 2,044.
 - Each fixture is `input → exact byte-offset event trace`, ~20 distinct line
   shapes over 4,754 expected lines.
 - Upstream replays each fixture at **every chunk size from 1 to its length**, so
   resumability across arbitrary input boundaries is the corpus, not an extra
-  suite. Full scan is 21,326 parser runs; whole-buffer-only is 253.
+  suite. Full scan is 21,630 parser runs; whole-buffer-only is 253.
 
 Reading it needs four pure functions, each with its own input→output tests:
 
@@ -202,8 +202,8 @@ message-complete fixture may need chunked (M5) rather than only framing (M4):
   waits on a byte-machine release. What remains is the ordinary risk that the
   trie generator has a bug the verifier cannot catch, which is why it is tested
   here as a pure function from keyword list to node list.
-- **Full-scan wall time.** 21,326 runs are dominated by per-run setup and trace
-  formatting, not by the 7.2M bytes. Re-measure once the lane exists; the
+- **Full-scan wall time.** 21,630 runs are dominated by per-run setup and trace
+  formatting, not by the 7.28M bytes. Re-measure once the lane exists; the
   `pr`/`release` split exists to absorb it.
 - **Unseen-input divergence is uncovered until M8.** Accepted and bounded — see
   [0010](decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md).

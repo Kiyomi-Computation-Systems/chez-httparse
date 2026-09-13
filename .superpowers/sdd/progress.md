@@ -186,3 +186,49 @@ else's code being different from its documentation or from memory.
 
 M1 (the corpus harness, with no parser) starts now on branch
 feat/m1-corpus-harness.
+
+M1 SLICES ⓪-② (2026-09-13, branch feat/m1-corpus-harness).
+
+Slice ⓪ vendored the corpus: 24 files from llhttp v9.4.3-1-gee51043,
+byte-identical, PROVENANCE with a SHA-256 per file, a registered spec watched
+failing on all four defect classes (edited fixture, unrecorded file, deleted
+file, dropped PROVENANCE entry), and `make corpus-refresh`. The refresh script
+was written first and used to perform the initial vendor, so the first copy
+and every later refresh run identical code. .gitattributes gained
+test/vendor/** -text. The rename audit caught the new cmake module leaking the
+generator's name into a comment — second time that spec has paid for itself on
+a clean tree.
+
+Slice ① is the input decoder, slice ② the loader. Both are pure functions with
+hand-built input/output tests and both were mutation-tested: six mutations
+against the decoder and four against the loader, every one turning its lane
+red. The loader mutation that matters most is adjacency-modulo-blank-lines
+pairing, which is the plausible wrong implementation and loses the five
+fixtures that carry prose between their input and log blocks.
+
+THREE FINDINGS, ALL THE SAME SHAPE AS GATE 0'S NEAR-MISSES — a plausible claim
+about someone else's format, believed before being run:
+
+  1. Escapes yield CODE POINTS which are then UTF-8 encoded: \xff reaches the
+     parser as C3 BF, not as the byte FF. Established, not assumed —
+     request/sample.md records off=49 len=8 for a seven-character value, and
+     across all 253 fixtures the UTF-8 reading produces no offset exceeding
+     its fixture's length while the raw-byte reading produces four.
+  2. Gate 0's corpus figures were wrong. The throwaway script that produced
+     them used a regex whose $ also matches before a trailing newline, so it
+     stripped two newlines where the reference strips one, shortening nearly
+     every fixture by a byte. Corrected from the in-tree tested libraries:
+     22,930 input bytes (was 22,598), longest 2,044 (was 2,042), full-scan
+     21,630 parser runs (was 21,326), ~7.28M bytes fed. Fixture counts,
+     median 63 and 4,754 expected trace lines were unaffected.
+  3. Decision 0007's claim that two expectation lines are regular expressions
+     is FALSE. Zero are. The two /.../ lines in url.md are URL *inputs*
+     (/foo\tbar/ and /foo\fbar/), miscounted by a grep that ignored block
+     structure; the loader, which knows which fence it is inside, reports
+     zero. The comparator may therefore compare literal text only, and the
+     loader still recognises a pattern so a refresh introducing a real one is
+     a red lane rather than a silent mismatch.
+
+0007, 0008 and the milestone plan were corrected in place on this branch, each
+carrying why. The run-it-first standard routed to AGENTS.md at the Gate 0 close
+has now caught three more instances in the slice immediately after it.
