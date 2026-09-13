@@ -99,6 +99,17 @@ httparse_add_test(
   TIMEOUT 120
   LABELS unit)
 
+# The vendored llhttp corpus is upstream's bytes and is never edited
+# (decision 0007 item 6). This lane is what makes that true rather than
+# merely stated; it needs no Scheme runtime, so it also holds under the
+# no-scheme preset.
+httparse_add_test(
+  NAME httparse.harness.corpus-provenance.cmake.direct
+  COMMAND "${CMAKE_COMMAND}" -P
+          "${CMAKE_CURRENT_LIST_DIR}/support/cmake/CorpusProvenanceSpec.cmake"
+  TIMEOUT 120
+  LABELS unit)
+
 # --- Harness paths ---------------------------------------------------------
 
 set(HTTPARSE_HARNESS_DIR "${CMAKE_CURRENT_LIST_DIR}/support/harness")
