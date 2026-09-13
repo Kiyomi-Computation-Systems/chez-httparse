@@ -10,6 +10,7 @@
 * Project should be portable across macos (darwin), linux, and windows
 * Project should be portable across amd64 and arm64
 * Exported functions should have a comment with a Typed Racket style type signature
+* This project is based on https://github.com/nodejs/llhttp and should leverage its existing testing corpus.
 
 ### Layout, process & libraries
 
@@ -27,11 +28,10 @@
 
 * Use TDD / test-driven development
 * A test that passes whether the code is right or wrong is worse than no test.
-  Every decision in a module gets a mutation that breaks it, and the owning
-  specification must notice. Seed an output variable before asserting it is empty.
 * A test is not finished when it passes. It is finished when you have watched
   it fail.
 * Prefer a check to a comment.
+* **Do not** write tests that rely on reading code comments
 
 ## Closing ritual
 
