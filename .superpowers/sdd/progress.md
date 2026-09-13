@@ -66,3 +66,73 @@ session it exists) and the push-main-before-squash-merge caveat learned in
 step 1. Nothing routed to memory: every finding is recorded in the tree
 (AGENTS.md, the ADRs, this ledger), which is where the discipline says it
 belongs.
+
+GATE 0 — HTTP PARSER MILESTONES (2026-09-13). Branch
+docs/gate0-http-parser-milestones.
+
+Plan: .plans/2026-09-13-gate0-http-parser-milestone-plan.md
+Decisions: .plans/decisions/0005..0010
+
+Survey basis: byte-machine at v0.1.0 (tag c38e76f; its main is 4 docs-only
+commits ahead at e9f8d9c) and llhttp at v9.4.3 (commit ee51043, one past the
+tag), read locally. Primitive-by-primitive check of byte-machine against
+HTTP/1 needs: spans, uint64 fields with checked accumulation (base 10 and
+16), counted consumption, decision callbacks, pause/resume, and absolute
+stream offsets all match. ONE GAP FOUND: no transform or case-folding
+primitive, so case-insensitive header-name matching cannot use
+make-sequence-dispatch-node. Recorded as the shakeout's first finding
+(0006), expected to surface in M4, design deferred to that slice.
+
+0002's ABI clause was found stale and is superseded by 0005: upstream
+current-abi-version is 5 (runtime.sls:85), construction is through one
+unversioned byte-machine-make-compiled-machine, and /v2 is a tombstone that
+refuses every version (runtime.sls:137-145). A slice written against 0002 as
+it stood would have called a procedure whose contract is to refuse.
+
+Corpus measured on this tree, not carried forward: 253 HTTP fixtures in 23
+files (288K), 1:1:1 meta/http/log; 21 URL fixtures in url.md, which carry no
+required meta; 22,598 input bytes, median fixture 63, longest 2,042; 4,754
+expected trace lines in ~20 shapes. Full scan (every chunk size 1..len) is
+21,326 parser runs, ~7.2M bytes; whole-buffer-only is 253. Strict-mode
+partition: 190 in v0.1 scope (124 request + 66 response), 37 lenient, 24
+pause, 2 skipBody, plus the 21 URL. Trace-depth ceilings per milestone
+measured and tabled in the plan.
+
+Two loader constraints found by replicating the upstream decoder in an
+independent script rather than reading its source alone: five fixtures carry
+prose BETWEEN the http and log blocks (four in request/connection.md, one in
+response/sample.md), so association must be by markdown section and not by
+adjacency; and zero fixtures use the ${...} inline-JavaScript escape the
+upstream driver supports, so 0007 has the loader refuse it rather than
+implement it. Zero fixtures contain a NUL byte (inputs reach the reference
+binary as C strings).
+
+GATE 0 OPEN: decisions recorded, plan written, no code. M1 (the corpus
+harness, with no parser) is the next slice.
+
+GATE 0 SPIKE (2026-09-13): the case-insensitivity gap was measured, not
+argued. A trie of byte-dispatch nodes with a two-element byte set per letter,
+generated programmatically, was built against byte-machine at the 0005 pin and
+run through the GENERATED lane (emit, load, feed), not only the interpreter.
+Header names (content-length, transfer-encoding, connection, upgrade): 52
+nodes, 22,118 emitted bytes. Connection values (keep-alive, close, upgrade):
+28 nodes, 11,489 bytes. chunked: 11 nodes, 4,368 bytes. All verify and
+compile on the public v0.1 API. Behaviour correct across case, and correct at
+the boundaries — "Connection-Foo:" and "conten:" both fall through rather than
+matching.
+
+Two findings corrected 0006 as first drafted. (1) The workaround is NOT
+semantically lossy: a trie with an explicit terminator disambiguates
+close/closed in both cases, where make-sequence-dispatch-node would reject
+that pair as ambiguous-sequence-prefix — the trie is strictly more expressive
+than the construct it replaces. What is given up is a check on the builder,
+not a guarantee about the grammar. (2) A naive upstream primitive — a
+case-insensitive flag on make-sequence-case — would inherit that same
+rejection and fail on close/closed, so it would be worse than what we can
+build today. That is a real constraint on the eventual design, found only
+because a grammar pressed on it, which is 0006 item 3 paying for itself at
+Gate 0 rather than at M4.
+
+CONSEQUENCE: M4 is not blocked and no byte-machine work is scheduled ahead of
+it. The primitive is scheduled after M4 lands, when the grammar can specify it
+and a before/after node count (91 -> ~3 for eight keywords) can price it.

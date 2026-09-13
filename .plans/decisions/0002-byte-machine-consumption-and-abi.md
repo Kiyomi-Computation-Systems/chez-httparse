@@ -1,8 +1,19 @@
 # 0002: byte-machine arrives two ways — the harness by one-time copy, the generator by pinned git submodule targeting generated ABI v2
 
 Date: 2026-08-28
-Status: accepted
+Status: accepted, superseded in part
+Superseded in part by: [0005](0005-byte-machine-pinned-by-gitlink-generated-abi-5.md), decision item 3
 Milestone: Gate 0 (.plans/2026-08-28-gate0-slice1-harness-port-design.md)
+
+> **Decision item 3 is superseded by
+> [0005](0005-byte-machine-pinned-by-gitlink-generated-abi-5.md) (2026-09-13).**
+> byte-machine has since released v0.1.0: the generated ABI is now **5**,
+> construction goes through one unversioned
+> `byte-machine-make-compiled-machine`, and
+> `byte-machine-make-compiled-machine/v2` survives only as a tombstone that
+> refuses every version. Targeting v2 as written below would call a procedure
+> whose contract is to refuse. Items 1, 2 and 4 stand unchanged, and are left
+> as written.
 
 ## Context
 
