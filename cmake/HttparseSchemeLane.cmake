@@ -129,6 +129,7 @@ function(httparse_scheme_lane_command name backend mode program
         "--script" "${HTTPARSE_HARNESS_CHEZ_LAUNCHER}"
         "--library-root" "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}"
         "--library-root" "${HTTPARSE_SRC_CHEZ_LIBRARY_ROOT}"
+        "--library-root" "${HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT}"
         "--object-guard" "${HTTPARSE_HARNESS_OBJECT_GUARD_DIR}"
         "--program" "${program}"
         PARENT_SCOPE)
@@ -247,6 +248,16 @@ function(httparse_lane_chez_aot_artifacts name program stale_library_root)
               "${source_of_record}" "${copy}")
   endforeach()
 
+  # The generator arrives as a submodule (decision 0005). An unpopulated
+  # submodule is a directory that exists and is empty, which would otherwise
+  # surface as a confusing missing-library error inside Chez rather than here.
+  if(NOT EXISTS "${HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT}")
+    message(FATAL_ERROR
+      "httparse: the generator library root "
+      "${HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT} does not exist. The submodule "
+      "is not checked out: run 'git submodule update --init --recursive'.")
+  endif()
+
   # Configure-time glob, deliberately without CONFIGURE_DEPENDS: a new
   # library arrives with a SOURCES edit in test/CMakeLists.txt, which forces
   # the reconfigure this glob needs anyway. Empty is a fatal error, not a
@@ -254,7 +265,8 @@ function(httparse_lane_chez_aot_artifacts name program stale_library_root)
   # passing against the previous text.
   file(GLOB_RECURSE chez_library_sources
     "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/*.sls"
-    "${HTTPARSE_SRC_CHEZ_LIBRARY_ROOT}/*.sls")
+    "${HTTPARSE_SRC_CHEZ_LIBRARY_ROOT}/*.sls"
+    "${HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT}/*.sls")
   if(NOT chez_library_sources)
     message(FATAL_ERROR
       "httparse: no Chez library sources were found under "
@@ -275,6 +287,8 @@ function(httparse_lane_chez_aot_artifacts name program stale_library_root)
             --object-dir "${object_dir}/harness"
             --library-root "${HTTPARSE_SRC_CHEZ_LIBRARY_ROOT}"
             --object-dir "${object_dir}/src"
+            --library-root "${HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT}"
+            --object-dir "${object_dir}/generator"
             --program "${program}"
             --output "${compiled}"
     ${copy_commands}

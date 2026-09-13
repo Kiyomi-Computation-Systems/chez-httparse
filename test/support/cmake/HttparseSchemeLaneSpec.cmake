@@ -118,6 +118,11 @@ set(HTTPARSE_HARNESS_CHEZ_COMPILE_LAUNCHER "/launchers/chez-compile.ss")
 set(HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT "/h/chez")
 set(HTTPARSE_HARNESS_OBJECT_GUARD_DIR "/b/guard")
 set(HTTPARSE_SRC_CHEZ_LIBRARY_ROOT "/s/chez")
+# The generator's library root (decision 0005). A lane names one root per
+# library family it imports, so the source command line grows by one flag
+# pair when the dependency is wired -- which is what the expectation below
+# now asserts.
+set(HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT "/g/chez")
 
 # --- Chez ------------------------------------------------------------------
 
@@ -126,7 +131,7 @@ httparse_scheme_lane_command(httparse.harness.example.chez.source
   chez source "/h/self/p.sps" command measured status message)
 spec_check_equal("${status}" "ok" "chez lane classifies")
 spec_check_equal("${command}"
-  "/opt/chez;--script;/h/launchers/chez-source.ss;--library-root;/h/chez;--library-root;/s/chez;--object-guard;/b/guard;--program;/h/self/p.sps"
+  "/opt/chez;--script;/h/launchers/chez-source.ss;--library-root;/h/chez;--library-root;/s/chez;--library-root;/g/chez;--object-guard;/b/guard;--program;/h/self/p.sps"
   "chez lane command line")
 
 # The guard directory is the entire mechanism that stops a stale .so from being

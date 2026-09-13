@@ -1,0 +1,3 @@
+[submodule "vendor/byte-machine"]
+	path = vendor/byte-machine
+	url = https://github.com/Kiyomi-Computation-Systems/byte-machine.git

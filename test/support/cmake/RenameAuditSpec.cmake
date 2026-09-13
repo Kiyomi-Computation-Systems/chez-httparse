@@ -32,6 +32,27 @@ get_filename_component(_audit_root "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE
 string(CONCAT _audit_separated "byte" "[_-]" "machine")
 string(CONCAT _audit_fused "byte" "machine")
 
+# THE TWO LEGITIMATE FORMS (decision 0011). The audit no longer asks whether
+# the token occurs; it asks whether every occurrence is one of these. They are
+# stripped from a lowercased copy before the scan, so anything the stems still
+# match afterwards is a leak.
+#
+#   vendor/<dep>            the submodule path (decision 0005), which the build
+#                           must name to put the generator on Chez's library path
+#   (<dep> <name>)          an R6RS library reference, imported by its real name
+#                           because decision 0001 item 4 never renames it
+#
+# Every other shape still fails: a function prefix, a cache variable, a
+# CamelCase filename, or a bare hyphenated token in a test name, diagnostic
+# prefix or collection directory. Assembled from halves for the same reason
+# the stems are -- this file must not convict itself.
+string(CONCAT _audit_allow_constructor
+       "byte" "-machine-make-compiled-machine" "(/v[0-9]+)?")
+string(CONCAT _audit_allow_collection
+       "vendor/" "byte" "-machine" "/src/" "byte" "-machine")
+string(CONCAT _audit_allow_path "vendor/" "byte" "-machine")
+string(CONCAT _audit_allow_library "\\(" "byte" "-machine [a-z][a-z0-9-]*\\)")
+
 set(_audit_files
   "${_audit_root}/Makefile"
   "${_audit_root}/CMakeLists.txt"
@@ -54,6 +75,17 @@ foreach(_audit_file IN LISTS _audit_files)
   math(EXPR _audit_scanned "${_audit_scanned} + 1")
   file(READ "${_audit_file}" _audit_content)
   string(TOLOWER "${_audit_content}" _audit_lower)
+  # Strip the declared legitimate forms; what the stems match after this is a
+  # leak. Library references go first: the path form is a prefix of nothing
+  # here, but stripping the longer, more specific shape first keeps the two
+  # independent of each other.
+  string(REGEX REPLACE "${_audit_allow_constructor}" "" _audit_lower "${_audit_lower}")
+  string(REGEX REPLACE "${_audit_allow_library}" "" _audit_lower "${_audit_lower}")
+  # Longest first: the collection path contains the submodule path, so
+  # stripping the shorter one first would leave "/src/<dep>" behind and
+  # convict a legitimate reference.
+  string(REPLACE "${_audit_allow_collection}" "" _audit_lower "${_audit_lower}")
+  string(REPLACE "${_audit_allow_path}" "" _audit_lower "${_audit_lower}")
   if(_audit_lower MATCHES "${_audit_separated}" OR
      _audit_lower MATCHES "${_audit_fused}")
     spec_record_failure()
@@ -63,7 +95,9 @@ foreach(_audit_file IN LISTS _audit_files)
       "The build/test tree must carry no reference to the repository this "
       "harness was ported from (decision 0003); rename it per the decision "
       "0001 map, or, if this file is genuinely attribution, move the mention "
-      "to an exempt surface.")
+      "to an exempt surface. Only the submodule path and an R6RS library "
+      "reference are legitimate here (decision 0011); a new form is added by "
+      "amending that record, not by widening this one quietly.")
   endif()
 endforeach()
 

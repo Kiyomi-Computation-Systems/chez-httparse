@@ -271,3 +271,49 @@ mutation-witnessed. make test-all 46/46, no-scheme 10/10 (Darwin 25.6.0 arm64,
 Chez 10.4.1 tarm64osx, CMake 4.3.3). CI is refusing on exhausted Actions
 minutes for the month, so the Linux cell cannot be observed on this branch;
 that is a billing refusal, not a test result (decision 0004).
+
+M1 MERGE GATE (2026-09-13): PR #5 squash-merged as b55750e "feat(corpus): M1 —
+the corpus harness, with no parser (#5)". Local main fast-forwarded; branch
+deleted locally and on origin. Merged on a red check, named per decision 0004
+as a billing refusal: 0 steps, no logs, 4s, same shape as every run since
+2026-09-07. Evidence in its place: make test-all 46/46, no-scheme 10/10,
+Darwin 25.6.0 arm64, Chez 10.4.1 tarm64osx, CMake 4.3.3.
+
+M2 SLICE ⓪ (2026-09-13, branch feat/m2-request-line). The generator submodule
+lands at vendor/byte-machine, gitlink-pinned to c38e76f (tag v0.1.0) per
+decision 0005. A new lane asserts ABI 5 by READING IT OUT OF THE EMITTED TEXT
+rather than restating it — 0002's ABI clause went stale unnoticed for three
+weeks because it lived only in prose. The lane also asserts the emitted library
+imports (byte-machine runtime) and none of graph/verify/compile, that neither
+retired /v1 nor /v2 constructor is emitted, and that two renderings are
+byte-identical.
+
+THE LATENT CONFLICT 0002 PREDICTED CAME DUE. Decision 0001 item 4 says upstream
+identifiers are never renamed; decision 0003 criterion 5 says zero such
+references may exist in the build/test tree. Both held only while no slice
+imported the dependency. Measured, not assumed: adding the library-root
+variable turned the rename audit red. Decision 0011 amends criterion 5 — the
+audit's question moves from "does the token occur" to "does every occurrence
+match a declared legitimate form". Three forms: the submodule path and its
+library collection, an R6RS library reference, and the generated-runtime
+constructor with an optional /vN suffix.
+
+The third form was NOT anticipated into the record. 0011 item 4 said the next
+shape would be added when a slice needed it, with the audit's red lane as the
+prompt; that is exactly what happened, one commit later, and the record was
+amended rather than the audit widened quietly.
+
+The narrowness is witnessed by a declared mutation that plants a forbidden
+token IMMEDIATELY BESIDE a legitimate one, so an allowlist that became a
+blanket permission is caught. Six leak shapes were checked by hand first — a
+cache variable, a function prefix, a CamelCase filename, a bare token, and two
+placed adjacent to legitimate forms — all still caught. CMake mutation totals
+recounted from the rewritten manifest, not predicted: the suite reported
+1 pass / 74 mutations and EXPECTED_MUTATIONS was then set to 74.
+
+HttparseSchemeLaneSpec's command-line expectation grew by one --library-root
+pair, which is the lane machinery's own comment coming true: "a lane names one
+library root per library family it imports, and the count grows with each
+slice."
+
+Evidence: make test-all 47/47, no-scheme 10/10.

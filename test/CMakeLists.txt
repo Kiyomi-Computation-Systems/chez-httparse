@@ -112,6 +112,22 @@ httparse_add_test(
 
 # --- Harness paths ---------------------------------------------------------
 
+# The generator arrives as a submodule pinned by gitlink (decisions 0002, 0005).
+# Both paths are spelled out once here and referred to by variable everywhere
+# else, so the dependency's own name appears in this file twice rather than a
+# dozen times -- the two shapes the rename audit declares legitimate (0011).
+set(HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT "${CMAKE_SOURCE_DIR}/vendor/byte-machine/src")
+set(HTTPARSE_GENERATOR_COLLECTION "${CMAKE_SOURCE_DIR}/vendor/byte-machine/src/byte-machine")
+set(HTTPARSE_GENERATOR_SOURCES
+    "${HTTPARSE_GENERATOR_COLLECTION}/private/conditions.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/private/names.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/private/ir.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/private/normal-ir.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/runtime.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/graph.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/verify.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/interpret.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/compile.sls")
 set(HTTPARSE_HARNESS_DIR "${CMAKE_CURRENT_LIST_DIR}/support/harness")
 set(HTTPARSE_HARNESS_SELF_DIR "${HTTPARSE_HARNESS_DIR}/self")
 set(HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT "${HTTPARSE_HARNESS_DIR}")
@@ -835,4 +851,25 @@ httparse_add_scheme_lane(
   ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
               "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
   TIMEOUT 120
+  LABELS unit)
+
+# Decision 0005 item 5: the ABI number is re-read, never remembered. Decision
+# 0002's ABI clause went stale unnoticed for three weeks because it lived only
+# in prose; a lane cannot.
+#
+# SOURCE ONLY, DELIBERATELY. Every other Scheme lane here is registered twice,
+# source and aot, because the pair proves a grammar behaves identically either
+# way. This lane asserts nothing about a grammar -- it asks whether the pinned
+# dependency is wired up and speaking the ABI this repository targets, which is
+# the same question in both modes. The aot twin would compile the whole
+# generator per lane to re-answer it. The source/aot pair returns with the
+# first real grammar, where it has something to prove.
+httparse_add_scheme_lane(
+  NAME httparse.unit.generator-abi.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/generator-abi-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          "${CMAKE_CURRENT_LIST_DIR}/common/generator-abi-tests.sps"
+  TIMEOUT 180
   LABELS unit)
