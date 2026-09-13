@@ -88,19 +88,32 @@ not-yet-passing to passing, and nothing else moves
 
 Vendor the corpus under `test/vendor/llhttp/` with `LICENSE`, `PROVENANCE` and a
 checksum manifest. Build the four pure functions above, the ratchet, and the
-`pr`/`release` chunk-size split. Wire the byte-machine submodule at the
-[0005](decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md) pin and
-assert ABI 5 as a check in the tree.
+`pr`/`release` chunk-size split.
+
+**The byte-machine submodule does NOT land here.** This bullet originally said
+it did, which contradicts [0002](decisions/0002-byte-machine-consumption-and-abi.md)
+item 2 — the submodule is added in the first slice that actually invokes the
+emitter, because "adding an unused pin now would only rot". M1 builds no
+grammar and emits nothing, so the pin and its ABI-5 assertion move to **M2**,
+which is the first slice that does. The plan was wrong and the decision was
+right.
 
 **Exit**: all 274 fixtures (253 HTTP + 21 URL) load and decode; the ratchet
-lists them all with a status; the comparator is mutation-witnessed — a
-deliberately corrupted trace must fail it. No HTTP parsing in this milestone.
+lists them all with a status, 190 in scope and 84 deferred, each entry's class
+checked against the one derived from its fixture's own meta; the comparator is
+mutation-witnessed — a deliberately corrupted trace must fail it. No HTTP
+parsing in this milestone.
 
 ### M2 — the request line
 
 `message begin`; `method`, `url`, `protocol`, `version` spans and their
 `complete` events; the strict CRLF rule; `invalid-method`, `invalid-version`,
 `invalid-url`, `invalid-constant`.
+
+This is the first slice that invokes the emitter, so it is where the
+byte-machine submodule lands at the
+[0005](decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md) pin,
+with ABI 5 asserted as a check in the tree rather than restated in prose.
 
 **Reachable ceiling**: the 17 strict request fixtures whose expected trace ends
 in the start line.

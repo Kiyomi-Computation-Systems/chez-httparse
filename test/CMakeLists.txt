@@ -806,3 +806,33 @@ httparse_add_scheme_lane(
           "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
   TIMEOUT 120
   LABELS unit)
+
+set(HTTPARSE_RATCHET_LIB
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/ratchet.sls")
+set(HTTPARSE_RATCHET_FILE "${CMAKE_CURRENT_LIST_DIR}/conformance/ratchet.txt")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.ratchet.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/ratchet-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_RATCHET_LIB}
+          "${CMAKE_CURRENT_LIST_DIR}/common/ratchet-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+              "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.ratchet.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/ratchet-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_RATCHET_LIB}
+          "${CMAKE_CURRENT_LIST_DIR}/common/ratchet-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+              "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
+  TIMEOUT 120
+  LABELS unit)

@@ -232,3 +232,42 @@ about someone else's format, believed before being run:
 0007, 0008 and the milestone plan were corrected in place on this branch, each
 carrying why. The run-it-first standard routed to AGENTS.md at the Gate 0 close
 has now caught three more instances in the slice immediately after it.
+
+M1 SLICES ③-⑤ COMPLETE (2026-09-13). Trace formatter, scan schedule and
+comparator, ratchet. Every library is a pure function with hand-built
+input/output tests, and every one was mutation-tested: 6 against the decoder,
+4 the loader, 4 the formatter, 4 the comparator/schedule, 4 the ratchet — 22
+mutations, all caught.
+
+The formatter reproduces two upstream behaviours that are not obvious and both
+decide which traces match: spans split at CR and LF with an EMPTY span still
+printing one empty quoted line, and contiguous fragments coalescing with the
+merged line MOVED TO THE END, so anything between two fragments of one span
+precedes the merged line. Merging in place would invert those two lines on
+every chunked-body fixture.
+
+Ratchet: 274 entries, 190 in scope and 84 deferred, matching decision 0009's
+partition. The in-scope/deferred class is DERIVED from each fixture's own meta
+and checked against the manifest, so a refresh cannot smuggle a lenient
+fixture in as not-yet and have it counted against v0.1's bar.
+
+TWO MEASUREMENT TRAPS HIT AGAIN IN THIS SLICE, both the same shape as the
+earlier ones and both caught only by checking whether the mutation applied
+before believing its result: a BSD sed that silently does nothing because it
+does not support \b, and a manifest mutation whose replacement string assumed
+single spaces where the file is column-padded. Each first reported GREEN. A
+mutation that does not apply is not a passing test; the discipline is to
+assert the edit landed, not to read the result.
+
+PLAN CORRECTED: M1's bullet said the byte-machine submodule lands here. That
+contradicts decision 0002 item 2 — the submodule is added in the first slice
+that actually invokes the emitter, since an unused pin only rots. M1 builds no
+grammar and emits nothing, so the pin and its ABI-5 assertion move to M2. The
+plan was wrong and the decision was right.
+
+M1 EXIT: all 274 fixtures load and decode; the ratchet covers them exactly
+with derived classes checked; the comparator and formatter are
+mutation-witnessed. make test-all 46/46, no-scheme 10/10 (Darwin 25.6.0 arm64,
+Chez 10.4.1 tarm64osx, CMake 4.3.3). CI is refusing on exhausted Actions
+minutes for the month, so the Linux cell cannot be observed on this branch;
+that is a billing refusal, not a test result (decision 0004).
