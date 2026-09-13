@@ -758,3 +758,26 @@ httparse_add_scheme_lane(
   ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
   TIMEOUT 120
   LABELS unit)
+
+set(HTTPARSE_TRACE_FORMAT
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/trace-format.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.trace-format.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_TRACE_FORMAT}
+          "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.trace-format.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_TRACE_FORMAT}
+          "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
