@@ -136,3 +136,53 @@ Gate 0 rather than at M4.
 CONSEQUENCE: M4 is not blocked and no byte-machine work is scheduled ahead of
 it. The primitive is scheduled after M4 lands, when the grammar can specify it
 and a before/after node count (91 -> ~3 for eight keywords) can price it.
+
+GATE 0 MERGE GATE (2026-09-13): PR #4 squash-merged as 8cad258 "docs: Gate 0
+— the HTTP parser milestone plan and decisions 0005-0010 (#4)". Local main
+fast-forwarded; branch deleted locally and on origin.
+
+MERGED ON A RED CHECK, NAMED PER DECISION 0004: billing refusal, not a test
+result. The linux-amd64 check on run 34760173445 reported failure with 0 steps
+and no retrievable logs after 4 seconds; every run in this repository since
+2026-09-07 has that same shape, including pushes to main carrying no code. The
+account's Actions minutes for this month are exhausted and will refuse until
+billing resets (confirmed by the maintainer). Evidence in its place, per
+0004's macOS sub-decision: Darwin 25.6.0 arm64, Chez Scheme Version 10.4.1,
+(machine-type) tarm64osx, CMake/CTest 4.3.3, make test-all 35/35 green in
+14.50s. The change touched .plans/ and .superpowers/ only.
+
+CLOSING RITUAL COMPLETE (steps 1-4). Step 4 (retrospective, not a summary).
+
+What held up: measuring instead of reasoning. Two questions that looked like
+judgement calls — is M4 blocked on upstream, and is the trie workaround
+semantically lossy — were both answered by building the thing and running it
+through the generated lane. Both answers contradicted the draft record, and
+the record was corrected before it merged rather than after. Separately,
+reimplementing llhttp's input decoder independently, rather than only reading
+its source, surfaced two loader constraints (prose between the http and log
+blocks; zero use of the ${...} escape) that a reading pass had missed.
+
+What nearly slipped, three of them, all the same shape — a plausible claim
+about someone else's code, written down before being run:
+
+  1. Decision 0002's ABI clause named a constructor upstream has since retired
+     to a tombstone. A slice written against it would have failed at
+     construction. Found only by reading the pinned tree instead of trusting
+     the record.
+  2. "The workaround is semantically lossy" was drafted into 0006 on the
+     strength of a survey. It is false: the trie disambiguates close/closed,
+     which make-sequence-dispatch-node rejects outright. Caught because the
+     specific claim was tested before being asserted.
+  3. The first corpus census counted meta blocks and would have put 257 into
+     the plan as the fixture count. Reconciling meta against http and log
+     counts found url.md carries 21 fixtures behind 4 metas; the HTTP corpus
+     is 253.
+
+Standard routed to AGENTS.md this close: a claim about a dependency's
+behaviour is run before it enters a decision record. This is the
+prefer-a-check rule pointed outward — the existing traps are all about our own
+code being surprising, and all three near-misses above were about someone
+else's code being different from its documentation or from memory.
+
+M1 (the corpus harness, with no parser) starts now on branch
+feat/m1-corpus-harness.
