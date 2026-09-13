@@ -781,3 +781,28 @@ httparse_add_scheme_lane(
           "${CMAKE_CURRENT_LIST_DIR}/common/trace-format-tests.sps"
   TIMEOUT 120
   LABELS unit)
+
+set(HTTPARSE_CONFORMANCE
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/conformance.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.conformance.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_CONFORMANCE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.conformance.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_CONFORMANCE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/conformance-tests.sps"
+  TIMEOUT 120
+  LABELS unit)
