@@ -25,7 +25,7 @@
 ;;   (name start length text)            a span fragment, `start` ABSOLUTE
 ;; A span fragment's absolute start is the stream offset minus its length: the
 ;; callback fires having already advanced past the bytes it is handed.
-(define (run input)
+(define (run-with input feed!)
   (let ((events '()))
     (define (ev name)
       (lambda (p ctx)
@@ -52,10 +52,30 @@
                                  (list 'on-version-complete (ev 'version-complete)))
                            #f))
            (bv (string->utf8 input))
-           (r (parser-feed! p bv 0 (bytevector-length bv))))
+           (r (feed! p bv)))
       (values r (reverse events)))))
 
+(define (run input)
+  (run-with input (lambda (p bv) (parser-feed! p bv 0 (bytevector-length bv)))))
+
+;; The same run fed in fixed-size chunks of `n` bytes -- the shape upstream's
+;; `llparse__run_scan` uses and decision 0008 adopts. Feeding stops at the first
+;; result that is not `need-input`. Span text is per FRAGMENT, so a span that
+;; crosses a chunk boundary arrives here as several events; rejoining them is
+;; the trace formatter's job, not this runner's.
+(define (run/chunked input n)
+  (run-with input
+    (lambda (p bv)
+      (let ((len (bytevector-length bv)))
+        (let loop ((i 0))
+          (let* ((end (if (< (+ i n) len) (+ i n) len))
+                 (r (parser-feed! p bv i end)))
+            (if (and (< end len) (eq? (parser-result-status r) 'need-input))
+                (loop end)
+                r)))))))
+
 (define (events-of input) (let-values (((r e) (run input))) e))
+(define (events-of/chunked input n) (let-values (((r e) (run/chunked input n))) e))
 
 ;; Every callback is declared `required?`, so a parser must bind all of them
 ;; even when a case ignores what they report. (Learned from the parser
@@ -166,6 +186,46 @@
       (lambda ()
         (check-equal "version" (assq 'version (events-of "GET / HTTP/1.0\r\n"))
                      '(version 11 3 "1.0"))))))
+
+(harness-group "an empty span is announced, not omitted"
+  (lambda ()
+    ;; request/uri.md#11 records, for `GET /foo bar/ HTTP/1.1`:
+    ;;
+    ;;   off=9 url complete
+    ;;   off=9 len=0 span[protocol]=""
+    ;;   off=9 error code=8 reason="Expected HTTP/, RTSP/ or ICE/"
+    ;;
+    ;; The protocol span opens at 9 and closes at 9 having delivered nothing,
+    ;; and llhttp announces it anyway. A generator that suppressed the empty
+    ;; fragment would leave a consumer unable to tell "present and empty" from
+    ;; "never opened" -- which is the distinction the recorded trace draws, so
+    ;; it is checked here rather than assumed.
+    (harness-case "the protocol span delivers one empty fragment at its offset"
+      (lambda ()
+        (check-equal "events"
+                     (events-of "GET /foo bar/ HTTP/1.1\r\n")
+                     '((message-begin 0)
+                       (method 0 3 "GET")
+                       (method-complete 3)
+                       (url 4 4 "/foo")
+                       (url-complete 9)
+                       (protocol 9 0 "")
+                       (protocol-complete 9)))))
+    (harness-case "the error is the recorded one, at the recorded offset"
+      (lambda ()
+        (check-equal "code" (error-code-of "GET /foo bar/ HTTP/1.1\r\n") 'invalid-constant)
+        (check-equal "offset" (error-offset-of "GET /foo bar/ HTTP/1.1\r\n") 9)))
+    (harness-case "an empty fragment survives byte-at-a-time feeding"
+      (lambda ()
+        ;; At one byte per feed the span's mark is set in the feed that
+        ;; consumes the space at 8 and the span closes in the next one, so a
+        ;; feed boundary falls inside an empty span. Exactly one fragment is
+        ;; the whole claim: none means the close was suppressed, two means the
+        ;; boundary flush announced the same emptiness a second time.
+        (check-equal "protocol fragments"
+                     (filter (lambda (e) (eq? (car e) 'protocol))
+                             (events-of/chunked "GET /foo bar/ HTTP/1.1\r\n" 1))
+                     '((protocol 9 0 "")))))))
 
 (harness-group "rejections"
   (lambda ()

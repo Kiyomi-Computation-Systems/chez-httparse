@@ -394,3 +394,71 @@ changed, it was caught. The rule stands: assert the edit landed before reading
 the result.
 
 Evidence: make test-all 48/48.
+
+M2 PIN BUMP (2026-09-13): byte-machine v0.1.0 -> v0.2.0, closing Slice ①'s
+finding 1. That finding left open whether the empty-span gap would be answered
+by a grammar shape that avoids empty spans or by an upstream change under
+decision 0006. It is answered upstream: v0.2.0 delivers an empty span's data
+callback exactly once with an empty range. The grammar shape was never a real
+option — request/uri.md#11 records `off=9 len=0 span[protocol]=""` for
+`GET /foo bar/ HTTP/1.1`, and a span that is never opened cannot produce that
+line no matter how the grammar is arranged.
+
+THE PIN IS INTRODUCED AT v0.2.0 RATHER THAN BUMPED TO IT. Decision 0005 item 3
+and the brief's own section 10 both say a bump lands in its own pull request.
+Neither applies yet: main carries no `.gitmodules` and no `vendor/`, because
+decision 0002 item 2 puts the submodule in the first slice that invokes the
+emitter and that slice (M2 Slice 0) has not merged. So this is not a bump of a
+published pin, it is the initial pin landing one version later — and it goes on
+the M2 branch because that is where the pin lives. The ritual's substance is
+carried anyway, below; only the separate pull request is not, and it cannot be.
+
+MEASURED ACROSS THE MOVE, NOT READ OFF THE UPSTREAM RELEASE NOTE:
+
+  1. The two new cases were written and watched FAIL at v0.1.0 first, with the
+     gap named exactly: expected `(protocol 9 0 "")` in the event list, got an
+     event list with that element missing. They pass at v0.2.0.
+  2. Generated ABI still 5, read out of emitted text by the existing lane.
+  3. The emitted request-line parser is byte-identical at both pins — 120,218
+     bytes, same SHA-256 — so no generated golden moves. This matters for the
+     slice that checks in the derived artifact.
+  4. Nine upstream sources differ textually between the tags. Eight have
+     BYTE-IDENTICAL reader-level datum streams: compared by reading each file
+     to data at both tags and diffing the written streams, they differ only in
+     comments, from an unrelated documentation sweep. The only code change in
+     the range is runtime.sls. Upstream claims this; it was checked here rather
+     than believed, per AGENTS.md on claims about other people's code.
+
+THE RENAME AUDIT CAUGHT THE FIRST DRAFT OF THE NEW TEST. Its comment named the
+upstream project and version in prose, which is none of decision 0011's three
+declared forms, and the lane failed on it. The version narrative belongs in
+CHANGELOG.md, which is an exempt surface; the test comment cites the fixture
+instead. The audit doing this unprompted is the check earning its place.
+
+STILL OPEN, AND SEPARATE: request/uri.md#11 is not yet `passing` in the ratchet,
+because no conformance driver exists to run it — every in-scope fixture is still
+`not-yet`. The empty span was the blocker; the driver is M2 Slice 4's work.
+
+A FINDING FOR SLICE 3, from reading the four protocol-constant fixtures. llhttp
+emits `protocol complete` only on a FULL match of HTTP/RTSP/ICE, and otherwise
+closes the span over exactly the bytes consumed and errors:
+
+    response/sample.md    span[protocol]="HTTP" / protocol complete / error@4
+    response/invalid.md   span[protocol]="HT"   /                     error@2
+    request/invalid.md    span[protocol]="I"    /                     error@24
+    request/uri.md#11     span[protocol]=""     /                     error@9
+
+Our `protocol-loop` is an A-Z loop that closes on any non-letter and always
+fires `protocol complete`, so it gets the offsets right on the first and last
+rows by luck and is wrong everywhere else. Measured:
+
+    GET / HTTX/1.1      ours: ACCEPTED, span[protocol]="HTTX", version parsed
+    GET /... ICY 200 OK ours: span[protocol]="ICY", error@26
+                        llhttp: span[protocol]="I",  error@24
+
+The first is the serious one: an A-Z loop has no notion of a constant, so any
+run of capitals followed by `/` is a protocol. That is a keyword table with
+partial-match spans — the same primitive the trie brief asks for, now wanted a
+third time, and Slice 3 cannot be honest without it.
+
+Evidence: make test-all 48/48 at the new pin.
