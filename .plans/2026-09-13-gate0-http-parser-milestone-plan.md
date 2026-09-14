@@ -202,20 +202,43 @@ section.
 bitfield; `after_headers_complete` as a pure decision callback; the fixed-length
 body via counted consumption.
 
-**This is where the case-insensitivity gap surfaces** — the first point a header
-*name* drives a decision rather than a span — **and it does not block.** Gate 0
-built and measured the downstream trie workaround through the generated lane:
-52 nodes for the four header names, 28 for the `Connection` values, 11 for
-`chunked`; all verify and compile on the public v0.1 API, and all behave
-correctly across case and at the `Connection-Foo:` / `conten:` boundaries. M4
-ships with that trie. The byte-machine primitive is scheduled *after* M4, per
-[0006](decisions/0006-upstream-first-for-general-gaps.md), when the grammar can
-specify it — and Gate 0 already found one constraint on its design: a
-case-insensitive `make-sequence-case` would inherit `ambiguous-sequence-prefix`
-and so reject the `close` / `closed` pair the trie handles today.
+**The case-insensitivity gap did not block, and the trie never shipped.** Gate 0
+planned a hand-built downstream trie for the four header names, the `Connection`
+values and `chunked` — 91 nodes across the three — because
+`make-sequence-case` takes exact bytes. The upstream `keyword-table` primitive
+landed at `v0.3.0` instead, from this project's second brief, and all three are
+one case-folded table each. Gate 0's constraint on the design was right and is
+still visible: a case-insensitive `make-sequence-case` would inherit
+`ambiguous-sequence-prefix`, and `close` / `closed` is exactly the pair the
+`Connection` table disambiguates.
 
-**Reachable ceiling**: +15 fixtures that stop at `headers complete`, plus the
-fixed-body share of the 63 that reach `message complete`.
+**Done, in four slices.** Ratchet **29 → 87 passing**, 103 not-yet, 84 deferred.
+
+| | |
+|---|---|
+| ⓪ | the four numbers on the `headers complete` line, and `message complete` (+27) |
+| ① | the special-header name table, `Content-Length`, and the fixed-length body (+17) |
+| ② | `Transfer-Encoding`, `Connection`, `Upgrade`, and the FLAGS bitfield (+11) |
+| ③ | the upgrade decision, the HTTP/2 preface, and a leading CRLF (+3) |
+
+**Measured after the fact, by running every remaining fixture and reading its
+first mismatch** — not by bucketing. All 37 request fixtures still `not-yet`
+need something M4 excludes: 17 chunked bodies (M5), 6 the message loop and 3
+the finish state (M6), 2 the url sub-parser (M11), and **9 are blocked
+upstream** — a byte-machine pause carries no code and no reason, so
+`error code=22 reason="Pause on CONNECT/Upgrade"` cannot be rendered without
+inventing both halves. Briefed as
+[the pause-reason brief](2026-09-14-upstream-pause-reason-brief.md) under
+[0006](decisions/0006-upstream-first-for-general-gaps.md); it is the third such
+brief and the first two both shipped.
+
+The remaining 66 are responses, which is M7. **M4 has no request fixture left
+that framing alone can reach.**
+
+The decision core found a bug no fixture could: `CONNECT` with a
+`Content-Length` read a body llhttp never reads, because `upgrade` is set
+before the headers-complete callback and the body decision exits early. The
+fixture that records it is one of the nine the pause gap blocks.
 
 ### M5 — chunked bodies
 
@@ -254,12 +277,31 @@ deferral is a visible count rather than an absence.
 
 ## Reachable ceilings, measured
 
-How far each strict fixture's expected trace reaches — an upper bound on what
-each milestone can claim, not a prediction of exact counts. It buckets by the
-deepest event in a trace, which **over-counts every row**: a fixture that dies
-on the first byte of the next section lands in the previous section's row. M2
-measured this and found its own row of 17 contains only ~10 it can reach. Read
-the table as an ordering, and let the ratchet supply the numbers.
+How far each strict fixture's expected trace reaches. **This is an ordering,
+not a count, and three milestones have now proved it.**
+
+It buckets a fixture by the deepest EVENT in its trace, because that is the
+attribute a fixture wears on its face. What a milestone needs to know is which
+CAPABILITY the fixture's failure requires, and grouping on one attribute says
+nothing reliable about the other — so the table over-counts some rows and
+under-counts others, and no care with the arithmetic fixes that.
+
+| | predicted | measured |
+|---|---|---|
+| M2 | 17 | 9 |
+| M3 | 44 cumulative | 29 |
+| M4 | +15 and a share of 63 | 87 cumulative, +58 |
+
+M2 and M3 both fell short; M4 overshot, because the header-section row's
+fixtures mostly needed framing and the `message complete` row's mostly did not
+need chunks. `Content-Length: 1000000000000000000000` is the case that shows
+the mechanism: it errors inside the header section and buckets there, but
+llhttp's value span is 21 of its 22 digits — bounded by where the accumulator
+overflows — so only the framing milestone could ever produce it.
+
+Read the table as a rough order of work. **The ratchet is the measurement**,
+and the honest way to state a ceiling is to run every remaining fixture and
+read its first mismatch, which is what each milestone's section now records.
 
 | trace reaches | request | response |
 |---|---|---|

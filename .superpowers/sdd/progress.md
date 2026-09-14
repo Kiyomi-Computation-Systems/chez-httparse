@@ -925,3 +925,160 @@ as waiting on it, eleven for the framing semantics and two for the name table's
 token" one byte earlier. The dispatch M3 put behind `headers complete` -- built
 because the verifier refuses both a stop and a finish behind a zero-width event
 -- is exactly where the body decision goes.
+
+M4 SLICE ⓪ (2026-09-14, branch feat/m4-framing): `headers complete` renders.
+Ratchet 29 -> 56 passing. Eighty-five of the ninety-five in-scope request
+fixtures had been stopping at that one line, so making it renderable was worth
+twenty-seven on its own.
+
+DECISION 0014: the adapter may READ parser fields, never DERIVE them. llhttp's
+own `llhttp__on_headers_complete` is five reads of parser state and a format
+string, so a `state-line` row here is five reads of the same fields BY NAME
+plus llhttp's format quoted beside them. Recomputing `flags` from the header
+lines would be a second parser agreeing with the first, which proves nothing.
+No default, and that matters more here than anywhere else in the layer: the
+plausible default is 0, and `flags=0 content_length=0` is a line llhttp writes
+for real messages, so a defaulting renderer would produce a correct-LOOKING
+trace for every fixture whose flags happen to be zero.
+
+THE METHOD NUMBER IS NOT OUR LIST POSITION. `method=%d` is the value in
+llhttp's `METHODS`, assembled from eight sub-maps and one alias; our list is
+alphabetical, so OPTIONS is 6 there and 21 here. Extracted by script with three
+invariants: the key set equals the 47-name table, the values are exactly 0..46
+with no gap or repeat, and sixteen (name, number) pairs appear on one trace in
+the corpus. All three are checks in the tree.
+
+`%x` IS LOWERCASE AND CHEZ'S IS NOT. `number->string` radix 16 gives `20A`;
+the corpus records `flags=20a`. Caught by an adapter case on a hand-made field
+list -- no fixture this slice claims has a hex letter in its flags, so the
+corpus could not have found it until Slice ②.
+
+Ten mutations, eight caught (one by the executor differential), two refused at
+verification. Two first reported wrong: a REPLACE that kept the text it was
+meant to delete read SURVIVED, because the runner's post-check asserted the
+replacement's COUNT rather than the original's ABSENCE; and a mutation that was
+itself structurally invalid never reached the comparison it was written for.
+Artifact 73,605 -> 82,196 bytes, 122 -> 176 states.
+
+M4 SLICE ① (2026-09-14): the special-header name table, Content-Length, and the
+fixed-length body. Ratchet 56 -> 73.
+
+The case-folded keyword table is the SECOND reason this project asked for that
+primitive upstream. A no-match leaves the walk where it broke and reexecutes,
+so `Content-Type` breaks at the `T` that cannot continue `content-l` and the
+general loop carries on with the span still open -- the whole name lands in it
+either way. `Connection-Duration` matches `connection` WHOLE and falls through
+at the hyphen, which is llhttp's own comment on that node.
+
+A SPACE BEFORE THE COLON IS A DIFFERENT ERROR ON A SPECIAL NAME: `Invalid
+header field char` one PAST the space (peek, span end, `skipTo` -- and a skip
+consumes) against `Invalid header token` AT it with the span still open. Two
+sixteen-byte names in the test, so only the rule moves the number. This is the
+only thing the table changes that this slice can observe, and it is what made
+`proxy-connection`'s presence in the table checkable at all.
+
+THE OVERFLOWING DIGIT IS CONSUMED BEFORE THE OVERFLOW IS REPORTED. llhttp
+`select`s the digit and only then runs `mulAdd`, so 22 digits give a span of 21
+and an error at 56. The accumulate node reexecutes, which would give 20 and 55,
+so the overflow route eats one digit -- one dispatch wide. Both overflow on the
+SAME digit, the twenty-first.
+
+A CONTENT LENGTH OF ZERO IS NOT AN EMPTY BODY -- no `span[body]=""` -- which is
+the opposite of what an empty header VALUE does.
+
+Fourteen mutations, eleven caught, one survivor answered with a test. FOUR
+first attempts were refused at verification, every one because collapsing a
+branch removed an error node's only path; redesigned to INVERT instead, all
+four were caught. THREE were caught only by the executor differential, which
+fires for any grammar edit and so is not a witness that the fixtures would
+notice -- the runner now re-emits the artifact for conformance runs, and all
+three are caught by the ratchet's own regression check.
+Artifact 82,196 -> 93,479 bytes, 176 -> 214 states.
+
+M4 SLICE ② (2026-09-14): Transfer-Encoding, Connection, Upgrade and the flags.
+Ratchet 73 -> 84.
+
+THREE COPIES OF `setHeaderFlags`, AND NOT BY CHOICE: its three call sites are
+the end of a value, the comma inside one, and the empty-value path, and the
+value span is open at one and closed at the other two. The flat span lattice
+refuses one node reached with two span states, so the chain is generated from a
+prefix and a continuation. Third milestone in which that lattice has decided a
+shape.
+
+`close` IS NOT `closed` and `chunkedchunked` IS NOT `chunked`, both by the
+keyword table's own rule. A bare transfer coding is refused AFTER the line that
+reports it, because the body decision runs after the callback. The chunked arm
+parks at the dispatch M5 will replace, so a chunked request's trace STOPS after
+`headers complete` rather than continuing with a `message complete` llhttp
+never wrote.
+
+Eighteen mutations: fourteen caught, two refused at verification, one refused
+at EMIT (new -- the emitter says so before any lane runs, and the runner had to
+be taught to read that rather than crash), and two survive BY CONSTRUCTION.
+The two are collapsing the sub-state back to CONNECTION and clearing CHUNKED on
+a new coding; both are llhttp's, both unobservable under strict request
+parsing, both re-run against BOTH lanes rather than argued from the graph, and
+both now carry a source comment naming the slice that owes them a test.
+Three other survivors were real gaps and are now checks: the Connection table's
+case folding, the `chunked` table's, and Upgrade's own bit.
+Artifact 93,479 -> 137,760 bytes, 214 -> 271 states.
+
+M4 SLICE ③ (2026-09-14): the upgrade decision, PRI, and a leading CRLF.
+Ratchet 84 -> 87.
+
+COMPLETING THE DECISION CORE FOUND A BUG NO FIXTURE COULD. `CONNECT` with a
+`Content-Length: 10` read ten bytes of body; llhttp reads none, because
+`before_headers_complete` sets `upgrade` for CONNECT and the decision exits
+early. The fixture that records it is one the pause gap blocks, so the corpus
+lane was never going to notice.
+
+The two upgrade arms differ -- `upgrade && (CONNECT || !hasBody)` -- so an
+upgrade WITH a body reads it and pauses afterwards. That is a unit case taken
+from `request/connection.md`, because the fixture that would gate it is
+blocked, and without it the mutation collapsing the two arms survives.
+
+A PAUSE CARRIES NO CODE AND NO REASON. Measured with a probe machine
+(`status paused error #f`), and true at all five construction sites. llhttp's
+is `p.pause(ERROR.PAUSED_UPGRADE, 'Pause on CONNECT/Upgrade')` and prints as
+`error code=22`. THE SHORTCUT WAS AVAILABLE AND WAS DECLINED: an error node
+gives a bit-identical trace, because no fixture resumes -- and would be wrong,
+since a paused parser is resumable and an errored one is not, and no test could
+tell. Third upstream brief, under decision 0006.
+
+The mutation that makes the adapter invent the pair instead is caught by the
+ratchet's SECOND direction -- seven `not-yet` fixtures start passing -- which is
+the first time that half has caught an invention rather than a forgotten
+promotion.
+
+PRI is NOT a pause despite its wording: `p.error(ERROR.PAUSED_H2_UPGRADE, ...)`,
+so it has a number to rename and renders today. A `.match` of the whole ten-byte
+preface, so the error lands past it at 24.
+
+Twelve mutations: nine caught, two refused at verification, one at emit, one
+survivor now a check. Artifact 137,760 -> 144,172 bytes, 271 -> 294 states.
+
+M4 CEILING, MEASURED (2026-09-14). Every one of the 37 request fixtures still
+`not-yet` was run and its first mismatch read, per the standard AGENTS.md
+gained at the M3 close:
+
+  17  M5 -- chunked bodies
+   9  BLOCKED UPSTREAM -- a pause carries no code or reason
+   6  M6 -- the message loop (reset, `Data after \`Connection: close\``)
+   3  M6 -- the finish state (`off=NULL finish=N`)
+   2  M11 -- the url sub-parser
+
+and the remaining 66 are responses, which is M7. M4 has no request fixture left
+that framing alone can reach.
+
+The prediction was "+15 that stop at `headers complete`, plus the fixed-body
+share of the 63 that reach `message complete`". The result is +58. Third
+milestone and third time the ceilings table was wrong -- but this one OVERSHOT
+rather than fell short, which is the same defect seen from the other side: the
+header-section row's fixtures mostly needed framing, and the `message complete`
+row's mostly did not need chunks. The plan's table now carries all three data
+points beside the caveat.
+
+NEXT: M5, chunked bodies. 17 fixtures measured as waiting on it. The dispatch
+M4 Slice ② parked the CHUNKED arm on is where `chunk_size_start` goes, and
+`content_length` is already the accumulator llhttp reuses for a chunk size --
+at base 16 rather than 10.
