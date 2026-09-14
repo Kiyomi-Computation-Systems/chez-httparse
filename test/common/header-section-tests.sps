@@ -5,10 +5,10 @@
 ;;; than a transliteration of it. Where a case uses an input the corpus does
 ;;; not carry, the comment says which fixture establishes the shape.
 ;;;
-;;; `headers complete` is deliberately unrenderable in M3 -- its line carries
-;;; two numbers the framing milestone owns -- so a run that reaches it ends
-;;; with the refusal marker instead of a line. That is the adapter refusing to
-;;; invent, not a gap in these tests.
+;;; `headers complete` renders here from M4 on. Its line carries four numbers
+;;; -- method, version pair, flags, content length -- and every one is READ OFF
+;;; THE PARSER'S OWN FIELDS, never recomputed from the headers this lane fed
+;;; in, which is what keeps the adapter a rename (decision 0014).
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)
@@ -94,7 +94,20 @@
                        "off=48 header_field complete"
                        "off=50 len=6 span[header_value]=\"Value2\""
                        "off=58 header_value complete"
-                       "(refused)"))))
+                       "off=60 headers complete method=6 v=1/1 flags=0 content_length=0"
+                       "off=60 message complete"))))
+    (harness-case "the version pair on the line is the one that was parsed"
+      (lambda ()
+        ;; request/connection.md, "No restart when keep-alive is off (1.0)":
+        ;; its first message is `PUT /url HTTP/1.0` with no headers, and the
+        ;; oracle records `off=21 headers complete method=4 v=1/0`. The rest of
+        ;; that fixture is a second message and a `Connection: close` error,
+        ;; both later milestones', so only its first twelve lines are asserted.
+        (check-equal "1.0"
+                     (list-tail (trace "PUT /url HTTP/1.0\r\n\r\n") 9)
+                     '("off=21 headers complete method=4 v=1/0 flags=0 content_length=0"
+                       "off=21 message complete")))
+      )
     (harness-case "the field span ends before the colon and the event fires past it"
       (lambda ()
         ;; The `url complete` asymmetry again: the delimiter is consumed and

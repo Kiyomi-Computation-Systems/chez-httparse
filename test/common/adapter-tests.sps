@@ -27,22 +27,22 @@
     (harness-case "an event renders as llhttp's own words at its offset"
       (lambda ()
         (check-equal "message begin"
-                     (line (adapter-event-for 'on-message-begin 0 #f))
+                     (line (adapter-event-for 'on-message-begin 0 #f #f))
                      '("off=0 message begin"))
         (check-equal "method complete"
-                     (line (adapter-event-for 'on-method-complete 7 #f))
+                     (line (adapter-event-for 'on-method-complete 7 #f #f))
                      '("off=7 method complete"))))
     (harness-case "a span renders as llhttp's span line"
       (lambda ()
         (check-equal "method span"
-                     (line (adapter-event-for 'on-method-data 0 (string->utf8 "OPTIONS")))
+                     (line (adapter-event-for 'on-method-data 0 (string->utf8 "OPTIONS") #f))
                      '("off=0 len=7 span[method]=\"OPTIONS\""))))
     (harness-case "every declared callback has a row, and the kinds are right"
       (lambda ()
         ;; A callback added to the grammar without a row here raises at the
         ;; first fixture that reaches it rather than being rendered as
         ;; something plausible.
-        (check-equal "rows" (length adapter-trace-names) 14)
+        (check-equal "rows" (length adapter-trace-names) 15)
         (check-equal "spans"
                      (map car (filter (lambda (r) (eq? (cadr r) 'span))
                                       adapter-trace-names))
@@ -52,32 +52,69 @@
       (lambda ()
         (check "refused"
                (refuses? (lambda () (adapter-event-for 'on-chunk-header 0
-                                                       (string->utf8 "X")))))))
-    (harness-case "a callback with no trace line yet is refused, not approximated"
+                                                       (string->utf8 "X") #f))))))
+    (harness-case "a state line renders llhttp's four numbers, and only from fields"
       (lambda ()
-        ;; `headers complete` prints four numbers, two of which are the framing
-        ;; milestone's. Rendering it as the bare words would put a line in the
-        ;; trace that llhttp never writes; the row says `unrenderable` and the
-        ;; fixture that reaches it fails.
-        (check "refused"
-               (refuses? (lambda () (adapter-event-for 'on-headers-complete 18 #f))))
-        (check-equal "the row exists, so the recorder can still bind it"
-                     (assq 'on-headers-complete adapter-trace-names)
-                     '(on-headers-complete unrenderable #f))))
+        ;; request/sample.md#1's last-but-one line, built here from field
+        ;; values rather than from a parser -- the instrument is calibrated
+        ;; before it is used (decision 0008 item 4).
+        (check-equal "sample.md#1"
+                     (line (adapter-event-for 'on-headers-complete 60 #f
+                                              '((method . 6) (http-major . 1)
+                                                (http-minor . 1) (flags . 0)
+                                                (content-length . 0))))
+                     '("off=60 headers complete method=6 v=1/1 flags=0 content_length=0"))
+        ;; `%x` IS LOWERCASE. Chez's own `number->string` radix 16 is not, and
+        ;; the corpus records `flags=20a` for a chunked request that closes.
+        (check-equal "flags render in lowercase hex"
+                     (line (adapter-event-for 'on-headers-complete 42 #f
+                                              '((method . 3) (http-major . 1)
+                                                (http-minor . 1) (flags . 522)
+                                                (content-length . 0))))
+                     '("off=42 headers complete method=3 v=1/1 flags=20a content_length=0"))
+        ;; A 21-digit content length is llhttp's `%llu`, not a machine word.
+        (check-equal "content_length is arbitrary precision here"
+                     (line (adapter-event-for 'on-headers-complete 8 #f
+                                              '((method . 4) (http-major . 1)
+                                                (http-minor . 0) (flags . 32)
+                                                (content-length . 18446744073709551615))))
+                     '("off=8 headers complete method=4 v=1/0 flags=20 content_length=18446744073709551615"))))
+    (harness-case "a state line with a field missing is refused, not zeroed"
+      (lambda ()
+        ;; The failure this guards is the worst kind: a default would print
+        ;; `flags=0`, which is a line llhttp writes for real messages, so the
+        ;; trace would look right for every fixture whose flags happen to be 0.
+        (check "no fields at all"
+               (refuses? (lambda () (adapter-event-for 'on-headers-complete 60 #f #f))))
+        (check "one field missing"
+               (refuses? (lambda () (adapter-event-for 'on-headers-complete 60 #f
+                                                       '((method . 6) (http-major . 1)
+                                                         (http-minor . 1) (flags . 0))))))
+        (check "a field that is not a number"
+               (refuses? (lambda () (adapter-event-for 'on-headers-complete 60 #f
+                                                       '((method . 6) (http-major . 1)
+                                                         (http-minor . 1) (flags . 0)
+                                                         (content-length . "0"))))))))
+    (harness-case "the state fields are llhttp's five, in its print order"
+      (lambda ()
+        ;; The recorder reads exactly these off the parser. A sixth added to
+        ;; the grammar and not to the line, or a reorder, shows up here.
+        (check-equal "fields" adapter-state-fields
+                     '(method http-major http-minor flags content-length))))
     (harness-case "a span callback with no bytes is refused"
       (lambda ()
         ;; An empty span is `(bytevector)`, which is not #f. Accepting #f here
         ;; would silently turn a missing fragment into an empty one -- the very
         ;; distinction the empty-span work upstream was done to preserve.
-        (check "refused" (refuses? (lambda () (adapter-event-for 'on-method-data 0 #f))))
+        (check "refused" (refuses? (lambda () (adapter-event-for 'on-method-data 0 #f #f))))
         (check-equal "empty is not missing"
-                     (line (adapter-event-for 'on-protocol-data 9 (make-bytevector 0)))
+                     (line (adapter-event-for 'on-protocol-data 9 (make-bytevector 0) #f))
                      '("off=9 len=0 span[protocol]=\"\""))))
     (harness-case "an event callback handed bytes is refused"
       (lambda ()
         (check "refused"
                (refuses? (lambda () (adapter-event-for 'on-method-complete 7
-                                                       (string->utf8 "X")))))))))
+                                                       (string->utf8 "X") #f))))))))
 
 (harness-group "the error table"
   (lambda ()

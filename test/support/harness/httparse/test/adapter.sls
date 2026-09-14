@@ -18,7 +18,7 @@
 ;;; drives them from the generated runtime's callback protocol. An uncalibrated
 ;;; instrument cannot measure a parser (decision 0008 item 4).
 (library (httparse test adapter)
-  (export adapter-trace-names adapter-error-codes
+  (export adapter-trace-names adapter-error-codes adapter-state-fields
           adapter-event-for adapter-error-event
           make-trace-recorder trace-recorder-bindings trace-recorder-events
           trace-recorder-note-error!
@@ -50,13 +50,18 @@
       (on-header-field-complete  event "header_field complete")
       (on-header-value-data      span  "header_value")
       (on-header-value-complete  event "header_value complete")
-      ;; UNRENDERABLE, not missing. llhttp's line is
-      ;; `headers complete method=1 v=1/1 flags=0 content_length=0`, and two of
-      ;; those four numbers are the framing milestone's. A parser reaching this
-      ;; event has produced something this vocabulary cannot spell, so the
-      ;; recorder still BINDS the callback -- every declaration is `required?`
-      ;; -- and rendering refuses. The fixture fails; nothing is invented.
-      (on-headers-complete       unrenderable #f)))
+      ;; A STATE LINE: an event whose text carries parser fields. llhttp's own
+      ;; callback prints `s->method, s->http_major, s->http_minor, s->flags,
+      ;; s->content_length` and nothing else, so reading the same five fields
+      ;; off the parser is the closest correspondence there is -- and it keeps
+      ;; this layer a rename, because not one of the numbers is reconstructed
+      ;; from the headers that produced them (decision 0014).
+      (on-headers-complete       state-line "headers complete")
+      (on-message-complete       event      "message complete")))
+
+  ;; The fields a state line reads, in llhttp's print order. Exported so the
+  ;; set is assertable without a parser.
+  (define adapter-state-fields '(method http-major http-minor flags content-length))
 
   ;; Our error code symbols to llhttp's ERROR numbers, one to one. A symbol
   ;; spanning two numbers, or absent here, is what decision 0013 forbids.
@@ -73,9 +78,37 @@
       (cr-expected          . 25)
       (unexpected-space     . 30)))
 
-  ;; adapter-event-for : Symbol Nat (Option Bytevector) -> Event
-  ;; `bytes` is the fragment for a span callback and #f for an event one.
-  (define (adapter-event-for callback offset bytes)
+  ;; field-value : (Listof (Pair Symbol ExactInteger)) Symbol -> ExactInteger
+  ;; No default and no coercion: a field the parser did not supply, or supplied
+  ;; as something other than a non-negative exact integer, is a refusal.
+  (define (field-value fields name)
+    (let ((row (and (list? fields) (assq name fields))))
+      (unless (and row (integer? (cdr row)) (exact? (cdr row)) (>= (cdr row) 0))
+        (adapter-refuse 'adapter-event-for
+          (string-append "no parser field " (symbol->string name)
+                         " for a state line")))
+      (cdr row)))
+
+  ;; llhttp's own format string, from its `llhttp__on_headers_complete`:
+  ;;   "headers complete method=%d v=%d/%d flags=%x content_length=%llu"
+  ;; `%x` IS LOWERCASE and Chez's `number->string` radix 16 is not, which the
+  ;; corpus catches at `flags=20a`.
+  (define (state-line-text name fields)
+    (string-append
+     name
+     " method=" (number->string (field-value fields 'method))
+     " v=" (number->string (field-value fields 'http-major))
+     "/" (number->string (field-value fields 'http-minor))
+     " flags=" (string-downcase (number->string (field-value fields 'flags) 16))
+     " content_length=" (number->string (field-value fields 'content-length))))
+
+  ;; adapter-event-for : Symbol Nat (Option Bytevector)
+  ;;                     (Option (Listof (Pair Symbol ExactInteger))) -> Event
+  ;; `bytes` is the fragment for a span callback and #f otherwise; `fields` is
+  ;; the parser's own field values for a state-line callback and #f otherwise.
+  ;; Both are REQUIRED arguments: an argument a caller must pass is a check,
+  ;; and an omitted one would be a default.
+  (define (adapter-event-for callback offset bytes fields)
     (let ((row (assq callback adapter-trace-names)))
       (unless row
         (adapter-refuse 'adapter-event-for
@@ -94,10 +127,12 @@
                (string-append "span callback " (symbol->string callback)
                               " was given no bytes")))
            (make-trace-span name offset bytes))
-          ((unrenderable)
-           (adapter-refuse 'adapter-event-for
-             (string-append "no trace line can be rendered for "
-                            (symbol->string callback) " yet")))
+          ((state-line)
+           (when bytes
+             (adapter-refuse 'adapter-event-for
+               (string-append "state-line callback " (symbol->string callback)
+                              " was given span bytes")))
+           (make-trace-mark offset (state-line-text name fields)))
           (else (adapter-refuse 'adapter-event-for "unknown callback kind"))))))
 
   ;; adapter-error-event : Symbol String Nat -> Event
@@ -135,15 +170,20 @@
                      ((event)
                       (lambda (p ctx)
                         (recorder-push!
-                         r (adapter-event-for callback (parser-stream-offset p) #f))
+                         r (adapter-event-for callback (parser-stream-offset p) #f #f))
                         callback-continue))
-                     ;; Bound so the parser accepts the list -- every
-                     ;; declaration is `required?` -- and refusing when it
-                     ;; actually fires, which the driver reports as this
-                     ;; fixture failing rather than as a crashed lane.
-                     ((unrenderable)
+                     ;; The only arm that reads parser STATE rather than
+                     ;; callback arguments. It reads the five fields llhttp's
+                     ;; own callback reads and hands them to the pure half,
+                     ;; which owns the format -- so a wrong number here is a
+                     ;; wrong number in the parser, not in the rendering.
+                     ((state-line)
                       (lambda (p ctx)
-                        (adapter-event-for callback (parser-stream-offset p) #f)
+                        (recorder-push!
+                         r (adapter-event-for
+                            callback (parser-stream-offset p) #f
+                            (map (lambda (f) (cons f (parser-field-ref p f)))
+                                 adapter-state-fields)))
                         callback-continue))
                      ((span)
                       (lambda (p ctx bv from to)
@@ -152,7 +192,7 @@
                           (bytevector-copy! bv from b 0 len)
                           (recorder-push!
                            r (adapter-event-for callback
-                                                (- (parser-stream-offset p) len) b)))
+                                                (- (parser-stream-offset p) len) b #f)))
                         callback-continue))
                      (else (adapter-refuse 'trace-recorder-bindings
                                            "unknown callback kind"))))))

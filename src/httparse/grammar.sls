@@ -55,7 +55,7 @@
 (library (httparse grammar)
   (export make-request-line-machine
           httparse-tchar-bytes httparse-url-bytes httparse-header-bytes
-          httparse-method-names
+          httparse-method-names httparse-method-numbers
           httparse-http-methods httparse-rtsp-methods httparse-ice-methods)
   (import (rnrs) (byte-machine graph))
 
@@ -114,6 +114,36 @@
       "SOURCE" "SUBSCRIBE" "TEARDOWN" "TRACE" "UNBIND" "UNLINK" "UNLOCK"
       "UNSUBSCRIBE"))
 
+  ;; THE NUMBER llhttp PRINTS. `headers complete` carries `method=%d`, and the
+  ;; number is the method's value in llhttp's own `METHODS` map -- NOT its
+  ;; position in the list above, which is alphabetical. The map is assembled
+  ;; from eight sub-maps with explicit values and one alias, so the pairs are
+  ;; extracted by script and given two invariants to violate: the key set must
+  ;; equal `httparse-method-names` (checked in the unit lane) and the values
+  ;; must be exactly 0..46 with no gap or repeat. The corpus is the third
+  ;; check, and the strongest -- sixteen fixtures print a method span and a
+  ;; `method=` on the same trace, so the conformance lane compares the pairs
+  ;; against the oracle directly.
+  (define httparse-method-numbers
+    '(("ACL" . 19) ("ANNOUNCE" . 36) ("BIND" . 16) ("CHECKOUT" . 22)
+      ("CONNECT" . 5) ("COPY" . 8) ("DELETE" . 0) ("DESCRIBE" . 35)
+      ("FLUSH" . 45) ("GET" . 1) ("GET-PARAMETER" . 41) ("HEAD" . 2)
+      ("LINK" . 31) ("LOCK" . 9) ("M-SEARCH" . 24) ("MERGE" . 23)
+      ("MKACTIVITY" . 21) ("MKCALENDAR" . 30) ("MKCOL" . 10) ("MOVE" . 11)
+      ("NOTIFY" . 25) ("OPTIONS" . 6) ("PATCH" . 28) ("PAUSE" . 39)
+      ("PLAY" . 38) ("POST" . 3) ("PRI" . 34) ("PROPFIND" . 12)
+      ("PROPPATCH" . 13) ("PURGE" . 29) ("PUT" . 4) ("QUERY" . 46)
+      ("REBIND" . 17) ("RECORD" . 44) ("REDIRECT" . 43) ("REPORT" . 20)
+      ("SEARCH" . 14) ("SET-PARAMETER" . 42) ("SETUP" . 37) ("SOURCE" . 33)
+      ("SUBSCRIBE" . 26) ("TEARDOWN" . 40) ("TRACE" . 7) ("UNBIND" . 18)
+      ("UNLINK" . 32) ("UNLOCK" . 15) ("UNSUBSCRIBE" . 27)))
+
+  (define (method-number name)
+    (let ((row (assoc name httparse-method-numbers)))
+      (unless row
+        (assertion-violation 'httparse-grammar "method has no llhttp number" name))
+      (cdr row)))
+
   ;; --- which protocol accepts which method ---------------------------------
   ;;
   ;; llhttp checks the method against the protocol AT THE PROTOCOL CONSTANT,
@@ -167,6 +197,23 @@
   ;; llhttp stores the method and THEN ends the span (`select(METHODS,
   ;; store('method', span.method.end(...)))`), so the store sits between the
   ;; table and the span end here too.
+  ;;
+  ;; TWO FIELDS, TWO HOPS. The number is per NAME and the protocol mask is per
+  ;; CLASS, so a table entry lands on its own number node and every number node
+  ;; falls through to one of the four mask nodes -- 47 + 4 rather than 47 x 4.
+  ;; A field-action node is zero-width, so the pair costs no byte.
+  ;; Downcased: a node name is `[a-z][a-z0-9-]*` and a method name is not.
+  ;; The 47 names stay distinct under downcasing, which the unit lane checks.
+  (define (method-number-name name)
+    (string->symbol (string-append "method-number-" (string-downcase name))))
+
+  (define (method-number-nodes)
+    (map (lambda (name)
+           (make-field-action-node (method-number-name name) 'store
+                                   (list 'method (method-number name))
+                                   (method-store-name (method-mask name)) #f #f))
+         httparse-method-names))
+
   (define (method-store-nodes)
     (map (lambda (m)
            (make-field-action-node (method-store-name m) 'store
@@ -194,17 +241,71 @@
   ;; well-formed version llhttp rejects as a pair, and a non-digit is a
   ;; malformed minor -- and the two land at different offsets, because the pair
   ;; error fires after its digit is consumed and the malformed one before.
+  ;;
+  ;; THE ACCEPTED DIGITS ARE NOW ONE CASE EACH, not one byte-set case, because
+  ;; each has to store its own value on the way through: `headers complete`
+  ;; prints `v=%d/%d`. The rejected ones stay a single set -- a version that
+  ;; fails never reaches the line that would print it.
   (define (version-minor-node name ok)
     (let ((bad (other-digits ok)))
       (make-byte-dispatch-node name
         (append
-         (if (null? ok) '()
-             (list (make-byte-case (make-byte-set-matcher (map digit ok))
-                                   (make-edge 'version-close 'advance) #f)))
+         (map (lambda (d)
+                (make-byte-case (make-exact-byte-matcher (digit d))
+                                (make-edge (version-minor-store-name d) 'advance) #f))
+              ok)
          (if (null? bad) '()
              (list (make-byte-case (make-byte-set-matcher (map digit bad))
                                    (make-edge 'version-close-bad-version 'advance) #f))))
         (make-edge 'version-close-bad-minor 'reexecute) 'e-eof-version #f)))
+
+  ;; The four accepted pairs are 0.9, 1.0, 1.1 and 2.0, so three majors and
+  ;; three minors are storable; the sets are derived from the pairs rather than
+  ;; written out, so adding a pair cannot forget its store node.
+  (define httparse-version-pairs '((0 . 9) (1 . 0) (1 . 1) (2 . 0)))
+  (define (distinct ns)
+    (let loop ((ns ns) (acc '()))
+      (cond ((null? ns) (list-sort < acc))
+            ((member (car ns) acc) (loop (cdr ns) acc))
+            (else (loop (cdr ns) (cons (car ns) acc))))))
+  (define version-majors (distinct (map car httparse-version-pairs)))
+  (define version-minors (distinct (map cdr httparse-version-pairs)))
+  (define (version-minors-for major)
+    (list-sort < (map cdr (filter (lambda (p) (= (car p) major))
+                                  httparse-version-pairs))))
+  (define (version-major-store-name d)
+    (string->symbol (string-append "version-major-store-" (number->string d))))
+  (define (version-minor-store-name d)
+    (string->symbol (string-append "version-minor-store-" (number->string d))))
+  (define (version-store-nodes)
+    (append
+     (map (lambda (d)
+            (make-field-action-node (version-major-store-name d) 'store
+                                    (list 'http-major d)
+                                    (version-dot-name d) #f #f))
+          version-majors)
+     (map (lambda (d)
+            (make-field-action-node (version-minor-store-name d) 'store
+                                    (list 'http-minor d)
+                                    'version-close #f #f))
+          version-minors)))
+  (define (version-dot-name d)
+    (string->symbol (string-append "version-dot-" (number->string d))))
+  (define (version-minor-name d)
+    (string->symbol (string-append "version-minor-" (number->string d))))
+
+  ;; Every node the version pair needs, generated from the pair list: a store
+  ;; per storable digit, a dot node and a minor node per accepted major, and
+  ;; the `other` pair that exists only to fail.
+  (define (version-nodes)
+    (append
+     (version-store-nodes)
+     (map (lambda (d) (version-dot-node (version-dot-name d) (version-minor-name d)))
+          version-majors)
+     (map (lambda (d) (version-minor-node (version-minor-name d) (version-minors-for d)))
+          version-majors)
+     (list (version-dot-node 'version-dot-other 'version-minor-other)
+           (version-minor-node 'version-minor-other '()))))
 
   ;; An event invocation. `pause-continuation` is mandatory -- every callback
   ;; declares where to resume if it pauses -- and for an event that is the same
@@ -216,7 +317,18 @@
   (define (make-request-line-machine)
     (make-machine
      'httparse-request-line 'start
-     (list (make-uint-field 'method-protocols 8 0 #f))
+     ;; THE STATE `headers complete` PRINTS, plus the one that routes the
+     ;; protocol check. llhttp's own callback reads `s->method, s->http_major,
+     ;; s->http_minor, s->flags, s->content_length` and prints them, so these
+     ;; four are named after its fields and the adapter reads them the same way
+     ;; (decision 0014). `flags` needs ten bits -- TRANSFER_ENCODING is 1 << 9
+     ;; -- and `content-length` is llhttp's uint64.
+     (list (make-uint-field 'method-protocols 8 0 #f)
+           (make-uint-field 'method 8 0 #f)
+           (make-uint-field 'http-major 8 0 #f)
+           (make-uint-field 'http-minor 8 0 #f)
+           (make-uint-field 'flags 16 0 #f)
+           (make-uint-field 'content-length 64 0 #f))
      (list (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
            (make-callback-declaration 'on-method-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-method-complete 'event #t '() #f #f)
@@ -230,7 +342,8 @@
            (make-callback-declaration 'on-header-field-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-header-value-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-header-value-complete 'event #t '() #f #f)
-           (make-callback-declaration 'on-headers-complete 'event #t '() #f #f))
+           (make-callback-declaration 'on-headers-complete 'event #t '() #f #f)
+           (make-callback-declaration 'on-message-complete 'event #t '() #f #f))
      (list (make-span-declaration 'method-span 'on-method-data #f #f)
            (make-span-declaration 'url-span 'on-url-data #f #f)
            (make-span-declaration 'protocol-span 'on-protocol-data #f #f)
@@ -317,11 +430,12 @@
       (make-keyword-table-node 'method-table
         (map (lambda (name)
                (make-keyword-entry (ascii-bytes name)
-                                   (method-store-name (method-mask name)) #f))
+                                   (method-number-name name) #f))
              httparse-method-names)
         (make-edge 'e-bad-method-open 'reexecute)
         'e-eof-method #f #f))
-      ;; one store node per distinct protocol mask, not per name
+      ;; one node per name for the number, then one per distinct mask
+      (method-number-nodes)
       (method-store-nodes)
       (list
       (make-span-end-node 'method-close 'method-span 'method-complete #f)
@@ -410,23 +524,17 @@
       ;;   HTTP/1.x    span[version]="1."               Invalid minor version
       (make-span-start-node 'version-open 'version-span 'version-major #f)
       (make-byte-dispatch-node 'version-major
-        (list (make-byte-case (make-exact-byte-matcher (digit 0))
-                              (make-edge 'version-dot-0 'advance) #f)
-              (make-byte-case (make-exact-byte-matcher (digit 1))
-                              (make-edge 'version-dot-1 'advance) #f)
-              (make-byte-case (make-exact-byte-matcher (digit 2))
-                              (make-edge 'version-dot-2 'advance) #f)
-              (make-byte-case (make-byte-set-matcher (map digit (other-digits '(0 1 2))))
-                              (make-edge 'version-dot-other 'advance) #f))
-        (make-edge 'version-close-bad-major 'reexecute) 'e-eof-version #f)
-      (version-dot-node 'version-dot-0 'version-minor-0)
-      (version-dot-node 'version-dot-1 'version-minor-1)
-      (version-dot-node 'version-dot-2 'version-minor-2)
-      (version-dot-node 'version-dot-other 'version-minor-other)
-      (version-minor-node 'version-minor-0 '(9))
-      (version-minor-node 'version-minor-1 '(0 1))
-      (version-minor-node 'version-minor-2 '(0))
-      (version-minor-node 'version-minor-other '())
+        (append
+         (map (lambda (d)
+                (make-byte-case (make-exact-byte-matcher (digit d))
+                                (make-edge (version-major-store-name d) 'advance) #f))
+              version-majors)
+         (list (make-byte-case
+                (make-byte-set-matcher (map digit (other-digits version-majors)))
+                (make-edge 'version-dot-other 'advance) #f)))
+        (make-edge 'version-close-bad-major 'reexecute) 'e-eof-version #f))
+      (version-nodes)
+      (list
       (make-span-end-node 'version-close 'version-span 'version-complete #f)
       (make-span-end-node 'version-close-bad-major 'version-span 'e-bad-major #f)
       (make-span-end-node 'version-close-expected-dot 'version-span 'e-expected-dot #f)
@@ -578,18 +686,34 @@
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'headers-complete 'advance) #f))
         (make-edge 'e-lf-after-headers 'reexecute) 'e-eof-none #f)
-      ;; M3 stops here. The trace line `headers complete` carries `flags=` and
-      ;; `content_length=`, which are M4's; this is the EVENT, and no fixture
-      ;; M3 claims prints that line.
       (ev 'headers-complete 'on-headers-complete 'after-headers)
-      ;; A TERMINAL CANNOT SIT DIRECTLY BEHIND THE EVENT. `headers complete` is
-      ;; a callback node and therefore zero-width, so a stop behind it is
-      ;; EOF-reachable (`eof-reachable-stop`) and a finish behind it is
+
+      ;; --- is there a body? ----------------------------------------------------
+      ;;
+      ;; llhttp asks a C callback, `llhttp__after_headers_complete`, and for a
+      ;; REQUEST its answer collapses to a short tree: `message_needs_eof` is
+      ;; unconditionally 0 for requests, and upgrade and skip-body are a later
+      ;; milestone's. What is left is
+      ;;
+      ;;   CHUNKED                      -> read chunks
+      ;;   TRANSFER_ENCODING, not chunked -> error, a request may not say that
+      ;;   CONTENT_LENGTH and nonzero   -> read that many bytes
+      ;;   otherwise                    -> no body
+      ;;
+      ;; M4 Slice 0 sets no flag and accumulates no length, so every message
+      ;; takes the last arm. The branch nodes arrive with the slices that can
+      ;; make their conditions true; putting them here now would be three
+      ;; unreachable nodes, which the verifier refuses anyway.
+      (ev 'after-headers 'on-message-complete 'after-message)
+
+      ;; A TERMINAL CANNOT SIT DIRECTLY BEHIND A ZERO-WIDTH EVENT. A stop behind
+      ;; one is EOF-reachable (`eof-reachable-stop`) and a finish behind one is
       ;; byte-reachable (`non-eof-into-finish`) -- the verifier refuses both,
       ;; and the request line's stop tripped neither because it sat directly
-      ;; behind a consumed byte. A dispatch separates them: end of input is a
-      ;; clean end of message, and a byte is the body, which M4 builds here.
-      (make-byte-dispatch-node 'after-headers
+      ;; behind a consumed byte. A dispatch separates them: end of input after
+      ;; a complete message is clean, and a byte is the next message, which is
+      ;; the pipelining milestone's.
+      (make-byte-dispatch-node 'after-message
         '()
         (make-edge 'message-done 'reexecute) 'clean-eof #f)
       (make-stop-node 'message-done #f)
