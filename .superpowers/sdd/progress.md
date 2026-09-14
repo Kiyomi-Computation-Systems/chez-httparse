@@ -865,3 +865,63 @@ that asks what they were actually claiming: no error.
 Emitted artifact: 73,605 bytes, 122 states (was 38,672 / 79).
 
 Evidence: make test-all 56/56, pr 55/55, no-scheme 10/10.
+
+M3 CLOSED (2026-09-14). Squash-merged as f0b4d24 (#7), main caught up, branch
+deleted locally and on the remote, main re-verified green: test-all 56/56,
+no-scheme 10/10.
+
+CI was the billing refusal a third time -- run 34836631842, linux-amd64,
+0 steps, no logs, 3s. Decision 0004: not a test result, and the local run
+stands in its place.
+
+REFLECTION. Two standards added to AGENTS.md, and one fact moved out of prose
+and into the file where the next arm gets written.
+
+  1. "An estimate read off a grouping is not a prediction." Three milestones,
+     three optimistic ceilings -- M2's row read 17 against a real 10, M3's read
+     44 cumulative against a real 29 -- and the first two were treated as
+     arithmetic to correct. The cause is structural: the ceilings table buckets
+     each fixture by the DEEPEST EVENT in its trace, because that is the
+     attribute a fixture wears on its face, while the plan asks which
+     CAPABILITY the error needs. Different attributes; grouping on one says
+     nothing reliable about the other. `Content-Length: 1000000000000000000000`
+     buckets as header syntax and is M4's, because the span is 21 of 22 digits
+     -- bounded by the overflow check, so only the accumulator can produce it.
+     An estimate of this kind is a starting ORDER, and it stops being an
+     estimate the moment the ratchet reports a number.
+  2. "What you cannot reproduce, refuse -- and make the refusal a value." An
+     instrument that fills a gap with a plausible value produces a comparison
+     that is not one. `unexpected-eof` has no number and `headers complete` is
+     unrenderable, and the alternatives -- omit the line, or emit it with zeros
+     -- both yield a fixture result shaped like a verdict. The half that is
+     easy to miss is that the refusal must be an OUTCOME, not a crash: bound
+     but refusing at render, caught per fixture by the driver, captured as a
+     comparable value by the executor differential. That is what lets a run
+     tell WRONG from NOT YET, and it is what made this ceiling measurable.
+
+  3. Not a standard -- a fact with a better home. The `.match` consumes /
+     `.peek` does not trap has cost three offset bugs in three slices, and it
+     lived only in these entries. It is now in the header of
+     `src/httparse/grammar.sls`, where an arm gets translated, with the three
+     instances and the note that the two obs-fold sites differ in BOTH offset
+     and reason ("Invalid header value char" vs "Unexpected whitespace after
+     header value") -- 0013's pair-identity, in the place it bites. Two stale
+     claims in that header went with it: the scope line still said "M2: the
+     request line alone", and the error codes were still described as
+     structural placeholders three slices after 0013 made them llhttp's.
+
+M3 SHIPPED: the header section as syntax -- field, colon, OWS, value, line
+ending, the empty line -- with obs-fold rejected as llhttp's strict behaviour,
+`headers complete` as an event the adapter deliberately cannot render, the
+unit lane asserting llhttp's own trace text through that adapter, and the
+ratchet at 29/161/84. Emitted artifact 38,672 -> 73,605 bytes, 79 -> 122
+states. No new decision records; 0009 and 0013 covered every question raised.
+
+NEXT: M4, message framing -- `Content-Length` and `Transfer-Encoding`, the
+special-header NAME table behind them, and the body. Thirteen fixtures measured
+as waiting on it, eleven for the framing semantics and two for the name table's
+`header_field_colon` path, which consumes a space before the colon and reports
+"Invalid header field char" where the general path reports "Invalid header
+token" one byte earlier. The dispatch M3 put behind `headers complete` -- built
+because the verifier refuses both a stop and a finish behind a zero-width event
+-- is exactly where the body decision goes.

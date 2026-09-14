@@ -4,10 +4,12 @@
 ;;; by a running parser. A generated parser depends on (byte-machine runtime)
 ;;; and nothing else.
 ;;;
-;;; M2: the request line alone -- `method SP request-target SP HTTP-version
-;;; CRLF` -- with the method matched against llhttp's 47-name table. Later
-;;; slices extend this same machine: the protocol constants, version validity
-;;; and llhttp's method-versus-protocol rules, then the header section.
+;;; The request line -- `method SP request-target SP HTTP-version CRLF`, with
+;;; the method and the protocol matched against llhttp's constant tables -- and
+;;; the header section, strictly: field, colon, OWS, value, line ending, and the
+;;; empty line that ends them. Field names are OPAQUE here; llhttp's
+;;; special-header table, and the message framing behind it, belong to a later
+;;; slice, as does the body.
 ;;;
 ;;; THE EVENT OFFSETS ARE ASYMMETRIC, AND THAT IS NOT A MISTAKE. Read off
 ;;; `request/sample.md`, for `OPTIONS /url HTTP/1.1`:
@@ -29,9 +31,27 @@
 ;;; ERROR NODES ARE PER SPAN STATE, NOT PER CODE. A node reached with two
 ;;; different span states is rejected by the verifier's flat lattice, so end of
 ;;; input inside each span needs its own node even though all five name one
-;;; `unexpected-eof` declaration. The error CODES here are structural
-;;; placeholders; llhttp's numbered taxonomy arrives with the slices that need
-;;; it.
+;;; `unexpected-eof` declaration. The error codes and reasons are llhttp's own,
+;;; per decision 0013 -- identity is the (code, reason) pair, because eight of
+;;; its codes carry more than one reason. `bad-url` is the one reason still
+;;; standing in for a decision the url sub-parser has not made.
+;;;
+;;; TRANSLATING AN llhttp ARM: `.match` CONSUMES; `.peek` AND `.otherwise` DO
+;;; NOT. An error reached through a match therefore lands one byte LATER than
+;;; one reached through a peek, so an arm's KIND is part of its meaning and must
+;;; be read off `src/llhttp/http.ts` rather than inferred from the shape it
+;;; would take here. Three offset bugs in three slices, all this:
+;;;
+;;;   headers_start's SP           .match   invalid.md#20 records off=17 for a
+;;;                                         space at 16
+;;;   header_value_discard_lws's   .match   obs-fold after an EMPTY value, one
+;;;     SP/HTAB                             byte past the whitespace
+;;;   header_value_lws's SP/HTAB   .peek    obs-fold after a NON-EMPTY value,
+;;;                                         AT the whitespace
+;;;
+;;; The last two are the same production and differ in BOTH offset and reason
+;;; -- "Invalid header value char" against "Unexpected whitespace after header
+;;; value" -- which is why 0013 makes the pair the identity.
 (library (httparse grammar)
   (export make-request-line-machine
           httparse-tchar-bytes httparse-url-bytes httparse-header-bytes

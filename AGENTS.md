@@ -99,6 +99,53 @@ count you already trust, a union that must equal a set you already have, a
 partition that must cover it — and make that invariant a check in the tree, not
 a thing you eyeballed once.
 
+## An estimate read off a grouping is not a prediction
+
+Name the attribute you grouped on and the attribute you are predicting. When
+they differ, what you have is an **ordering**, not a count.
+
+Three milestones, three optimistic ceilings — M2's row read 17 against a real
+10, M3's read 44 cumulative against a real 29 — and the first two were treated
+as arithmetic to correct. The cause is structural. The ceilings table buckets
+each fixture by the **deepest event in its trace**, because that is the
+attribute a fixture wears on its face; the question the plan asks is which
+**capability** the error needs. Those are different attributes of the same
+fixture, and grouping on one says nothing reliable about the other.
+
+`Content-Length: 1000000000000000000000` is the case that shows it. The error
+falls inside the header section, so it buckets as header syntax — but llhttp's
+value span is 21 of the 22 digits, bounded by where the accumulator overflows.
+Only the accumulator can produce that span, so the fixture belongs to the
+framing milestone however shallow its trace looks.
+
+So an estimate of this kind is a starting order for the work, and it stops
+being an estimate the moment a measurement exists. The ratchet is the
+measurement: publish the number it reports, not the number the table implied.
+
+## What you cannot reproduce, refuse — and make the refusal a value
+
+An instrument that fills a gap with a plausible value produces a comparison
+that is not one.
+
+Two rows of the trace adapter say so out loud. `unexpected-eof` has **no error
+number**, because llhttp prints nothing when input runs out mid-token and
+giving it one would invent a line the oracle never wrote. `headers complete` is
+**unrenderable**, because its line carries `flags=` and `content_length=` and
+M3 has neither. The tempting alternatives — omit the line, or emit it with
+zeros — both yield a fixture result shaped like a verdict.
+
+The second half is the one that is easy to miss: a refusal has to be an
+**outcome**, not a crash. The recorder still *binds* every callback, since
+declarations are `required?`, and refuses at render time; the driver catches
+the refusal per fixture and reports that fixture as failing; the executor
+differential captures it as a comparable value, so both executors must agree
+about refusing. Only then can a run tell **wrong** from **not yet** — which is
+what made M3's ceiling measurable at all.
+
+This is the runtime half of *numbers in a test come from the oracle*. That
+standard governs which inputs you may assert on; this one governs what the
+instrument does when the oracle records something you cannot yet produce.
+
 ## Traps this repo has already hit
 
 Each of these shipped a passing test or a working-looking build that was wrong.
