@@ -120,6 +120,29 @@ the bootstrap slice design is
   character, same 120,218 bytes and same IR fingerprint. Upstream claims that for
   any machine declaring no keyword table; it was checked here.
 
+- **The request line now checks the protocol constants, the method against the
+  protocol, and the version as a pair** (M2 Slice 3). `HTTP` / `RTSP` / `ICE` are
+  a keyword table, so a partial match closes the protocol span over exactly the
+  bytes the walk took (`HTP` gives `span[protocol]="HT"`) and `protocol complete`
+  fires only on a full match. The method is remembered across the url in a
+  one-byte bitmask field and tested at the protocol constant with `mask-any`,
+  which is where llhttp reports its four distinct reasons under error code 8.
+  The version is `<digit> "." <digit>` restricted to 0.9, 1.0, 1.1 and 2.0.
+
+  The A-Z loop this replaced accepted `HTTX/1.1` outright, and the
+  digits-and-dot loop accepted `1.1.1`.
+
+- **Error identity is llhttp's `(code, reason)` pair**
+  ([0013](.plans/decisions/0013-error-identity-is-llhttps-code-and-reason-pair.md)),
+  refining [0008](.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
+  items 2 and 3. One code symbol per llhttp error number, llhttp's reason text
+  verbatim, and both halves checked. Over the corpus there are 42 distinct
+  `(code, reason)` pairs across 17 codes and 41 reasons, eight codes carry more
+  than one reason, and one reason — `"Expected CRLF after version"` — appears
+  under **two** codes, both of them in the request line. The single
+  `invalid-line-ending` code that stood here could render neither, and is
+  retired.
+
 ### Removed
 
 ### Fixed

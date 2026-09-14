@@ -532,3 +532,101 @@ artifact, the conformance driver). Every in-scope fixture is still `not-yet` in
 the ratchet because no conformance driver exists yet to run one.
 
 Evidence: make test-all 48/48, no-scheme 10/10.
+
+M2 SLICE ③ (2026-09-13): the protocol constants, the method-versus-protocol
+matrix, and the version as a PAIR. This is the slice the milestone plan named as
+"the HTTP/RTSP/ICE protocol constants; version validity; and llhttp's
+method-versus-protocol compatibility rules, which carry four distinct reasons
+under error code 8".
+
+THE PROTOCOL IS A KEYWORD TABLE FOR A SECOND REASON BEYOND THE METHOD'S. The
+method table needed one because GET is a proper prefix of GET-PARAMETER. The
+protocol needs one because the span must close over exactly the bytes the walk
+took, and `protocol complete` must fire only on a FULL match. Read off the four
+code-8 fixtures:
+
+    HTTPER/1.1   span="HTTP"  protocol complete@4   error@4
+    HTP/1.1      span="HT"    (no completion)       error@2
+    IHTTP/1.0    span="I"     (no completion)       error@24
+    bar/         span=""      (no completion)       error@9
+
+The A-Z loop that stood here reproduced the first and last by luck and neither
+middle one -- and, worse, ACCEPTED `HTTX/1.1` outright, version and all, because
+a loop has no notion of a constant. Measured before replacing it.
+
+THE MATRIX IS A BITMASK FIELD, NOT A GRAMMAR FORK. llhttp's `checkMethod` is
+`span.protocol.end(on_protocol_complete(load('method', accepted, failure)))` --
+span end, event, THEN the branch, at the protocol's own offset and before the
+version is read. Reproducing that needs the method REMEMBERED across the url, so:
+one uint8 field `method-protocols`, one bit per protocol, `store`d by the
+keyword table's entry target and tested with `mask-any` at each constant. The 47
+entries collapse to FOUR store nodes, one per distinct mask (1 HTTP, 2 RTSP,
+3 both, 5 SOURCE), generated from the three lists rather than written out.
+
+The three lists are llhttp's METHODS_HTTP (36), METHODS_RTSP (14) and
+METHODS_ICECAST (1). Extracted from constants.ts by script, not by hand -- and
+the first extraction was WRONG: it missed `'M-SEARCH': 24`, whose key is quoted
+because of the hyphen, and reported a 46-name union against our 47-name table.
+The mismatch is what caught it. The corrected union is exactly our table, which
+is now a check.
+
+THE VERSION IS `<digit> "." <digit>` WITH THE PAIR RESTRICTED to 0.9, 1.0, 1.1,
+2.0 (llhttp's `checkVersion`, strict). Major and minor are single digits there
+too -- `select(MAJOR, ...)` over a digit map -- so this is four one-byte cases
+and needs no field. The digits-and-dot loop that stood here took `1.1.1` whole.
+Three distinct failures at three distinct offsets, and the offsets are the point:
+
+    HTTP/01.1   span="0"     error@12   Expected dot
+    HTTP/5.6    span="5.6"   error@14   Invalid HTTP version
+    HTTP/1.x    span="1."    error@13   Invalid minor version
+    HTTP/x.1    span=""      error@11   Invalid major version
+
+A rejected PAIR errors after its digit is consumed; a malformed minor errors
+before. One mutation swapping those two `advance`/`reexecute` edges is caught by
+exactly that difference.
+
+DECISION 0013, FORCED BY A COLLISION INSIDE THIS SLICE. Over the corpus there are
+42 distinct (code, reason) pairs across 17 codes and 41 reasons. Eight codes
+carry more than one reason. And exactly ONE reason appears under two codes:
+"Expected CRLF after version" is code 9 with no CR and code 2 when a CR is not
+followed by LF -- both in the request line. So neither half identifies an error,
+and the single `invalid-line-ending` code that stood here could not render both.
+The rule is now one code symbol per llhttp number, llhttp's reason verbatim, and
+identity is the pair. `bad-url` is the one placeholder left and is named as one.
+
+MEASURED:
+
+                     emitted bytes   states   cases   checks
+    after Slice ②           26,323       40      30       40
+    after Slice ③           38,585       79      50       82
+
+Still 3.1x smaller than the 120,218 the hand trie emitted, while doing
+considerably more.
+
+TEN MUTATIONS. Seven caught by tests: ICE checking the HTTP bit; OPTIONS dropped
+from the RTSP list; major 1 accepting any minor digit; the rejected-pair error
+moving to `reexecute`; the protocol no-match firing a completion event; the
+CR-without-LF failure reporting the no-CR code; the version separator becoming a
+comma. Three REFUSED AT VERIFICATION rather than by a test, all for the same
+reason -- deleting a path makes its error node unreachable: merging the two CRLF
+errors, making the dot optional, dropping RTSP from the table. Recorded as
+structural, not as test witnesses. Each edit was asserted to have landed.
+
+FINDINGS FOR LATER SLICES, measured not assumed:
+
+  1. HTTP/0.9. `GET /` with no version at all is request/sample.md "No HTTP
+     version": url complete at 7, then straight to `headers complete` with
+     `v=0/9`. It is llhttp's `url.exit.toHTTP09` branch and it needs `headers
+     complete`, so it belongs to M3/M4, not here.
+  2. PRI. `PRI * HTTP/1.1` parses the version fine and then errors at 24 with
+     code 23 "Pause on PRI/Upgrade". Pausing is deferred by decision 0009, so
+     the `req_pri_upgrade` branch is deliberately not built.
+  3. Multiple spaces before the url. llhttp's `req_spaces_before_url` loops on
+     SP, so `GET  /` is legal there and not here. ZERO of the 274 fixtures
+     exercise it -- checked -- so it is not a corpus parity gap, and it belongs
+     to whichever slice builds the url properly.
+
+STILL OPEN: no conformance driver exists, so every in-scope fixture is still
+`not-yet` in the ratchet. That is Slice ④.
+
+Evidence: make test-all 48/48, no-scheme 10/10.

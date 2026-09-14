@@ -101,6 +101,19 @@
   (let-values (((r e) (run input)))
     (and (eq? (parser-result-status r) 'error)
          (parser-error-offset (parser-result-error r)))))
+;; The reason is half an error's identity, not decoration: llhttp puts two
+;; distinct errors behind the same reason text under different numbers, and
+;; several distinct reasons behind one number. The corpus records both, so both
+;; are checked.
+(define (error-reason-of input)
+  (let-values (((r e) (run input)))
+    (and (eq? (parser-result-status r) 'error)
+         (parser-error-reason (parser-result-error r)))))
+;; (code reason offset), the three things a corpus error line carries.
+(define (error-of input)
+  (list (error-code-of input) (error-reason-of input) (error-offset-of input)))
+(define (only kinds input)
+  (filter (lambda (e) (memq (car e) kinds)) (events-of input)))
 
 (harness-begin "unit.request-line")
 
@@ -209,8 +222,7 @@
                        (method-complete 3)
                        (url 4 4 "/foo")
                        (url-complete 9)
-                       (protocol 9 0 "")
-                       (protocol-complete 9)))))
+                       (protocol 9 0 "")))))
     (harness-case "the error is the recorded one, at the recorded offset"
       (lambda ()
         (check-equal "code" (error-code-of "GET /foo bar/ HTTP/1.1\r\n") 'invalid-constant)
@@ -242,13 +254,17 @@
         ;; then reads a byte that is not SP.
         (check-equal "code" (error-code-of "GET\t/ HTTP/1.1\r\n") 'invalid-method)
         (check-equal "offset" (error-offset-of "GET\t/ HTTP/1.1\r\n") 3)))
-    (harness-case "a bare LF after the version is a line-ending error"
+    (harness-case "a bare LF after the version is code 9, not the strict code"
       (lambda ()
-        (check-equal "code" (error-code-of "GET / HTTP/1.1\n") 'invalid-line-ending)
+        ;; llhttp splits the two line-ending failures across two error numbers
+        ;; with the SAME reason text: no CR at all is INVALID_VERSION (9), and
+        ;; a CR not followed by LF is STRICT (2). A single line-ending code
+        ;; cannot render both.
+        (check-equal "code" (error-code-of "GET / HTTP/1.1\n") 'invalid-version)
         (check-equal "offset" (error-offset-of "GET / HTTP/1.1\n") 14)))
-    (harness-case "a CR not followed by LF is a line-ending error"
+    (harness-case "a CR not followed by LF is the strict code"
       (lambda ()
-        (check-equal "code" (error-code-of "GET / HTTP/1.1\rX") 'invalid-line-ending)
+        (check-equal "code" (error-code-of "GET / HTTP/1.1\rX") 'strict)
         (check-equal "offset" (error-offset-of "GET / HTTP/1.1\rX") 15)))
     (harness-case "a protocol not followed by a slash is rejected"
       (lambda ()
@@ -311,6 +327,187 @@
                               (filter (lambda (e) (= (length e) 2)) (reverse events)))
                          '((message-begin 0) (method-complete 7) (url-complete 13)
                            (protocol-complete 17) (version-complete 21)))))))))
+
+(harness-group "the protocol constants"
+  (lambda ()
+    (harness-case "each of the three matches and completes at its own length"
+      (lambda ()
+        ;; request/method.md: `SOURCE /music/sweet/music ICE/1.0` records
+        ;; `off=26 len=3 span[protocol]="ICE"` and `off=29 protocol complete`;
+        ;; the RTSP and HTTP rows come from the same file.
+        (check-equal "ICE"
+                     (only '(protocol protocol-complete)
+                           "SOURCE /music/sweet/music ICE/1.0\r\n")
+                     '((protocol 26 3 "ICE") (protocol-complete 29)))
+        (check-equal "RTSP"
+                     (only '(protocol protocol-complete)
+                           "OPTIONS /music/sweet/music RTSP/1.0\r\n")
+                     '((protocol 27 4 "RTSP") (protocol-complete 31)))
+        (check-equal "HTTP"
+                     (only '(protocol protocol-complete) "GET / HTTP/1.1\r\n")
+                     '((protocol 6 4 "HTTP") (protocol-complete 10)))))
+    (harness-case "a partial match closes the span over what it consumed"
+      (lambda ()
+        ;; request/invalid.md, "ICE protocol, but not really":
+        ;;   off=23 len=1 span[protocol]="I"
+        ;;   off=24 error code=8 reason="Expected HTTP/, RTSP/ or ICE/"
+        ;; No `protocol complete` -- llhttp fires it only on a full match.
+        (check-equal "events"
+                     (only '(protocol protocol-complete)
+                           "GET /music/sweet/music IHTTP/1.0\r\n")
+                     '((protocol 23 1 "I")))
+        (check-equal "error"
+                     (error-of "GET /music/sweet/music IHTTP/1.0\r\n")
+                     '(invalid-constant "Expected HTTP/, RTSP/ or ICE/" 24))))
+    (harness-case "no match at all closes the span empty, at the same offset"
+      (lambda ()
+        ;; request/uri.md#11, the empty-span fixture.
+        (check-equal "events"
+                     (only '(protocol protocol-complete) "GET /foo bar/ HTTP/1.1\r\n")
+                     '((protocol 9 0 "")))
+        (check-equal "error"
+                     (error-of "GET /foo bar/ HTTP/1.1\r\n")
+                     '(invalid-constant "Expected HTTP/, RTSP/ or ICE/" 9))))
+    (harness-case "a full match missing its slash completes and then fails"
+      (lambda ()
+        ;; The same shape response/sample.md records for `HTTPER/1.1`:
+        ;; span, `protocol complete`, then the error at the same offset.
+        (check-equal "events"
+                     (only '(protocol protocol-complete) "GET / HTTPER/1.1\r\n")
+                     '((protocol 6 4 "HTTP") (protocol-complete 10)))
+        (check-equal "error"
+                     (error-of "GET / HTTPER/1.1\r\n")
+                     '(invalid-constant "Expected HTTP/, RTSP/ or ICE/" 10))))
+    (harness-case "a run of capitals is not a protocol"
+      (lambda ()
+        ;; The A-Z loop this replaced accepted `HTTX/1.1` outright, version and
+        ;; all, because it had no notion of a constant.
+        (check-equal "status" (status-of "GET / HTTX/1.1\r\n") 'error)
+        (check-equal "events"
+                     (only '(protocol protocol-complete) "GET / HTTX/1.1\r\n")
+                     '((protocol 6 3 "HTT")))))))
+
+(harness-group "the method-versus-protocol matrix"
+  (lambda ()
+    ;; llhttp checks the method against the protocol AT the protocol, before
+    ;; the version is read, with a different reason per protocol -- the four
+    ;; distinct reasons under error code 8. All six rows below are corpus
+    ;; fixtures: the three rejections from request/invalid.md and the three
+    ;; acceptances from request/method.md.
+    (harness-case "GET with ICE wants SOURCE"
+      (lambda ()
+        (check-equal "error" (error-of "GET /music/sweet/music ICE/1.0\r\n")
+                     '(invalid-constant "Expected SOURCE method for ICE/x.x request" 26))))
+    (harness-case "PUT with RTSP is not an RTSP method"
+      (lambda ()
+        (check-equal "error" (error-of "PUT /music/sweet/music RTSP/1.0\r\n")
+                     '(invalid-constant "Invalid method for RTSP/x.x request" 27))))
+    (harness-case "ANNOUNCE with HTTP is not an HTTP method"
+      (lambda ()
+        (check-equal "error" (error-of "ANNOUNCE /music/sweet/music HTTP/1.0\r\n")
+                     '(invalid-constant "Invalid method for HTTP/x.x request" 32))))
+    (harness-case "the rejection fires before the version is read"
+      (lambda ()
+        ;; `off=32 protocol complete` then `off=32 error` -- no version span
+        ;; and no version complete, though `1.0` follows and is valid.
+        (check-equal "no version events"
+                     (only '(version version-complete)
+                           "ANNOUNCE /music/sweet/music HTTP/1.0\r\n")
+                     '())))
+    (harness-case "SOURCE is accepted by both ICE and HTTP"
+      (lambda ()
+        (check-equal "ICE" (status-of "SOURCE /music/sweet/music ICE/1.0\r\n") 'stopped)
+        (check-equal "HTTP" (status-of "SOURCE /music/sweet/music HTTP/1.1\r\n") 'stopped)))
+    (harness-case "an RTSP-only method is accepted by RTSP"
+      (lambda ()
+        (check-equal "status" (status-of "ANNOUNCE /music/sweet/music RTSP/1.0\r\n") 'stopped)))
+    (harness-case "a method in both is accepted by both"
+      (lambda ()
+        (check-equal "RTSP" (status-of "OPTIONS /music/sweet/music RTSP/1.0\r\n") 'stopped)
+        (check-equal "HTTP" (status-of "OPTIONS / HTTP/1.1\r\n") 'stopped)))
+    (harness-case "every method is accepted by at least one protocol"
+      (lambda ()
+        ;; A method that fell out of all three lists would still parse its own
+        ;; name and then be rejected by whichever protocol followed. This walks
+        ;; the table rather than trusting the lists to partition it.
+        (check-equal "methods no protocol accepts"
+                     (filter (lambda (name)
+                               (not (or (member name httparse-http-methods)
+                                        (member name httparse-rtsp-methods)
+                                        (member name httparse-ice-methods))))
+                             httparse-method-names)
+                     '())))
+    (harness-case "the three lists are llhttp's, by shape"
+      (lambda ()
+        ;; Counts and overlaps read off llhttp's own METHODS_HTTP /
+        ;; METHODS_RTSP / METHODS_ICECAST.
+        (check-equal "http" (length httparse-http-methods) 36)
+        (check-equal "rtsp" (length httparse-rtsp-methods) 14)
+        (check-equal "ice" httparse-ice-methods '("SOURCE"))
+        (check-equal "in both"
+                     (filter (lambda (n) (member n httparse-rtsp-methods))
+                             httparse-http-methods)
+                     '("GET" "OPTIONS" "POST"))
+        (check-equal "ice is also http"
+                     (filter (lambda (n) (not (member n httparse-http-methods)))
+                             httparse-ice-methods)
+                     '())))))
+
+(harness-group "the version is a pair, not a digit soup"
+  (lambda ()
+    (harness-case "the four accepted pairs parse"
+      (lambda ()
+        ;; llhttp's `checkVersion` in strict mode admits exactly these.
+        (check-equal "versions that did not parse"
+                     (filter (lambda (v)
+                               (not (eq? 'stopped
+                                         (status-of (string-append "GET / HTTP/" v "\r\n")))))
+                             '("0.9" "1.0" "1.1" "2.0"))
+                     '())))
+    (harness-case "a well-formed pair llhttp rejects is Invalid HTTP version"
+      (lambda ()
+        ;; request/invalid.md, "Invalid HTTP version", `GET / HTTP/5.6`:
+        ;;   off=11 len=3 span[version]="5.6"
+        ;;   off=14 error code=9 reason="Invalid HTTP version"
+        ;; The span covers the whole pair and the error lands past it, because
+        ;; the digit is consumed before the pair is judged.
+        (check-equal "span" (only '(version) "GET / HTTP/5.6\r\n")
+                     '((version 11 3 "5.6")))
+        (check-equal "error" (error-of "GET / HTTP/5.6\r\n")
+                     '(invalid-version "Invalid HTTP version" 14))
+        (check-equal "1.2" (error-of "GET / HTTP/1.2\r\n")
+                     '(invalid-version "Invalid HTTP version" 14))
+        (check-equal "2.1" (error-of "GET / HTTP/2.1\r\n")
+                     '(invalid-version "Invalid HTTP version" 14))))
+    (harness-case "a second major digit is Expected dot"
+      (lambda ()
+        ;; response/invalid.md records this shape for `HTTP/01.1`: the span
+        ;; covers the one digit read, and the error is at the byte after it.
+        (check-equal "span" (only '(version) "GET / HTTP/01.1\r\n")
+                     '((version 11 1 "0")))
+        (check-equal "error" (error-of "GET / HTTP/01.1\r\n")
+                     '(invalid-version "Expected dot" 12))))
+    (harness-case "a non-digit minor is Invalid minor version, before the byte"
+      (lambda ()
+        ;; The span covers major and dot and stops: the offending byte is not
+        ;; consumed, which is what separates this from Invalid HTTP version.
+        (check-equal "span" (only '(version) "GET / HTTP/1.x\r\n")
+                     '((version 11 2 "1.")))
+        (check-equal "error" (error-of "GET / HTTP/1.x\r\n")
+                     '(invalid-version "Invalid minor version" 13))))
+    (harness-case "a non-digit major is Invalid major version, on an empty span"
+      (lambda ()
+        (check-equal "span" (only '(version) "GET / HTTP/x.1\r\n")
+                     '((version 11 0 "")))
+        (check-equal "error" (error-of "GET / HTTP/x.1\r\n")
+                     '(invalid-version "Invalid major version" 11))))
+    (harness-case "a third component is not part of the version"
+      (lambda ()
+        ;; The digits-and-dot loop this replaced took `1.1.1` whole.
+        (check-equal "span" (only '(version) "GET / HTTP/1.1.1\r\n")
+                     '((version 11 3 "1.1")))
+        (check-equal "error" (error-of "GET / HTTP/1.1.1\r\n")
+                     '(invalid-version "Expected CRLF after version" 14))))))
 
 (harness-group "the method table"
   (lambda ()
