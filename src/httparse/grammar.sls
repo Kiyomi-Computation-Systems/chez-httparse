@@ -461,7 +461,12 @@
            (make-uint-field 'content-length 64 0 #f)
            ;; Which value machine the field name selected. Not printed, but
            ;; llhttp's numbering all the same -- see the constants above.
-           (make-uint-field 'header-state 8 0 #f))
+           (make-uint-field 'header-state 8 0 #f)
+           ;; llhttp's `upgrade`, computed by `before_headers_complete` from
+           ;; the flags and the method and read by the body decision. Not
+           ;; printed -- it is the one piece of framing state the trace does
+           ;; not show, and it changes whether a body is read at all.
+           (make-uint-field 'upgrade 8 0 #f))
      (list (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
            (make-callback-declaration 'on-method-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-method-complete 'event #t '() #f #f)
@@ -565,7 +570,14 @@
            (make-error-declaration 'bad-te-value 'invalid-transfer-encoding
                                    "Invalid `Transfer-Encoding` header value" #f)
            (make-error-declaration 'request-invalid-te 'invalid-transfer-encoding
-                                   "Request has invalid `Transfer-Encoding`" #f))
+                                   "Request has invalid `Transfer-Encoding`" #f)
+           ;; PRI's HTTP/2 preface. llhttp calls it a pause in the reason and
+           ;; implements it as an ERROR, which is why this one has a number to
+           ;; rename and the CONNECT/Upgrade pause does not.
+           (make-error-declaration 'pri-upgrade 'paused-h2-upgrade
+                                   "Pause on PRI/Upgrade" #f)
+           (make-error-declaration 'bad-h2-preface 'invalid-version
+                                   "Expected HTTP/2 Connection Preface" #f))
      (append
       (list
       ;; --- the first byte -----------------------------------------------------
@@ -573,8 +585,14 @@
       ;; available but UNCONSUMED when `message begin` fires at offset 0, and
       ;; this also enforces `method = 1*tchar` -- an empty method is rejected
       ;; here, before any span opens.
+      ;; A STRAY LINE ENDING BEFORE THE REQUEST LINE IS SKIPPED. llhttp's
+      ;; `start` matches CR and LF back to itself, so `\r\nGET /test HTTP/1.1`
+      ;; reports `message begin` at 2 -- the skipped bytes are consumed and
+      ;; belong to no span.
       (make-byte-dispatch-node 'start
-        (list (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
+        (list (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'start 'advance) #f)
+              (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
                               (make-edge 'message-begin 'reexecute) #f))
         (make-edge 'e-bad-method 'reexecute) 'clean-eof #f)
       (make-finish-node 'clean-eof #f)
@@ -699,7 +717,22 @@
       (make-span-end-node 'version-close-expected-dot 'version-span 'e-expected-dot #f)
       (make-span-end-node 'version-close-bad-minor 'version-span 'e-bad-minor #f)
       (make-span-end-node 'version-close-bad-version 'version-span 'e-bad-version #f)
-      (ev 'version-complete 'on-version-complete 'expect-cr)
+      ;; llhttp loads the method right after `version complete`: PRI takes the
+      ;; HTTP/2 preface path and everything else the CRLF.
+      (ev 'version-complete 'on-version-complete 'after-version)
+      (make-field-branch-node 'after-version 'equal
+                              (list 'method (method-number "PRI"))
+                              'pri-preface 'expect-cr #f)
+      ;; A `.match` of all ten bytes, so the error lands PAST them: the whole
+      ;; preface is consumed and `PRI * HTTP/1.1\r\n\r\nSM\r\n\r\n` reports at 24.
+      ;; One sequence case, so the prefix ambiguity that rules this construct
+      ;; out for the method and header tables cannot arise.
+      (make-sequence-dispatch-node 'pri-preface
+        (list (make-sequence-case (append (list CR LF CR LF)
+                                          (ascii-bytes "SM")
+                                          (list CR LF CR LF))
+                                  'e-pri-upgrade #f))
+        (make-edge 'e-bad-h2-preface 'reexecute) 'e-eof-none #f)
 
       ;; --- CRLF ---------------------------------------------------------------
       ;; Strict: a bare CR or a bare LF is a line-ending error, not a newline.
@@ -1076,9 +1109,50 @@
       ;; --- the empty line ------------------------------------------------------
       (make-byte-dispatch-node 'headers-almost-done
         (list (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'headers-complete 'advance) #f))
+                              (make-edge 'before-headers-complete 'advance) #f))
         (make-edge 'e-lf-after-headers 'reexecute) 'e-eof-none #f)
+
+      ;; llhttp's `before_headers_complete`, which runs so the callback can see
+      ;; the answer: a request upgrades when it carries BOTH upgrade bits, or
+      ;; when its method is CONNECT.
+      (make-field-branch-node 'before-headers-complete 'mask-all
+                              (list 'flags (+ F-UPGRADE F-CONNECTION-UPGRADE))
+                              'bhc-upgrade-yes 'bhc-check-connect #f)
+      (make-field-branch-node 'bhc-check-connect 'equal
+                              (list 'method (method-number "CONNECT"))
+                              'bhc-upgrade-yes 'bhc-upgrade-no #f)
+      (make-field-action-node 'bhc-upgrade-yes 'store (list 'upgrade 1)
+                              'headers-complete #f #f)
+      (make-field-action-node 'bhc-upgrade-no 'store (list 'upgrade 0)
+                              'headers-complete #f #f)
+
       (ev 'headers-complete 'on-headers-complete 'after-headers)
+
+      ;; THE UPGRADE ARM COMES FIRST, and it is why `CONNECT` with a
+      ;; Content-Length of 10 reads no body at all:
+      ;;
+      ;;   upgrade && (method == CONNECT || !hasBody)   ->  complete, then PAUSE
+      ;;
+      ;; with `hasBody` being chunked-or-a-nonzero-length. Skip-body is a
+      ;; response's, so the request condition is these two.
+      (make-field-branch-node 'after-headers 'nonzero (list 'upgrade)
+                              'after-headers-connect 'after-headers-chunked #f)
+      (make-field-branch-node 'after-headers-connect 'equal
+                              (list 'method (method-number "CONNECT"))
+                              'message-complete 'after-headers-has-chunked #f)
+      (make-field-branch-node 'after-headers-has-chunked 'mask-any
+                              (list 'flags F-CHUNKED)
+                              'after-headers-chunked 'after-headers-has-length #f)
+      (make-field-branch-node 'after-headers-has-length 'nonzero
+                              (list 'content-length)
+                              'after-headers-chunked 'message-complete #f)
+
+      ;; THE PAUSE HAS NO WORDS. llhttp's is `p.pause(ERROR.PAUSED_UPGRADE,
+      ;; 'Pause on CONNECT/Upgrade')` and prints as `error code=22 reason=...`;
+      ;; a pause here carries neither, so the trace adapter refuses rather than
+      ;; inventing the pair. Measured, not read: a paused result reports
+      ;; `error #f`. The gap is briefed upstream under decision 0006.
+      (make-pause-node 'upgrade-pause 'after-message #f)
 
       ;; --- is there a body? ----------------------------------------------------
       ;;
@@ -1103,7 +1177,7 @@
       ;; Its target is the parking dispatch until M5 builds a chunk reader, so
       ;; a chunked request's trace simply STOPS after `headers complete`
       ;; rather than continuing with something llhttp never wrote.
-      (make-field-branch-node 'after-headers 'mask-any (list 'flags F-CHUNKED)
+      (make-field-branch-node 'after-headers-chunked 'mask-any (list 'flags F-CHUNKED)
                               'after-message 'after-headers-te #f)
       ;; A request that named a transfer coding and did not end with `chunked`
       ;; has no reliable body length: llhttp's `after_headers_complete`
@@ -1122,7 +1196,17 @@
       (make-counted-consume-node 'body-consume 'content-length 'body-close 'e-eof-body #f)
       (make-span-end-node 'body-close 'body-span 'message-complete #f)
 
-      (ev 'message-complete 'on-message-complete 'after-message)
+      ;; ONE `message complete`, THEN THE UPGRADE TEST. llhttp invokes the
+      ;; callback at two sites -- the no-body decision and the end of a body --
+      ;; and both follow it with the same question, so the two collapse into
+      ;; one node here. A message that upgraded pauses; every other one carries
+      ;; on. THIS IS WHY A BODY IS STILL READ FOR AN UPGRADE THAT HAS ONE:
+      ;; `Connection: upgrade` with `Content-Length: 4` has a body, so the
+      ;; decision does NOT take the early exit -- it reads the four bytes and
+      ;; pauses afterwards.
+      (ev 'message-complete 'on-message-complete 'after-message-upgrade)
+      (make-field-branch-node 'after-message-upgrade 'nonzero (list 'upgrade)
+                              'upgrade-pause 'after-message #f)
 
       ;; A TERMINAL CANNOT SIT DIRECTLY BEHIND A ZERO-WIDTH EVENT. A stop behind
       ;; one is EOF-reachable (`eof-reachable-stop`) and a finish behind one is
@@ -1184,5 +1268,7 @@
       (make-error-node 'e-te-with-content-length 'te-with-content-length #f)
       (make-error-node 'e-cl-with-te 'cl-with-te #f)
       (make-error-node 'e-bad-te-value 'bad-te-value #f)
-      (make-error-node 'e-request-invalid-te 'request-invalid-te #f)))
+      (make-error-node 'e-request-invalid-te 'request-invalid-te #f)
+      (make-error-node 'e-pri-upgrade 'pri-upgrade #f)
+      (make-error-node 'e-bad-h2-preface 'bad-h2-preface #f)))
      'eof #f)))

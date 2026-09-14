@@ -110,7 +110,7 @@ passing  request/method.md#11
 passing  request/method.md#12
 passing  request/method.md#13
 passing  request/method.md#14
-not-yet  request/method.md#15
+passing  request/method.md#15
 passing  request/method.md#16
 deferred request/pausing.md#1                            pausing
 deferred request/pausing.md#2                            pausing
@@ -134,13 +134,13 @@ passing  request/sample.md#5
 passing  request/sample.md#6
 passing  request/sample.md#7
 passing  request/sample.md#8
-not-yet  request/sample.md#9
+passing  request/sample.md#9
 not-yet  request/sample.md#10
 deferred request/sample.md#11                            lenient
 passing  request/sample.md#12
 passing  request/sample.md#13
 deferred request/sample.md#14                            lenient
-not-yet  request/sample.md#15
+passing  request/sample.md#15
 passing  request/sample.md#16
 passing  request/sample.md#17
 deferred request/sample.md#18                            lenient

@@ -146,6 +146,7 @@
                        (invalid-version . 9) (invalid-header-token . 10)
                        (invalid-content-length . 11)
                        (invalid-transfer-encoding . 15)
+                       (paused-h2-upgrade . 23)
                        (cr-expected . 25) (unexpected-space . 30)))))
     (harness-case "the four header reasons under code 10 all render as 10"
       (lambda ()

@@ -21,7 +21,7 @@
   (export adapter-trace-names adapter-error-codes adapter-state-fields
           adapter-event-for adapter-error-event
           make-trace-recorder trace-recorder-bindings trace-recorder-events
-          trace-recorder-note-error!
+          trace-recorder-note-error! trace-recorder-note-paused!
           adapter-error? adapter-error-detail)
   (import (rnrs) (httparse test trace-format) (byte-machine runtime))
 
@@ -79,6 +79,10 @@
       (invalid-header-token      . 10)
       (invalid-content-length    . 11)
       (invalid-transfer-encoding . 15)
+      ;; PRI's h2 preface is an ERROR in llhttp, not a pause -- `p.error(
+      ;; ERROR.PAUSED_H2_UPGRADE, ...)` -- so unlike code 22 it has a code and
+      ;; a reason to rename, and a row here.
+      (paused-h2-upgrade         . 23)
       (cr-expected               . 25)
       (unexpected-space          . 30)))
 
@@ -201,6 +205,19 @@
                      (else (adapter-refuse 'trace-recorder-bindings
                                            "unknown callback kind"))))))
          adapter-trace-names))
+
+  ;; trace-recorder-note-paused! : Recorder Nat -> Void
+  ;; ALWAYS REFUSES, and that is the whole of it. llhttp renders a pause as an
+  ;; error line -- `off=75 error code=22 reason="Pause on CONNECT/Upgrade"` --
+  ;; because its pause carries a code and a message. A pause here carries
+  ;; neither: a paused result reports no error at all, measured rather than
+  ;; assumed. Renaming a code we do not have means inventing one, and the
+  ;; invented line would be indistinguishable from a real one. Same discipline
+  ;; as `unexpected-eof` having no row.
+  (define (trace-recorder-note-paused! r offset)
+    (adapter-refuse 'trace-recorder-note-paused!
+      (string-append "the parser paused at offset " (number->string offset)
+                     " and a pause carries no code or reason to rename")))
 
   ;; trace-recorder-note-error! : Recorder ParserError -> Void
   (define (trace-recorder-note-error! r e)

@@ -23,7 +23,8 @@
 
 ;; trace : String -> (Listof String)
 (define (trace input)
-  (let* ((r (make-trace-recorder))
+  (let* ((paused #f)
+         (r (make-trace-recorder))
          (p (make-parser machine (trace-recorder-bindings r) #f))
          (bv (string->utf8 input))
          (refused
@@ -35,9 +36,11 @@
                 (let ((res (parser-feed! p bv 0 (bytevector-length bv))))
                   (when (eq? (parser-result-status res) 'error)
                     (trace-recorder-note-error! r (parser-result-error res)))
+                  (set! paused (parser-result-status res))
                   #f)))))))
     (append (map utf8->string (trace-format (trace-recorder-events r)))
-            (if refused '("(refused)") '()))))
+            (if refused '("(refused)") '())
+            (if (eq? paused 'paused) '("(paused)") '()))))
 
 ;; The request line every case below shares, so the header lines start at a
 ;; known offset: `GET / HTTP/1.1` is 14 bytes and its CRLF ends at 16.
@@ -374,7 +377,13 @@
                        "off=62 len=9 span[header_value]=\"WebSocket\""
                        "off=73 header_value complete"
                        "off=75 headers complete method=1 v=1/1 flags=15 content_length=0"
-                       "off=75 message complete"))))
+                       "off=75 message complete"
+                       ;; Both upgrade bits and no body, so llhttp's decision
+                       ;; answers 1: complete, then pause. The fixture's own
+                       ;; last line is `error code=22`, which is the pause
+                       ;; rendered -- and the one thing the adapter cannot
+                       ;; spell, so the run ends here instead.
+                       "(paused)"))))
     (harness-case "a bare Transfer-Encoding is a request error, after the line that reports it"
       (lambda ()
         ;; request/transfer-encoding.md, "Ignoring `pigeons`": the flag is set
@@ -409,6 +418,72 @@
                      '("off=47 len=14 span[header_field]=\"Content-Length\""
                        "off=62 header_field complete"
                        "off=62 error code=11 reason=\"Content-Length can't be present with Transfer-Encoding\""))))))
+
+(harness-group "the upgrade decision, and the pause it has no words for"
+  (lambda ()
+    (harness-case "CONNECT does not read the body its own Content-Length declares"
+      (lambda ()
+        ;; request/method.md, "CONNECT with body". llhttp sets `upgrade` for
+        ;; CONNECT before the headers-complete callback, and its body decision
+        ;; then answers 1 -- message complete and PAUSE -- so the ten bytes are
+        ;; never read. Reading them is what this parser did before the decision
+        ;; core was complete, and it is a behaviour bug the trace shows.
+        (check-equal "no body span, and a pause the adapter cannot spell"
+                     (list-tail (trace (string-append
+                                        "CONNECT foo.bar.com:443 HTTP/1.0\r\n"
+                                        "User-agent: Mozilla/1.1N\r\n"
+                                        "Proxy-authorization: basic aGVsbG86d29ybGQ=\r\n"
+                                        "Content-Length: 10\r\n\r\nblarfcicle\"")) 21)
+                     '("off=127 headers complete method=5 v=1/0 flags=20 content_length=10"
+                       "off=127 message complete"
+                       "(paused)"))))
+    (harness-case "an upgrade that HAS a body reads it, and pauses afterwards"
+      (lambda ()
+        ;; request/connection.md, "Emitting part of body and pausing". The
+        ;; early exit is `upgrade && (CONNECT || !hasBody)`, and this request
+        ;; has a body -- so it is NOT taken, the four declared bytes are read,
+        ;; and the pause happens at the END. Without this case nothing
+        ;; distinguishes the two upgrade arms, because the fixture that would
+        ;; is one of the seven the pause gap blocks.
+        (check-equal "body then pause"
+                     (list-tail (trace (string-append
+                                        "PUT /url HTTP/1.1\r\n"
+                                        "Connection: upgrade\r\nContent-Length: 4\r\n"
+                                        "Upgrade: ws\r\n\r\nabcdefgh")) 21)
+                     '("off=74 headers complete method=4 v=1/1 flags=34 content_length=4"
+                       "off=74 len=4 span[body]=\"abcd\""
+                       "off=78 message complete"
+                       "(paused)"))))
+    (harness-case "an ordinary request does not pause"
+      (lambda ()
+        ;; The contrast: `upgrade` is zero, so the same decision falls through
+        ;; to the body arms. Without this the pause could fire for everything
+        ;; and both cases above would still pass.
+        (check-equal "no pause"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length: 3\r\n\r\nabc") 13)
+                     '("off=40 headers complete method=4 v=1/1 flags=20 content_length=3"
+                       "off=40 len=3 span[body]=\"abc\""
+                       "off=43 message complete"))))))
+
+(harness-group "a request may start with a stray CRLF"
+  (lambda ()
+    (harness-case "request/sample.md, Prefix newline"
+      (lambda ()
+        ;; llhttp's `start` node matches CR and LF back to itself, so a leading
+        ;; line ending is skipped and `message begin` lands at 2 rather than 0.
+        (check-equal "trace"
+                     (trace "\r\nGET /test HTTP/1.1\r\n\r\n")
+                     '("off=2 message begin"
+                       "off=2 len=3 span[method]=\"GET\""
+                       "off=5 method complete"
+                       "off=6 len=5 span[url]=\"/test\""
+                       "off=12 url complete"
+                       "off=12 len=4 span[protocol]=\"HTTP\""
+                       "off=16 protocol complete"
+                       "off=17 len=3 span[version]=\"1.1\""
+                       "off=20 version complete"
+                       "off=24 headers complete method=1 v=1/1 flags=0 content_length=0"
+                       "off=24 message complete"))))))
 
 (harness-group "obs-fold is rejected, in both of its places"
   (lambda ()
