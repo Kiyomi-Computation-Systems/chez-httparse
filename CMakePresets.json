@@ -76,7 +76,10 @@
       "configurePreset": "dev",
       "filter": {
         "include": {
-          "label": "^(harness|unit|verify|differential|property|determinism|portability|example)$"
+          "label": "^(harness|unit|verify|differential|property|determinism|conformance|portability|example)$"
+        },
+        "exclude": {
+          "label": "^full-scan$"
         }
       },
       "output": {

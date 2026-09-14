@@ -62,10 +62,10 @@ deferred request/content-length.md#18                    lenient
 not-yet  request/finish.md#1
 not-yet  request/finish.md#2
 not-yet  request/finish.md#3
-not-yet  request/invalid.md#1
-not-yet  request/invalid.md#2
-not-yet  request/invalid.md#3
-not-yet  request/invalid.md#4
+passing  request/invalid.md#1
+passing  request/invalid.md#2
+passing  request/invalid.md#3
+passing  request/invalid.md#4
 not-yet  request/invalid.md#5
 not-yet  request/invalid.md#6
 not-yet  request/invalid.md#7
@@ -75,14 +75,14 @@ not-yet  request/invalid.md#10
 not-yet  request/invalid.md#11
 not-yet  request/invalid.md#12
 not-yet  request/invalid.md#13
-not-yet  request/invalid.md#14
+passing  request/invalid.md#14
 not-yet  request/invalid.md#15
 not-yet  request/invalid.md#16
 not-yet  request/invalid.md#17
 not-yet  request/invalid.md#18
-not-yet  request/invalid.md#19
+passing  request/invalid.md#19
 not-yet  request/invalid.md#20
-not-yet  request/invalid.md#21
+passing  request/invalid.md#21
 deferred request/invalid.md#22                           lenient
 not-yet  request/invalid.md#23
 deferred request/invalid.md#24                           lenient
@@ -138,7 +138,7 @@ not-yet  request/sample.md#9
 not-yet  request/sample.md#10
 deferred request/sample.md#11                            lenient
 not-yet  request/sample.md#12
-not-yet  request/sample.md#13
+passing  request/sample.md#13
 deferred request/sample.md#14                            lenient
 not-yet  request/sample.md#15
 not-yet  request/sample.md#16
@@ -186,7 +186,7 @@ not-yet  request/uri.md#7
 not-yet  request/uri.md#8
 not-yet  request/uri.md#9
 not-yet  request/uri.md#10
-not-yet  request/uri.md#11
+passing  request/uri.md#11
 not-yet  response/connection.md#1
 not-yet  response/connection.md#2
 not-yet  response/connection.md#3

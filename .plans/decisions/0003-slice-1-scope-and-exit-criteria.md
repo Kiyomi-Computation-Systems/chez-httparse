@@ -3,6 +3,7 @@
 Date: 2026-08-28
 Status: accepted
 Amended by: [0004](0004-ci-covers-the-linux-cell-alone.md), criterion 4
+Amended by: [0011](0011-the-rename-audit-allows-declared-dependency-forms.md), criterion 5
 Milestone: Gate 0 (.plans/2026-08-28-gate0-slice1-harness-port-design.md)
 
 > **Criterion 4 is amended by [0004](0004-ci-covers-the-linux-cell-alone.md)
@@ -10,6 +11,14 @@ Milestone: Gate 0 (.plans/2026-08-28-gate0-slice1-harness-port-design.md)
 > alone, and macOS is verified by a local run recorded in the slice report.
 > Slice 1's own exit is unchanged — it was met on this slice's pull request
 > against the two-cell workflow described below, which is left as written.
+
+> **Criterion 5 is amended by
+> [0011](0011-the-rename-audit-allows-declared-dependency-forms.md)
+> (2026-09-13).** "Zero upstream-name references in the build/test tree" becomes
+> "every occurrence matches one of three declared legitimate forms" — the
+> submodule path and its library collection, an R6RS library reference, and the
+> generated-runtime constructor. The audit was rewritten to match and its
+> mutation with it.
 
 ## Context
 

@@ -18,7 +18,7 @@ CTEST_FLAGS ?= --output-on-failure --no-tests=error
 # Bare 'make' prints the target list rather than building; 'make all' still builds.
 .DEFAULT_GOAL := help
 
-.PHONY: all help doctor configure build dev test test-all prod clean corpus-refresh
+.PHONY: all help doctor configure build dev test test-all prod clean corpus-refresh parser-refresh
 
 all: build   ## build the development preset
 
@@ -67,3 +67,11 @@ clean:   ## remove all build trees
 # here, never in the tree.
 corpus-refresh:   ## re-vendor the llhttp corpus (needs LLHTTP_ROOT=/path/to/llhttp)
 	$(CMAKE) -DLLHTTP_ROOT="$(LLHTTP_ROOT)" -P cmake/HttparseCorpusRefresh.cmake
+
+# src/generated/ is DERIVED: emitted from src/httparse/grammar.sls, committed so
+# that what this project ships is reviewable as a diff and loadable without a
+# generator. The determinism lane re-emits and compares bytes, so a grammar edit
+# without a refresh reddens rather than shipping a stale artifact. This target
+# and that lane run the same script.
+parser-refresh: configure   ## re-emit the checked-in generated parser
+	$(CMAKE) --build build/dev --target httparse_parser_refresh

@@ -34,6 +34,21 @@ if(HTTPARSE_REQUIRE_CHEZ)
   httparse_chez_discover()
 endif()
 
+# src/generated/ is DERIVED from src/httparse/grammar.sls and committed, so that
+# what this project ships is reviewable as a diff and loadable without a
+# generator. This target and the determinism lane run the SAME script, so a
+# refresh cannot drift from the check that guards it -- the same rule the
+# vendored corpus follows.
+if(HTTPARSE_CHEZ_EXECUTABLE)
+  add_custom_target(httparse_parser_refresh
+    COMMAND "${HTTPARSE_CHEZ_EXECUTABLE}"
+            --libdirs "${CMAKE_SOURCE_DIR}/src:${CMAKE_SOURCE_DIR}/vendor/byte-machine/src"
+            --script "${CMAKE_SOURCE_DIR}/tools/emit-request-line.ss"
+            --output "${CMAKE_SOURCE_DIR}/src/generated/httparse-request-line.sls"
+    COMMENT "httparse: re-emitting the generated request-line parser"
+    VERBATIM)
+endif()
+
 if(HTTPARSE_BUILD_TESTS)
   enable_testing()
   # CTest will not create the directory for --output-junit itself.

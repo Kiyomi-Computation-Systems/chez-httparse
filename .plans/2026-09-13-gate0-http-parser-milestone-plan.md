@@ -115,8 +115,28 @@ byte-machine submodule lands at the
 [0005](decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md) pin,
 with ABI 5 asserted as a check in the tree rather than restated in prose.
 
-**Reachable ceiling**: the 17 strict request fixtures whose expected trace ends
-in the start line.
+**Reachable ceiling**: fewer than the ceilings table suggests, and the table's
+row is an over-count. It buckets a fixture by the deepest event in its trace,
+so a request whose start line parses perfectly and which then errors on the
+*first header byte* has no `span[header_*]` and no `headers complete`, and
+lands in the start-line row. Measured over those 17: **11 terminate inside the
+request line and 6 need the header section**, and one of the 11
+(`request/invalid.md#13`, which errors on a bare `:` where a field name should
+start) needs it too.
+
+**The ratchet is the measurement, not this number.** The grammar is built, the
+conformance lane is run, and whatever passes is promoted — which is what a
+two-way ratchet is for. The ceilings table stays as a planning aid with this
+caveat attached.
+
+What M2 must actually produce, read off those fixtures rather than assumed:
+`message begin`; the `method`, `url`, `protocol` and `version` spans with their
+`complete` events at llhttp's exact offsets (note the asymmetry — `method`,
+`protocol` and `version` complete fire *at* their delimiter, while `url`
+complete fires one byte *past* its space); a method table, since `MKCOLA`
+reports `Expected space after method` after matching `MKCOL`; the `HTTP`/`RTSP`/
+`ICE` protocol constants; version validity; and llhttp's method-versus-protocol
+compatibility rules, which carry four distinct reasons under error code 8.
 
 ### M3 — the header section, as syntax
 
@@ -186,9 +206,12 @@ deferral is a visible count rather than an absence.
 
 ## Reachable ceilings, measured
 
-How far each strict fixture's expected trace reaches — the upper bound on what
-each milestone can claim, not a prediction of exact counts, since a
-message-complete fixture may need chunked (M5) rather than only framing (M4):
+How far each strict fixture's expected trace reaches — an upper bound on what
+each milestone can claim, not a prediction of exact counts. It buckets by the
+deepest event in a trace, which **over-counts every row**: a fixture that dies
+on the first byte of the next section lands in the previous section's row. M2
+measured this and found its own row of 17 contains only ~10 it can reach. Read
+the table as an ordering, and let the ratchet supply the numbers.
 
 | trace reaches | request | response |
 |---|---|---|

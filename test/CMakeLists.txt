@@ -112,6 +112,22 @@ httparse_add_test(
 
 # --- Harness paths ---------------------------------------------------------
 
+# The generator arrives as a submodule pinned by gitlink (decisions 0002, 0005).
+# Both paths are spelled out once here and referred to by variable everywhere
+# else, so the dependency's own name appears in this file twice rather than a
+# dozen times -- the two shapes the rename audit declares legitimate (0011).
+set(HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT "${CMAKE_SOURCE_DIR}/vendor/byte-machine/src")
+set(HTTPARSE_GENERATOR_COLLECTION "${CMAKE_SOURCE_DIR}/vendor/byte-machine/src/byte-machine")
+set(HTTPARSE_GENERATOR_SOURCES
+    "${HTTPARSE_GENERATOR_COLLECTION}/private/conditions.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/private/names.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/private/ir.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/private/normal-ir.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/runtime.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/graph.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/verify.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/interpret.sls"
+    "${HTTPARSE_GENERATOR_COLLECTION}/compile.sls")
 set(HTTPARSE_HARNESS_DIR "${CMAKE_CURRENT_LIST_DIR}/support/harness")
 set(HTTPARSE_HARNESS_SELF_DIR "${HTTPARSE_HARNESS_DIR}/self")
 set(HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT "${HTTPARSE_HARNESS_DIR}")
@@ -836,3 +852,150 @@ httparse_add_scheme_lane(
               "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
   TIMEOUT 120
   LABELS unit)
+
+# Decision 0005 item 5: the ABI number is re-read, never remembered. Decision
+# 0002's ABI clause went stale unnoticed for three weeks because it lived only
+# in prose; a lane cannot.
+#
+# SOURCE ONLY, DELIBERATELY. Every other Scheme lane here is registered twice,
+# source and aot, because the pair proves a grammar behaves identically either
+# way. This lane asserts nothing about a grammar -- it asks whether the pinned
+# dependency is wired up and speaking the ABI this repository targets, which is
+# the same question in both modes. The aot twin would compile the whole
+# generator per lane to re-answer it. The source/aot pair returns with the
+# first real grammar, where it has something to prove.
+httparse_add_scheme_lane(
+  NAME httparse.unit.generator-abi.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/generator-abi-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          "${CMAKE_CURRENT_LIST_DIR}/common/generator-abi-tests.sps"
+  TIMEOUT 180
+  LABELS unit)
+
+# --- The grammar (M2) -------------------------------------------------------
+
+set(HTTPARSE_GRAMMAR "${CMAKE_SOURCE_DIR}/src/httparse/grammar.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.request-line.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GRAMMAR}
+          "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
+  TIMEOUT 180
+  LABELS unit)
+
+# The source/aot pair the generator-abi lane's comment promised "returns with
+# the first real grammar, where it has something to prove". This is it: the
+# grammar is a datum built at load time and handed to the verifier, and a lane
+# that only ever ran it from source would not notice a compiled twin behaving
+# differently.
+httparse_add_scheme_lane(
+  NAME httparse.unit.request-line.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GRAMMAR}
+          "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
+  TIMEOUT 180
+  LABELS unit)
+
+# --- The checked-in generated parser (M2 Slice 4) ---------------------------
+#
+# A derived artifact, committed so that what this project ships is reviewable as
+# a diff and loadable without a generator. The lane re-emits and compares bytes,
+# so a grammar edit not followed by `make parser-refresh` reddens rather than
+# shipping an artifact that no longer describes its source.
+set(HTTPARSE_GENERATED_PARSER
+    "${CMAKE_SOURCE_DIR}/src/generated/httparse-request-line.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.determinism.generated-artifact.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/generated-artifact-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GRAMMAR}
+          ${HTTPARSE_GENERATED_PARSER}
+          "${CMAKE_CURRENT_LIST_DIR}/common/generated-artifact-tests.sps"
+  ENVIRONMENT "HTTPARSE_GENERATED_PARSER=${HTTPARSE_GENERATED_PARSER}"
+  TIMEOUT 180
+  LABELS determinism)
+
+# --- The conformance adapter and driver (M2 Slice 4) ------------------------
+
+set(HTTPARSE_ADAPTER
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/adapter.sls")
+
+# The instrument, judged on hand-built events before any parser runs
+# (decision 0008 item 4).
+httparse_add_scheme_lane(
+  NAME httparse.unit.adapter.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_TRACE_FORMAT}
+          ${HTTPARSE_ADAPTER}
+          "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
+  TIMEOUT 180
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.adapter.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_TRACE_FORMAT}
+          ${HTTPARSE_ADAPTER}
+          "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
+  TIMEOUT 180
+  LABELS unit)
+
+# The two-way ratchet, driven over the corpus. Decision 0008 item 5 splits the
+# chunk-size coverage across the presets, so this is registered TWICE with two
+# selections rather than once with a knob: `extremes` (chunk size 1 and the
+# whole buffer) runs on every pull request, and `full` (every size from 1 to the
+# input length) is a release cost. The full lane carries a `full-scan` label the
+# pr preset excludes; a selection chosen from the configure-time environment
+# would bake one preset's answer into the other's build tree.
+set(HTTPARSE_CONFORMANCE_SOURCES
+    ${HTTPARSE_HARNESS_MANIFEST}
+    ${HTTPARSE_GENERATOR_SOURCES}
+    ${HTTPARSE_GRAMMAR}
+    ${HTTPARSE_GENERATED_PARSER}
+    ${HTTPARSE_CORPUS_DECODE}
+    ${HTTPARSE_CORPUS_LOAD}
+    ${HTTPARSE_TRACE_FORMAT}
+    ${HTTPARSE_CONFORMANCE}
+    ${HTTPARSE_RATCHET_LIB}
+    ${HTTPARSE_ADAPTER}
+    "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps")
+
+httparse_add_scheme_lane(
+  NAME httparse.conformance.request-line.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps"
+  SOURCES ${HTTPARSE_CONFORMANCE_SOURCES}
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+              "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
+              "HTTPARSE_SCAN_SELECTION=extremes"
+  TIMEOUT 900
+  LABELS conformance)
+
+httparse_add_scheme_lane(
+  NAME httparse.conformance.request-line-full-scan.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps"
+  SOURCES ${HTTPARSE_CONFORMANCE_SOURCES}
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+              "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
+              "HTTPARSE_SCAN_SELECTION=full"
+  TIMEOUT 900
+  LABELS conformance full-scan)

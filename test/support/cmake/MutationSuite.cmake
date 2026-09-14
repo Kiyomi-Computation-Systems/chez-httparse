@@ -35,7 +35,7 @@
 cmake_minimum_required(VERSION 3.26)
 
 set(EXPECTED_PASSES 1)
-set(EXPECTED_MUTATIONS 73)
+set(EXPECTED_MUTATIONS 75)
 
 include("${CMAKE_CURRENT_LIST_DIR}/MutationRunner.cmake")
 
@@ -653,6 +653,18 @@ httparse_mutation(
       set(${out_measured} ${measured} PARENT_SCOPE)]]
   REPLACE [[      set(${out_measured} ${ARGN} PARENT_SCOPE)]])
 
+# C1b. The aot run command names one --object-dir per library root the source
+# lane names. The generator's was absent until the first aot lane that imported
+# a generator library, which failed with an unbound library rather than a
+# missing directory -- a failure mode that looks like a broken import, not a
+# broken build layer. Witnessed with no runtime present by the spec's
+# two-source aot command-line case.
+httparse_mutation(
+  FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
+  LABEL "scheme-lane: a compiled lane looks for the generator's objects beside the sources"
+  FIND [[        "--object-dir" "${object_dir}/generator"]]
+  REPLACE [[        "--object-dir" "${object_dir}/src"]])
+
 # C2. harness-fingerprint-combine is order-sensitive by design, so a
 # reordered measured list computes a different digest over the same bytes.
 # Only a two-or-more-source manifest can see this, which is what the spec's
@@ -717,6 +729,20 @@ httparse_mutation(
   LABEL "rename-audit: an upstream token leaked into a scanned module"
   FIND [[# httparse test registration.]]
   REPLACE "${RENAME_AUDIT_PLANT}"
+  EXPECT_OUTPUT_MATCHES "upstream project token leaked")
+
+# Decision 0011 item 3: the allowlist must not have become a blanket
+# permission. This plants a forbidden shape IMMEDIATELY BESIDE a legitimate
+# one, so an audit that stripped the allowed form and then stopped looking --
+# or that skipped any file mentioning the dependency at all -- is caught. An
+# exemption no test can fail is an exemption that will widen.
+string(CONCAT RENAME_AUDIT_ADJACENT_PLANT
+       "# vendor/" "byte" "-machine is fine; " "BYTE" "_MACHINE" "_EXTRA is not")
+httparse_mutation(
+  FILE cmake/HttparseTesting.cmake SPEC RenameAuditSpec.cmake
+  LABEL "rename-audit: a forbidden token beside a legitimate one is still caught"
+  FIND [[# --- Vocabulary ------------------------------------------------------------]]
+  REPLACE "${RENAME_AUDIT_ADJACENT_PLANT}"
   EXPECT_OUTPUT_MATCHES "upstream project token leaked")
 
 httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
