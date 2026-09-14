@@ -143,6 +143,34 @@ the bootstrap slice design is
   `invalid-line-ending` code that stood here could render neither, and is
   retired.
 
+- **The conformance driver runs, and the ratchet moves for the first time**
+  (M2 Slice 4). Nine vendored fixtures go from `not-yet` to `passing`, compared
+  bit-exactly against their own recorded traces at every chunk size the
+  selection replays: the four method-versus-protocol rejections, `MKCOLA`,
+  `HTTP/5.6`, both line-ending failures, and the empty protocol span of
+  `request/uri.md#11`. Ratchet: **9 passing / 181 not-yet / 84 deferred**.
+
+  Two lanes register it — `extremes` (chunk size 1 and the whole buffer) on
+  every pull request and `full` (every size) on release, per
+  [0008](.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
+  item 5. The driver calls `parser-finish!` only for the `*-finish` fixture
+  types, which is what llhttp's own harness does.
+
+- **Fixed: a bare LF after the version reported its error one byte early.** The
+  driver found it on its first run. `request/invalid.md#21` records the error at
+  one past the LF, because llhttp matches the LF into a lenient test that strict
+  mode refuses and a match consumes, while an unrelated byte is not consumed —
+  so the two line-ending failures land one byte apart. The test that had
+  asserted the old offset took that number from this parser rather than from a
+  fixture.
+
+- **Fixed: a compiled lane could not find the generator's objects.** The
+  ahead-of-time run command named an `--object-dir` for the harness and source
+  roots but not for the generator, and the compile step never created that
+  directory. No AOT lane had imported a generator library before the
+  request-line and adapter twins added here, so nothing had exercised it; it
+  failed as an unbound library rather than a missing directory.
+
 ### Removed
 
 ### Fixed

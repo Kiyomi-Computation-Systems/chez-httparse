@@ -35,7 +35,7 @@
 cmake_minimum_required(VERSION 3.26)
 
 set(EXPECTED_PASSES 1)
-set(EXPECTED_MUTATIONS 74)
+set(EXPECTED_MUTATIONS 75)
 
 include("${CMAKE_CURRENT_LIST_DIR}/MutationRunner.cmake")
 
@@ -652,6 +652,18 @@ httparse_mutation(
   FIND [[      httparse_lane_measured_copies("${object_dir}/fingerprint" measured ${ARGN})
       set(${out_measured} ${measured} PARENT_SCOPE)]]
   REPLACE [[      set(${out_measured} ${ARGN} PARENT_SCOPE)]])
+
+# C1b. The aot run command names one --object-dir per library root the source
+# lane names. The generator's was absent until the first aot lane that imported
+# a generator library, which failed with an unbound library rather than a
+# missing directory -- a failure mode that looks like a broken import, not a
+# broken build layer. Witnessed with no runtime present by the spec's
+# two-source aot command-line case.
+httparse_mutation(
+  FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
+  LABEL "scheme-lane: a compiled lane looks for the generator's objects beside the sources"
+  FIND [[        "--object-dir" "${object_dir}/generator"]]
+  REPLACE [[        "--object-dir" "${object_dir}/src"]])
 
 # C2. harness-fingerprint-combine is order-sensitive by design, so a
 # reordered measured list computes a different digest over the same bytes.

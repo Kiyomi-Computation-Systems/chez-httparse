@@ -379,9 +379,16 @@
 
       ;; --- CRLF ---------------------------------------------------------------
       ;; Strict: a bare CR or a bare LF is a line-ending error, not a newline.
+      ;; A BARE LF IS CONSUMED BEFORE IT FAILS, and an unrelated byte is not.
+      ;; llhttp `.match('\n', ...)` into a lenient test that strict mode
+      ;; refuses, and a match consumes; its `.otherwise` does not. So the two
+      ;; failures land one byte apart, and request/invalid.md#21 records the
+      ;; difference: version complete at 15, error at 16.
       (make-byte-dispatch-node 'expect-cr
         (list (make-byte-case (make-exact-byte-matcher CR)
-                              (make-edge 'expect-lf 'advance) #f))
+                              (make-edge 'expect-lf 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'e-no-crlf 'advance) #f))
         (make-edge 'e-no-crlf 'reexecute) 'e-eof-none #f)
       (make-byte-dispatch-node 'expect-lf
         (list (make-byte-case (make-exact-byte-matcher LF)

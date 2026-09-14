@@ -888,3 +888,91 @@ httparse_add_scheme_lane(
           "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
   TIMEOUT 180
   LABELS unit)
+
+# The source/aot pair the generator-abi lane's comment promised "returns with
+# the first real grammar, where it has something to prove". This is it: the
+# grammar is a datum built at load time and handed to the verifier, and a lane
+# that only ever ran it from source would not notice a compiled twin behaving
+# differently.
+httparse_add_scheme_lane(
+  NAME httparse.unit.request-line.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GRAMMAR}
+          "${CMAKE_CURRENT_LIST_DIR}/common/request-line-tests.sps"
+  TIMEOUT 180
+  LABELS unit)
+
+# --- The conformance adapter and driver (M2 Slice 4) ------------------------
+
+set(HTTPARSE_ADAPTER
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/adapter.sls")
+
+# The instrument, judged on hand-built events before any parser runs
+# (decision 0008 item 4).
+httparse_add_scheme_lane(
+  NAME httparse.unit.adapter.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_TRACE_FORMAT}
+          ${HTTPARSE_ADAPTER}
+          "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
+  TIMEOUT 180
+  LABELS unit)
+
+httparse_add_scheme_lane(
+  NAME httparse.unit.adapter.chez.aot
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_TRACE_FORMAT}
+          ${HTTPARSE_ADAPTER}
+          "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
+  TIMEOUT 180
+  LABELS unit)
+
+# The two-way ratchet, driven over the corpus. Decision 0008 item 5 splits the
+# chunk-size coverage across the presets, so this is registered TWICE with two
+# selections rather than once with a knob: `extremes` (chunk size 1 and the
+# whole buffer) runs on every pull request, and `full` (every size from 1 to the
+# input length) is a release cost. The full lane carries a `full-scan` label the
+# pr preset excludes; a selection chosen from the configure-time environment
+# would bake one preset's answer into the other's build tree.
+set(HTTPARSE_CONFORMANCE_SOURCES
+    ${HTTPARSE_HARNESS_MANIFEST}
+    ${HTTPARSE_GENERATOR_SOURCES}
+    ${HTTPARSE_GRAMMAR}
+    ${HTTPARSE_CORPUS_DECODE}
+    ${HTTPARSE_CORPUS_LOAD}
+    ${HTTPARSE_TRACE_FORMAT}
+    ${HTTPARSE_CONFORMANCE}
+    ${HTTPARSE_RATCHET_LIB}
+    ${HTTPARSE_ADAPTER}
+    "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps")
+
+httparse_add_scheme_lane(
+  NAME httparse.conformance.request-line.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps"
+  SOURCES ${HTTPARSE_CONFORMANCE_SOURCES}
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+              "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
+              "HTTPARSE_SCAN_SELECTION=extremes"
+  TIMEOUT 900
+  LABELS conformance)
+
+httparse_add_scheme_lane(
+  NAME httparse.conformance.request-line-full-scan.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps"
+  SOURCES ${HTTPARSE_CONFORMANCE_SOURCES}
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+              "HTTPARSE_RATCHET_FILE=${HTTPARSE_RATCHET_FILE}"
+              "HTTPARSE_SCAN_SELECTION=full"
+  TIMEOUT 900
+  LABELS conformance full-scan)

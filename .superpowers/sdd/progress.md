@@ -630,3 +630,92 @@ STILL OPEN: no conformance driver exists, so every in-scope fixture is still
 `not-yet` in the ratchet. That is Slice ④.
 
 Evidence: make test-all 48/48, no-scheme 10/10.
+
+M2 SLICE ④ (2026-09-13), first half: the trace adapter, the conformance driver,
+and THE RATCHET MOVES. Nine fixtures go from `not-yet` to `passing`.
+
+THE ADAPTER IS TWO HALVES IN ONE FILE, exported separately so each is judged
+alone: two pure rename tables (callback -> llhttp's trace words, our error code
+symbol -> llhttp's number) and a recorder that drives them from the generated
+runtime's callback protocol. Its own lane runs on hand-built events with no
+parser, per decision 0008 item 4, and most of what it checks is what the tables
+REFUSE -- an unknown callback, a span callback handed no bytes, an error code
+with no row. `unexpected-eof` deliberately has no row: llhttp prints nothing at
+all when input runs out mid-token, so renaming it to a number would invent a
+line the oracle never records.
+
+THE DRIVER HONOURS TWO THINGS THE CORPUS SPECIFIES AND WE HAD NOT BUILT. First,
+llhttp's own harness calls `llhttp_finish` only for the `*-finish` fixture types
+(test/fixtures/index.ts), so the driver does too -- finishing unconditionally
+would invent an end-of-input error. Second, an adapter REFUSAL is reported as a
+failing fixture, not a crashed lane: the parser produced something the oracle's
+vocabulary has no word for, which is exactly a conformance failure.
+
+PROMOTED, all nine at every chunk size the selection runs:
+
+    request/invalid.md#1    GET ... ICE/1.0        Expected SOURCE method for ICE
+    request/invalid.md#2    GET ... IHTTP/1.0      Expected HTTP/, RTSP/ or ICE/
+    request/invalid.md#3    PUT ... RTSP/1.0       Invalid method for RTSP
+    request/invalid.md#4    ANNOUNCE ... HTTP/1.0  Invalid method for HTTP
+    request/invalid.md#14   MKCOLA / HTTP/1.1      Expected space after method
+    request/invalid.md#19   GET / HTTP/5.6         Invalid HTTP version
+    request/invalid.md#21   POST / HTTP/1.1<LF>    Expected CRLF after version
+    request/sample.md#13    GET / HTTP/1.1<CR>L    Expected CRLF after version (strict)
+    request/uri.md#11       GET /foo bar/ ...      the empty protocol span
+
+Ratchet: 9 passing / 181 not-yet / 84 deferred.
+
+THE DRIVER FOUND A REAL PARITY BUG ON ITS FIRST RUN, which is what it is for.
+`request/invalid.md#21` records `version complete` at 15 and the error at 16 --
+ONE PAST the bare LF. llhttp `.match('\n', ...)` into a lenient test that strict
+mode refuses, and a match CONSUMES; its `.otherwise` does not. So the two
+line-ending failures land one byte apart. Our `expect-cr` reexecuted both, and
+the Slice ① test asserting offset 14 had taken that number from our own
+behaviour rather than from a fixture. Corrected, and the corrected case is now
+pinned by the fixture that records it plus a second input for the not-consumed
+side.
+
+THE AOT TWINS FOUND A BUILD-LAYER GAP ON THEIR FIRST RUN. The generator-abi
+lane's comment promised the source/aot pair "returns with the first real
+grammar"; registering it surfaced that the aot RUN command names an
+`--object-dir` for the harness and src roots but not for the generator, and the
+compile step never created that directory either. No aot lane had ever imported
+a generator library, so nothing had exercised it. It failed as `library
+(byte-machine runtime) not found` -- a broken-import shape, not a broken-build
+shape. Fixed, pinned in HttparseSchemeLaneSpec's exact command line, and given a
+mutation (a plausible copy-paste: the third dir points at src). CMake mutations
+74 -> 75, recounted from the file.
+
+TWO VOCABULARY ADDITIONS, both deliberate. `conformance` joins the test layers
+as this project's own -- byte-machine's eleven do not name corpus conformance --
+and `HTTPARSE_TEST_SELECTORS` is a new label category holding `full-scan`, so
+the pr preset can exclude the every-chunk-size lane that decision 0008 item 5
+puts on release. The label validator refusing `full-scan` is what forced the
+category to be declared rather than smuggled in.
+
+WHAT THE 17 REACHABLE FIXTURES ACTUALLY NEED. Measured over every in-scope
+request fixture whose expected trace ends inside the start line:
+
+    9  pass now
+    5  need the header section -- code 10 "Invalid header token", the error is
+       on a header field byte (content-length#15, invalid#11 #12 #13 #15)
+    1  needs it too -- invalid#20, code 30 "Unexpected space after start line"
+    1  needs the url sub-parser -- uri#7, code 7 "Invalid char in url path"
+    1  needs pausing -- method#15, PRI, code 23 "Pause on PRI/Upgrade"
+
+The plan's M2 estimate was "11 terminate inside the request line, one of which
+needs the header section too". The real number is 9, and the six that need the
+header section are six, not one.
+
+A NOTE ON THE CLASS DERIVATION, not acted on. `method.md#15` (PRI) and
+`uri.md#7` are classed `in-scope` because their meta carries no `pause` key and
+they are not url.md, yet both need a feature decision 0009 defers. Changing
+`ratchet-fixture-class` would move the 190/84 split that decision records, so
+this is noted rather than changed.
+
+THE FULL-SCAN LANE'S COST SCALES WITH WHAT PASSES. A mismatching fixture
+short-circuits at the first chunk size, so today the nine passing fixtures
+replay 396 times under `full` and 16 under `extremes`; decision 0008's 21,630 is
+the figure for a fully-passing corpus, not for today's.
+
+Evidence: make test-all 53/53, pr 52/52, no-scheme 10/10.

@@ -261,7 +261,13 @@
         ;; a CR not followed by LF is STRICT (2). A single line-ending code
         ;; cannot render both.
         (check-equal "code" (error-code-of "GET / HTTP/1.1\n") 'invalid-version)
-        (check-equal "offset" (error-offset-of "GET / HTTP/1.1\n") 14)))
+        ;; 15, not 14: the LF is CONSUMED and then refused, because llhttp
+        ;; matches it into a lenient test strict mode fails. An unrelated byte
+        ;; is not consumed, so the two land one apart --
+        ;; request/invalid.md#21 records the LF side at one past the version.
+        (check-equal "offset" (error-offset-of "GET / HTTP/1.1\n") 15)
+        (check-equal "an unrelated byte is not consumed"
+                     (error-offset-of "GET / HTTP/1.1X") 14)))
     (harness-case "a CR not followed by LF is the strict code"
       (lambda ()
         (check-equal "code" (error-code-of "GET / HTTP/1.1\rX") 'strict)

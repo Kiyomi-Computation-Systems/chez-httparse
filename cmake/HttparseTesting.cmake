@@ -34,11 +34,19 @@ set(HTTPARSE_TEST_LAYERS
   property      # generated machines and inputs
   determinism   # byte-identical emission across runs, lanes, and platform cells
   fixture       # the private HTTP request fixture
+  conformance   # this project's own: the vendored llhttp corpus, bit-exact
   portability   # values crossing library boundaries; runtime identity
   example       # the documented end-to-end examples
   expected-red) # tests that must fail, proving the harness can fail
 
 set(HTTPARSE_TEST_BACKENDS chez cmake)
+
+# Selectors are labels that carry no layer, backend or mode meaning and exist
+# only so a preset can include or exclude a lane the layer alone cannot
+# separate. `full-scan` is the first: decision 0008 item 5 puts the corpus's
+# every-chunk-size replay on the release preset and its two extremes on every
+# pull request, and both lanes are `conformance` lanes.
+set(HTTPARSE_TEST_SELECTORS full-scan)
 
 # o1 outlives the backend that owned it: no HTTPARSE_TEST_MODES_<backend>
 # below claims it, so a lane naming it for a backend that does not is caught
@@ -118,7 +126,7 @@ endfunction()
 function(httparse_test_validate_labels)
   set(known
     ${HTTPARSE_TEST_LAYERS} ${HTTPARSE_TEST_BACKENDS}
-    ${HTTPARSE_TEST_MODES})
+    ${HTTPARSE_TEST_MODES} ${HTTPARSE_TEST_SELECTORS})
   foreach(label IN LISTS ARGN)
     if(NOT label IN_LIST known)
       message(FATAL_ERROR

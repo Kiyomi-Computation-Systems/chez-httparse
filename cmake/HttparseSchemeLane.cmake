@@ -152,6 +152,7 @@ function(httparse_scheme_lane_command name backend mode program
         "--script" "${HTTPARSE_HARNESS_CHEZ_AOT_LAUNCHER}"
         "--object-dir" "${object_dir}/harness"
         "--object-dir" "${object_dir}/src"
+        "--object-dir" "${object_dir}/generator"
         "--source-guard" "${HTTPARSE_HARNESS_OBJECT_GUARD_DIR}"
         "--program" "${compiled}"
         PARENT_SCOPE)
@@ -279,6 +280,7 @@ function(httparse_lane_chez_aot_artifacts name program stale_library_root)
     OUTPUT "${compiled}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${object_dir}/harness"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${object_dir}/src"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${object_dir}/generator"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${object_dir}/fingerprint"
     COMMAND "${HTTPARSE_CHEZ_EXECUTABLE}" --script
             "${HTTPARSE_HARNESS_CHEZ_COMPILE_LAUNCHER}"

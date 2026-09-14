@@ -226,8 +226,12 @@ spec_check_equal("${measured}"
   "/objects/httparse_harness_example-two_chez_aot/fingerprint/a.scm;/objects/httparse_harness_example-two_chez_aot/fingerprint/b.scm"
   "an aot lane measures the fingerprint copies, in the declared order")
 spec_check_equal("${command}"
-  "/opt/chez;--script;/launchers/chez-aot.ss;--object-dir;/objects/httparse_harness_example-two_chez_aot/harness;--object-dir;/objects/httparse_harness_example-two_chez_aot/src;--source-guard;/b/guard;--program;/objects/httparse_harness_example-two_chez_aot/p.so"
-  "chez aot lane command line")
+  "/opt/chez;--script;/launchers/chez-aot.ss;--object-dir;/objects/httparse_harness_example-two_chez_aot/harness;--object-dir;/objects/httparse_harness_example-two_chez_aot/src;--object-dir;/objects/httparse_harness_example-two_chez_aot/generator;--source-guard;/b/guard;--program;/objects/httparse_harness_example-two_chez_aot/p.so"
+  "chez aot lane command line -- THREE object dirs, one per library root the
+   source lane names. The generator's was missing until the first aot lane that
+   imported a generator library, which failed with an unbound library rather
+   than a missing directory; this assertion is what stops it being dropped
+   again.")
 
 httparse_scheme_lane_command(httparse.harness.example.chez.unknown-mode-name
   chez unknown-mode-name "/h/self/p.sps"
