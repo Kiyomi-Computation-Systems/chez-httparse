@@ -45,18 +45,33 @@
       (on-protocol-data     span  "protocol")
       (on-protocol-complete event "protocol complete")
       (on-version-data      span  "version")
-      (on-version-complete  event "version complete")))
+      (on-version-complete  event "version complete")
+      (on-header-field-data      span  "header_field")
+      (on-header-field-complete  event "header_field complete")
+      (on-header-value-data      span  "header_value")
+      (on-header-value-complete  event "header_value complete")
+      ;; UNRENDERABLE, not missing. llhttp's line is
+      ;; `headers complete method=1 v=1/1 flags=0 content_length=0`, and two of
+      ;; those four numbers are the framing milestone's. A parser reaching this
+      ;; event has produced something this vocabulary cannot spell, so the
+      ;; recorder still BINDS the callback -- every declaration is `required?`
+      ;; -- and rendering refuses. The fixture fails; nothing is invented.
+      (on-headers-complete       unrenderable #f)))
 
   ;; Our error code symbols to llhttp's ERROR numbers, one to one. A symbol
   ;; spanning two numbers, or absent here, is what decision 0013 forbids.
   ;; `unexpected-eof` has no row deliberately: llhttp reports nothing at all
   ;; when input runs out mid-token, so a trace can never carry one.
   (define adapter-error-codes
-    '((strict           . 2)
-      (invalid-method   . 6)
-      (invalid-url      . 7)
-      (invalid-constant . 8)
-      (invalid-version  . 9)))
+    '((strict               . 2)
+      (lf-expected          . 3)
+      (invalid-method       . 6)
+      (invalid-url          . 7)
+      (invalid-constant     . 8)
+      (invalid-version      . 9)
+      (invalid-header-token . 10)
+      (cr-expected          . 25)
+      (unexpected-space     . 30)))
 
   ;; adapter-event-for : Symbol Nat (Option Bytevector) -> Event
   ;; `bytes` is the fragment for a span callback and #f for an event one.
@@ -79,6 +94,10 @@
                (string-append "span callback " (symbol->string callback)
                               " was given no bytes")))
            (make-trace-span name offset bytes))
+          ((unrenderable)
+           (adapter-refuse 'adapter-event-for
+             (string-append "no trace line can be rendered for "
+                            (symbol->string callback) " yet")))
           (else (adapter-refuse 'adapter-event-for "unknown callback kind"))))))
 
   ;; adapter-error-event : Symbol String Nat -> Event
@@ -117,6 +136,14 @@
                       (lambda (p ctx)
                         (recorder-push!
                          r (adapter-event-for callback (parser-stream-offset p) #f))
+                        callback-continue))
+                     ;; Bound so the parser accepts the list -- every
+                     ;; declaration is `required?` -- and refusing when it
+                     ;; actually fires, which the driver reports as this
+                     ;; fixture failing rather than as a crashed lane.
+                     ((unrenderable)
+                      (lambda (p ctx)
+                        (adapter-event-for callback (parser-stream-offset p) #f)
                         callback-continue))
                      ((span)
                       (lambda (p ctx bv from to)

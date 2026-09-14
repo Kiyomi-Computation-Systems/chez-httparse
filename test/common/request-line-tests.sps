@@ -49,7 +49,12 @@
                                  (list 'on-protocol-data (span 'protocol))
                                  (list 'on-protocol-complete (ev 'protocol-complete))
                                  (list 'on-version-data (span 'version))
-                                 (list 'on-version-complete (ev 'version-complete)))
+                                 (list 'on-version-complete (ev 'version-complete))
+                                 (list 'on-header-field-data (span 'header-field))
+                                 (list 'on-header-field-complete (ev 'header-field-complete))
+                                 (list 'on-header-value-data (span 'header-value))
+                                 (list 'on-header-value-complete (ev 'header-value-complete))
+                                 (list 'on-headers-complete (ev 'headers-complete)))
                            #f))
            (bv (string->utf8 input))
            (r (feed! p bv)))
@@ -91,8 +96,18 @@
         (list 'on-protocol-data ignore-span)
         (list 'on-protocol-complete ignore-event)
         (list 'on-version-data ignore-span)
-        (list 'on-version-complete ignore-event)))
+        (list 'on-version-complete ignore-event)
+        (list 'on-header-field-data ignore-span)
+        (list 'on-header-field-complete ignore-event)
+        (list 'on-header-value-data ignore-span)
+        (list 'on-header-value-complete ignore-event)
+        (list 'on-headers-complete ignore-event)))
+;; Since M3 the request line no longer terminates the parse -- it runs on into
+;; the header section -- so a well-formed line leaves the parser wanting more
+;; input rather than stopped. What these cases claim is that the line was
+;; ACCEPTED, and that is "no error".
 (define (status-of input) (let-values (((r e) (run input))) (parser-result-status r)))
+(define (accepted? input) (not (eq? (status-of input) 'error)))
 (define (error-code-of input)
   (let-values (((r e) (run input)))
     (and (eq? (parser-result-status r) 'error)
@@ -152,10 +167,12 @@
                        (protocol-complete 14)
                        (version 15 3 "1.1")
                        (version-complete 18)))))
-    (harness-case "the request line stops at the end of its CRLF"
+    (harness-case "the request line consumes exactly its own bytes"
       (lambda ()
+        ;; 16 is past the CRLF. The parser then wants the header section, so
+        ;; the status is `need-input` rather than a terminal one.
         (let-values (((r e) (run "GET / HTTP/1.1\r\n")))
-          (check-equal "status" (parser-result-status r) 'stopped)
+          (check-equal "status" (parser-result-status r) 'need-input)
           (check-equal "next" (parser-result-next r) 16))))))
 
 (harness-group "the offsets are asymmetric, deliberately"
@@ -319,7 +336,12 @@
                                        (list 'on-protocol-data (span 'protocol))
                                        (list 'on-protocol-complete (ev 'protocol-complete))
                                        (list 'on-version-data (span 'version))
-                                       (list 'on-version-complete (ev 'version-complete)))
+                                       (list 'on-version-complete (ev 'version-complete))
+                                       (list 'on-header-field-data (span 'header-field))
+                                       (list 'on-header-field-complete (ev 'header-field-complete))
+                                       (list 'on-header-value-data (span 'header-value))
+                                       (list 'on-header-value-complete (ev 'header-value-complete))
+                                       (list 'on-headers-complete (ev 'headers-complete)))
                                  #f)))
             (let loop ((i 0))
               (when (< i (bytevector-length bv))
@@ -422,15 +444,15 @@
                      '())))
     (harness-case "SOURCE is accepted by both ICE and HTTP"
       (lambda ()
-        (check-equal "ICE" (status-of "SOURCE /music/sweet/music ICE/1.0\r\n") 'stopped)
-        (check-equal "HTTP" (status-of "SOURCE /music/sweet/music HTTP/1.1\r\n") 'stopped)))
+        (check "ICE" (accepted? "SOURCE /music/sweet/music ICE/1.0\r\n"))
+        (check "HTTP" (accepted? "SOURCE /music/sweet/music HTTP/1.1\r\n"))))
     (harness-case "an RTSP-only method is accepted by RTSP"
       (lambda ()
-        (check-equal "status" (status-of "ANNOUNCE /music/sweet/music RTSP/1.0\r\n") 'stopped)))
+        (check "accepted" (accepted? "ANNOUNCE /music/sweet/music RTSP/1.0\r\n"))))
     (harness-case "a method in both is accepted by both"
       (lambda ()
-        (check-equal "RTSP" (status-of "OPTIONS /music/sweet/music RTSP/1.0\r\n") 'stopped)
-        (check-equal "HTTP" (status-of "OPTIONS / HTTP/1.1\r\n") 'stopped)))
+        (check "RTSP" (accepted? "OPTIONS /music/sweet/music RTSP/1.0\r\n"))
+        (check "HTTP" (accepted? "OPTIONS / HTTP/1.1\r\n"))))
     (harness-case "every method is accepted by at least one protocol"
       (lambda ()
         ;; A method that fell out of all three lists would still parse its own
@@ -466,8 +488,7 @@
         ;; llhttp's `checkVersion` in strict mode admits exactly these.
         (check-equal "versions that did not parse"
                      (filter (lambda (v)
-                               (not (eq? 'stopped
-                                         (status-of (string-append "GET / HTTP/" v "\r\n")))))
+                               (not (accepted? (string-append "GET / HTTP/" v "\r\n"))))
                              '("0.9" "1.0" "1.1" "2.0"))
                      '())))
     (harness-case "a well-formed pair llhttp rejects is Invalid HTTP version"

@@ -169,13 +169,22 @@
 ;; The whole-buffer trace from each executor, for every gated fixture. One
 ;; chunk size, because this asks whether the two AGREE -- the corpus itself
 ;; already replays the passing ones at every size against the artifact.
+;; A refusal is an OUTCOME, not a crash: the two executors must agree about
+;; that too, so it is captured as a value and compared like any other.
+(define (outcome machine f bv n)
+  (call/cc
+   (lambda (k)
+     (with-exception-handler
+      (lambda (e) (if (adapter-error? e) (k (list 'refused (adapter-error-detail e))) (raise e)))
+      (lambda () (run-at machine f bv n))))))
+
 (define (executors-disagree)
   (filter
    (lambda (id)
      (let* ((f (fixture-of id))
             (bv (corpus-decode-input (fixture-input-text f)))
             (n (max 1 (bytevector-length bv))))
-       (not (equal? (run-at generated f bv n) (run-at interpreted f bv n)))))
+       (not (equal? (outcome generated f bv n) (outcome interpreted f bv n)))))
    (map car results)))
 
 (harness-begin "conformance.request-line")

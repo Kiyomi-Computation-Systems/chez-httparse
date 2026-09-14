@@ -795,3 +795,73 @@ Both upstream briefs discharged.
 
 NEXT: M3, the header section as syntax. Six of the eight remaining
 request-line-reachable fixtures are waiting on it.
+
+M3 SLICE ⓪ (2026-09-14): the header section, strict. The ratchet goes
+9 -> 29 passing, 161 not-yet, 84 deferred -- twenty fixtures in one slice.
+
+BUILT AS ONE PIECE, deliberately. llhttp's header machine is field, colon,
+OWS, value, line ending and the empty line, and none of those halves is
+independently observable: a fixture needs all of them to produce a single
+trace line the corpus records. The request line was built the same way in M2
+Slice ①.
+
+TWO OFFSET BUGS, BOTH THE SAME TRAP, both found by the corpus and not by
+reading. llhttp `.match` CONSUMES and `.peek` / `.otherwise` do not, so an
+error reached through a match lands one byte later than one reached through a
+peek. Two arms I had written as `reexecute` are matches upstream:
+
+  headers-start's space        request/invalid.md#20 records off=17 for a
+                               space at 16
+  value-discard-lws's SP/HTAB  obs-fold after an EMPTY value, one past the
+                               whitespace
+
+And the mirror case is real: `value-lws`'s SP/HTAB -- obs-fold after a
+NON-EMPTY value -- is a peek, so it errors AT the whitespace, with a different
+reason. The two obs-fold sites differ in both offset and reason, and that pair
+is now two cases.
+
+This is the third instance of the consume-or-not trap in three slices (the
+bare LF after the version was the first). It is the standard AGENTS.md gained
+at the M2 close, earning its place.
+
+TWO VERIFIER RULES LEARNED THE HARD WAY. A stop terminal may not be reachable
+on an EOF path (`eof-reachable-stop`) and a finish terminal may not be reached
+from a byte edge (`non-eof-into-finish`). `headers complete` is a callback
+node and therefore zero-width, so BOTH were refused behind it -- which the
+request line's stop never tripped, because that one sat directly behind a
+consumed byte. The fix is a dispatch that separates them: end of input after
+the empty line is a clean end of message, and a byte is the body, which is
+exactly where M4 continues.
+
+`headers complete` IS UNRENDERABLE ON PURPOSE. Its trace line carries
+`method=`, `v=`, `flags=` and `content_length=`, and two of those are M4's. The
+adapter's row says `unrenderable`: the recorder still BINDS the callback --
+every declaration is `required?` -- and rendering refuses, so a fixture that
+reaches it fails with "adapter refused" rather than being handed a line llhttp
+never writes. Same discipline as `unexpected-eof` having no number.
+
+The executor differential had to learn the same thing: a refusal is an OUTCOME
+both executors must agree about, not a crash, so it is captured as a value and
+compared.
+
+THE UNIT LANE ASSERTS llhttp's OWN TEXT. `header-section-tests.sps` renders
+through the same adapter the driver uses, so an expectation is a block of lines
+copied out of a fixture rather than a transliteration of one. Fifteen cases;
+the first is request/sample.md#1's entire expected block minus the line M3
+cannot render.
+
+SEVEN MUTATIONS. Five caught by tests -- the space's consume, both obs-fold
+arms, OWS inside the value span, and the field event firing before the colon is
+consumed. Two REFUSED AT VERIFICATION and checked to be so rather than assumed:
+routing the no-colon path to the span close makes `e-bad-header-token-open`
+unreachable, and skipping the empty-value span makes both of its nodes
+unreachable. `unreachable-node` both times, read from the diagnostic.
+
+A BEHAVIOURAL CHANGE THE M2 TESTS FELT. A well-formed request line no longer
+terminates the parse -- it runs on into the header section -- so `status-of` is
+`need-input` where it was `stopped`. Six cases moved to an `accepted?` helper
+that asks what they were actually claiming: no error.
+
+Emitted artifact: 73,605 bytes, 122 states (was 38,672 / 79).
+
+Evidence: make test-all 56/56, pr 55/55, no-scheme 10/10.

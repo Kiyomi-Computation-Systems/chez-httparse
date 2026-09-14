@@ -905,6 +905,25 @@ httparse_add_scheme_lane(
   TIMEOUT 180
   LABELS unit)
 
+# --- The header section (M3) ------------------------------------------------
+#
+# Asserted in llhttp's own trace text, through the same adapter the conformance
+# driver uses, so an expectation is a block of lines copied out of a fixture.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.header-section.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/header-section-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/header-section-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- The checked-in generated parser (M2 Slice 4) ---------------------------
 #
 # A derived artifact, committed so that what this project ships is reviewable as

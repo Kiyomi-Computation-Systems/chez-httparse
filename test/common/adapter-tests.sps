@@ -39,19 +39,31 @@
                      '("off=0 len=7 span[method]=\"OPTIONS\""))))
     (harness-case "every declared callback has a row, and the kinds are right"
       (lambda ()
-        ;; The grammar declares nine; a tenth added without a row here would
-        ;; raise at the first fixture that reached it rather than be rendered
-        ;; as something plausible.
-        (check-equal "rows" (length adapter-trace-names) 9)
+        ;; A callback added to the grammar without a row here raises at the
+        ;; first fixture that reaches it rather than being rendered as
+        ;; something plausible.
+        (check-equal "rows" (length adapter-trace-names) 14)
         (check-equal "spans"
                      (map car (filter (lambda (r) (eq? (cadr r) 'span))
                                       adapter-trace-names))
-                     '(on-method-data on-url-data on-protocol-data on-version-data))))
+                     '(on-method-data on-url-data on-protocol-data on-version-data
+                       on-header-field-data on-header-value-data))))
     (harness-case "an unknown callback is refused, not guessed"
       (lambda ()
         (check "refused"
-               (refuses? (lambda () (adapter-event-for 'on-header-field-data 0
+               (refuses? (lambda () (adapter-event-for 'on-chunk-header 0
                                                        (string->utf8 "X")))))))
+    (harness-case "a callback with no trace line yet is refused, not approximated"
+      (lambda ()
+        ;; `headers complete` prints four numbers, two of which are the framing
+        ;; milestone's. Rendering it as the bare words would put a line in the
+        ;; trace that llhttp never writes; the row says `unrenderable` and the
+        ;; fixture that reaches it fails.
+        (check "refused"
+               (refuses? (lambda () (adapter-event-for 'on-headers-complete 18 #f))))
+        (check-equal "the row exists, so the recorder can still bind it"
+                     (assq 'on-headers-complete adapter-trace-names)
+                     '(on-headers-complete unrenderable #f))))
     (harness-case "a span callback with no bytes is refused"
       (lambda ()
         ;; An empty span is `(bytevector)`, which is not #f. Accepting #f here
@@ -91,12 +103,26 @@
     (harness-case "every code this table knows is one llhttp number"
       (lambda ()
         (check-equal "codes" adapter-error-codes
-                     '((strict . 2) (invalid-method . 6) (invalid-url . 7)
-                       (invalid-constant . 8) (invalid-version . 9)))))
+                     '((strict . 2) (lf-expected . 3) (invalid-method . 6)
+                       (invalid-url . 7) (invalid-constant . 8)
+                       (invalid-version . 9) (invalid-header-token . 10)
+                       (cr-expected . 25) (unexpected-space . 30)))))
+    (harness-case "the four header reasons under code 10 all render as 10"
+      (lambda ()
+        ;; Decision 0013's other direction: one number, several reasons. The
+        ;; reason is what tells them apart, and it passes through untouched.
+        (check-equal "field char"
+                     (line (adapter-error-event 'invalid-header-token
+                                                "Invalid header field char" 30))
+                     '("off=30 error code=10 reason=\"Invalid header field char\""))
+        (check-equal "token"
+                     (line (adapter-error-event 'invalid-header-token
+                                                "Invalid header token" 18))
+                     '("off=18 error code=10 reason=\"Invalid header token\""))))
     (harness-case "an unmapped code is refused, not defaulted"
       (lambda ()
         (check "refused"
-               (refuses? (lambda () (adapter-error-event 'invalid-header-token "x" 0))))))
+               (refuses? (lambda () (adapter-error-event 'invalid-chunk-size "x" 0))))))
     (harness-case "unexpected-eof has no number, deliberately"
       (lambda ()
         ;; llhttp prints nothing at all when input runs out mid-token, so a
