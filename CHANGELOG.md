@@ -171,6 +171,20 @@ the bootstrap slice design is
   request-line and adapter twins added here, so nothing had exercised it; it
   failed as an unbound library rather than a missing directory.
 
+- **The parser ships as a checked-in derived artifact.**
+  `src/generated/httparse-request-line.sls` is emitted from the grammar by
+  `tools/emit-request-line.ss` and committed, so what this project ships is
+  reviewable as a diff and loadable without a generator — it imports
+  `(byte-machine runtime)` and nothing above it. `make parser-refresh` and the
+  determinism lane run the same script, so a grammar edit without a refresh
+  reddens rather than shipping a stale artifact.
+
+  **The conformance gate runs the committed artifact itself**, with the
+  reference interpreter built beside it from the same grammar and compared over
+  every gated fixture. Hand-editing the artifact is caught three ways: the
+  byte-for-byte re-emit, the ratchet's regression check, and the executor
+  differential.
+
 ### Removed
 
 ### Fixed

@@ -719,3 +719,43 @@ replay 396 times under `full` and 16 under `extremes`; decision 0008's 21,630 is
 the figure for a fully-passing corpus, not for today's.
 
 Evidence: make test-all 53/53, pr 52/52, no-scheme 10/10.
+
+M2 SLICE ④, second half: the parser ships as a checked-in derived artifact, and
+the conformance gate runs IT.
+
+`src/generated/httparse-request-line.sls` -- 38,672 bytes, library
+`(generated httparse-request-line)`, importing `(byte-machine runtime)` and
+nothing above it -- is emitted by `tools/emit-request-line.ss` and committed, so
+what this project ships is reviewable as a diff and loadable without a
+generator. `make parser-refresh` and the determinism lane run the SAME script,
+the way the vendored corpus refresh does, so a refresh cannot drift from the
+check that guards it.
+
+THE GATE READS WHAT THE EMITTER WROTE. byte-machine's AGENTS.md standard: "a
+'the saved artifact reproduces' test must run the artifact's OWN code, not a
+re-derivation from the inputs... ask of every such check: which mutation to the
+saver's OUTPUT does it miss?" So the conformance driver imports the committed
+library and runs it as the gate, with the reference interpreter built beside it
+from the same grammar and compared, never substituted.
+
+Two mutations, both caught:
+
+  1. The grammar moves and the artifact does not (an error reason reworded,
+     no refresh) -- caught by the byte-for-byte re-emit.
+  2. The committed artifact is hand-edited ("Invalid HTTP version" ->
+     "Invalid http version") -- caught THREE ways: the re-emit, the ratchet's
+     passing-fixture regression check, and the executor differential. The second
+     and third are the ones that prove the gate reads the artifact; a check that
+     only re-derived from the grammar would have missed both.
+
+The request-line UNIT lane still runs the interpreter alone. That is deliberate:
+its 50 cases pin exact offsets on hand-chosen inputs, and the artifact is
+exercised across 190 gated fixtures by the driver, which also asserts the two
+executors agree. If they ever diverge the driver says so by fixture.
+
+A FOURTH LAYER CHECK, cheap and worth having: the artifact lane re-reads the
+generated ABI out of the committed text and asserts 6 -- decision 0005 item 5's
+rule applied to the file that actually ships, not only to the generator.
+
+Evidence: make test-all 54/54, no-scheme 10/10, `make parser-refresh`
+idempotent.

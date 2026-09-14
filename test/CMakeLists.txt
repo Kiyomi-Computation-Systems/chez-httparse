@@ -905,6 +905,28 @@ httparse_add_scheme_lane(
   TIMEOUT 180
   LABELS unit)
 
+# --- The checked-in generated parser (M2 Slice 4) ---------------------------
+#
+# A derived artifact, committed so that what this project ships is reviewable as
+# a diff and loadable without a generator. The lane re-emits and compares bytes,
+# so a grammar edit not followed by `make parser-refresh` reddens rather than
+# shipping an artifact that no longer describes its source.
+set(HTTPARSE_GENERATED_PARSER
+    "${CMAKE_SOURCE_DIR}/src/generated/httparse-request-line.sls")
+
+httparse_add_scheme_lane(
+  NAME httparse.determinism.generated-artifact.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/generated-artifact-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GRAMMAR}
+          ${HTTPARSE_GENERATED_PARSER}
+          "${CMAKE_CURRENT_LIST_DIR}/common/generated-artifact-tests.sps"
+  ENVIRONMENT "HTTPARSE_GENERATED_PARSER=${HTTPARSE_GENERATED_PARSER}"
+  TIMEOUT 180
+  LABELS determinism)
+
 # --- The conformance adapter and driver (M2 Slice 4) ------------------------
 
 set(HTTPARSE_ADAPTER
@@ -947,6 +969,7 @@ set(HTTPARSE_CONFORMANCE_SOURCES
     ${HTTPARSE_HARNESS_MANIFEST}
     ${HTTPARSE_GENERATOR_SOURCES}
     ${HTTPARSE_GRAMMAR}
+    ${HTTPARSE_GENERATED_PARSER}
     ${HTTPARSE_CORPUS_DECODE}
     ${HTTPARSE_CORPUS_LOAD}
     ${HTTPARSE_TRACE_FORMAT}

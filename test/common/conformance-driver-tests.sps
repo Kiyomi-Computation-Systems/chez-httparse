@@ -15,6 +15,12 @@
 ;;; lane that gated on them would be asserting something this milestone has
 ;;; deliberately not built.
 ;;;
+;;; THE GATE RUNS THE SHIPPED ARTIFACT. `(generated httparse-request-line)` is
+;;; the committed derived parser, loaded and run here as itself rather than
+;;; re-derived from the grammar -- an emitter that wrote a wrong-but-well-formed
+;;; artifact would otherwise survive, because nothing read what it wrote. The
+;;; reference interpreter runs beside it over the same fixtures and must agree.
+;;;
 ;;; A FIXTURE THE ADAPTER REFUSES IS A FAILING FIXTURE, NOT A CRASHED LANE. The
 ;;; adapter raises on a callback or error code it has no row for, which is the
 ;;; no-default discipline decision 0008 item 2 requires. Here that is caught and
@@ -29,6 +35,7 @@
         (httparse test ratchet)
         (httparse test adapter)
         (httparse grammar)
+        (generated httparse-request-line)
         (byte-machine verify)
         (byte-machine interpret)
         (byte-machine runtime))
@@ -67,7 +74,11 @@
                             (cons (cons (ratchet-fixture-id rel i) (car fs)) acc)))))
               corpus-files)))
 
-(define machine
+;; The committed artifact, run as itself. The interpreter is built beside it
+;; from the same grammar and is compared against it below, never substituted
+;; for it.
+(define generated httparse-request-line-machine)
+(define interpreted
   (make-interpreted-machine (verify-machine (make-request-line-machine))))
 
 ;; llhttp's own harness calls `llhttp_finish` only for the `*-finish` fixture
@@ -83,9 +94,9 @@
 
 (define (no-scan? f) (eq? #t (fixture-meta-ref f 'noScan #f)))
 
-;; run-at : Fixture Bytevector Nat -> (Listof Bytevector)
-;; The trace this parser produces for one chunk size.
-(define (run-at f bv size)
+;; run-at : Machine Fixture Bytevector Nat -> (Listof Bytevector)
+;; The trace one executor produces for one chunk size.
+(define (run-at machine f bv size)
   (let* ((r (make-trace-recorder))
          (p (make-parser machine (trace-recorder-bindings r) #f))
          (len (bytevector-length bv)))
@@ -123,7 +134,7 @@
                              (k (string-append "adapter refused: " (adapter-error-detail e)))
                              (raise e)))
                        (lambda ()
-                         (let ((d (trace-compare expected (run-at f bv (car sizes)))))
+                         (let ((d (trace-compare expected (run-at generated f bv (car sizes)))))
                            (and d
                                 (string-append
                                  "line " (number->string (mismatch-index d))
@@ -155,6 +166,18 @@
 (define (ids-where pred)
   (map car (filter (lambda (r) (pred (cadr r) (caddr r))) results)))
 
+;; The whole-buffer trace from each executor, for every gated fixture. One
+;; chunk size, because this asks whether the two AGREE -- the corpus itself
+;; already replays the passing ones at every size against the artifact.
+(define (executors-disagree)
+  (filter
+   (lambda (id)
+     (let* ((f (fixture-of id))
+            (bv (corpus-decode-input (fixture-input-text f)))
+            (n (max 1 (bytevector-length bv))))
+       (not (equal? (run-at generated f bv n) (run-at interpreted f bv n)))))
+   (map car results)))
+
 (harness-begin "conformance.request-line")
 
 (harness-group "the ratchet, both ways"
@@ -172,6 +195,14 @@
         (check-equal "promote these"
                      (ids-where (lambda (status m) (and (eq? status 'not-yet) (not m))))
                      '())))))
+
+(harness-group "the artifact and the interpreter agree"
+  (lambda ()
+    (harness-case "every gated fixture produces the same trace either way"
+      (lambda ()
+        ;; The committed parser is emitted from this grammar; if the two ever
+        ;; disagree, one of them is not the machine the grammar describes.
+        (check-equal "fixtures where they differ" (executors-disagree) '())))))
 
 (harness-group "the selection is the one the preset asked for"
   (lambda ()
