@@ -185,6 +185,19 @@ the bootstrap slice design is
   byte-for-byte re-emit, the ratchet's regression check, and the executor
   differential.
 
+- **The header section parses, strictly** (M3 Slice 0), and the ratchet goes
+  **9 to 29 passing** (161 not-yet, 84 deferred). Field and value spans, OWS
+  discarded, the empty line, and `headers complete` as an event. Field names
+  stay opaque: llhttp's special-header table, and the framing it feeds, is M4's.
+
+  **obs-fold is rejected in both of its places**, with different offsets and
+  different reasons — llhttp matches the whitespace after an empty value and
+  peeks it after a non-empty one, so one errors past it and one at it.
+
+  `headers complete` is deliberately **unrenderable**: its trace line carries
+  two numbers M4 owns, so the adapter refuses rather than writing a line llhttp
+  never emits, and a fixture reaching it fails honestly.
+
 ### Removed
 
 ### Fixed

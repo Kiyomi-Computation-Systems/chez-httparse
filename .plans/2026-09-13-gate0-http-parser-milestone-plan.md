@@ -140,12 +140,60 @@ compatibility rules, which carry four distinct reasons under error code 8.
 
 ### M3 — the header section, as syntax
 
-`header_field` / `header_value` spans, OWS handling, obs-fold, strict line
-endings, the empty line, `headers complete` with no framing interpretation yet.
-Field names stay **opaque spans** here, which is what keeps M3 clear of the
+`header_field` / `header_value` spans, OWS handling, strict line endings, the
+empty line, `headers complete` with no framing interpretation yet. Field names
+stay **opaque spans** here, which is what keeps M3 clear of the
 case-insensitivity gap.
 
-**Reachable ceiling**: +29 request fixtures (46 cumulative).
+**obs-fold is REJECTED, and that is llhttp's strict behaviour, not a
+simplification.** A continuation line beginning with SP or HTAB reaches
+`header_value_discard_lws`, whose SP/HTAB arm is behind `LENIENT_FLAGS.HEADERS`;
+with the flag off it is `error code=10 reason="Invalid header value char"`. The
+corpus agrees: the folding fixture that exercises folding is
+`request-lenient-headers` and therefore deferred by
+[0009](decisions/0009-v01-is-strict-request-and-response-parsing.md), and its
+in-scope twin ("Line folding in header value with LF") never reaches a fold at
+all -- it uses bare LF line endings and errors at the first one with
+`code=25 "Missing expected CR after header value"`.
+
+**`headers complete` is an EVENT here, not a trace line.** That line carries
+`method=`, `v=`, `flags=` and `content_length=`; the last two are M4's. Every
+fixture that reaches it is in M4's bucket or later, so M3 builds the event and
+M4 makes the line renderable. No fixture M3 claims prints one.
+
+**Reachable ceiling**: **+29** request fixtures, and **44 cumulative** -- not
+the 46 first written here, which assumed M2 would take all 17 of the fixtures
+whose trace ends inside the start line. It took 9. Re-measured over the 124
+in-scope request fixtures:
+
+| | |
+|---|---|
+| 46 | end before `headers complete` -- M3's territory |
+| 10 | reach `headers complete` and stop there -- M4 |
+| 68 | need body, chunk or `message complete` -- M4 and later |
+
+Of the 46: 17 end inside the start line (9 passing, 6 blocked on the header
+section, 1 on the url sub-parser, 1 on pausing) and 29 error inside the header
+section.
+
+> **This was first written as 44 cumulative, and the achieved ceiling is 29.**
+> Measured after M3 Slice ⓪ by running every remaining fixture and reading its
+> first mismatch, not by re-counting. Of the 17 that remain in the bucket,
+> **every one needs a capability M3 excludes**:
+>
+> | | |
+> |---|---|
+> | 13 | M4 — eleven need `Content-Length` / `Transfer-Encoding` semantics, and two (`connection.md#16`, `content-length.md#6`) need the special-header NAME table, whose `header_field_colon` path consumes a space before the colon and reports `Invalid header field char` where the general path reports `Invalid header token` one byte earlier |
+> | 2 | deferred by [0009](decisions/0009-v01-is-strict-request-and-response-parsing.md) — `method.md#15` (pausing) and `uri.md#7` (the url sub-parser) |
+> | 2 | `finish.md#2` and `#3` — they need the parser's own finish-safety state, which llhttp prints as `off=NULL finish=N` (0 safe, 1 safe-with-callback, 2 unsafe; it is the state field, not a return code). Message lifecycle, so M6 |
+>
+> **The methodology, not the arithmetic, was the error.** The ceilings table
+> buckets a fixture by the deepest EVENT in its trace, and an event does not
+> say which parser capability the error needs. `Content-Length: 1000...0`
+> errors inside the header section and looks like M3's, but its value span is
+> bounded by the overflow check — 21 of its 22 digits — so only the
+> accumulator can produce it. Every future ceiling is a bucket count until the
+> slice runs, and the ratchet is the measurement.
 
 ### M4 — framing, and the decision core
 

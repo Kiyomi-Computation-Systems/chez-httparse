@@ -34,7 +34,7 @@
 ;;; it.
 (library (httparse grammar)
   (export make-request-line-machine
-          httparse-tchar-bytes httparse-url-bytes
+          httparse-tchar-bytes httparse-url-bytes httparse-header-bytes
           httparse-method-names
           httparse-http-methods httparse-rtsp-methods httparse-ice-methods)
   (import (rnrs) (byte-machine graph))
@@ -52,10 +52,19 @@
   ;; that reproduces that error.
   (define httparse-url-bytes (range 33 126))
 
+  ;; What may appear in a header value: llhttp's HEADER_CHARS, which is
+  ;; HTAB / SP / VCHAR / obs-text. Excluded are NUL, the C0 controls other than
+  ;; HTAB, DEL, and -- the two that matter -- CR and LF, which is what makes the
+  ;; loop stop at its own line ending.
+  (define httparse-header-bytes
+    (append '(9 32) (range 33 126) (range 128 255)))
+
   (define SP 32)
   (define CR 13)
   (define LF 10)
   (define SLASH 47)
+  (define HTAB 9)
+  (define COLON 58)
 
   ;; --- the method table ---------------------------------------------------
   ;;
@@ -196,11 +205,18 @@
            (make-callback-declaration 'on-protocol-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-protocol-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-version-data 'span-data #t '() #f #f)
-           (make-callback-declaration 'on-version-complete 'event #t '() #f #f))
+           (make-callback-declaration 'on-version-complete 'event #t '() #f #f)
+           (make-callback-declaration 'on-header-field-data 'span-data #t '() #f #f)
+           (make-callback-declaration 'on-header-field-complete 'event #t '() #f #f)
+           (make-callback-declaration 'on-header-value-data 'span-data #t '() #f #f)
+           (make-callback-declaration 'on-header-value-complete 'event #t '() #f #f)
+           (make-callback-declaration 'on-headers-complete 'event #t '() #f #f))
      (list (make-span-declaration 'method-span 'on-method-data #f #f)
            (make-span-declaration 'url-span 'on-url-data #f #f)
            (make-span-declaration 'protocol-span 'on-protocol-data #f #f)
-           (make-span-declaration 'version-span 'on-version-data #f #f))
+           (make-span-declaration 'version-span 'on-version-data #f #f)
+           (make-span-declaration 'header-field-span 'on-header-field-data #f #f)
+           (make-span-declaration 'header-value-span 'on-header-value-data #f #f))
      ;; ONE CODE SYMBOL PER llhttp ERROR NUMBER, AND llhttp's REASON VERBATIM.
      ;; The corpus records `error code=N reason="..."`, and two of llhttp's
      ;; reasons are the same string under different numbers ("Expected CRLF
@@ -236,7 +252,28 @@
            (make-error-declaration 'no-crlf 'invalid-version
                                    "Expected CRLF after version" #f)
            (make-error-declaration 'lf-after-cr 'strict
-                                   "Expected CRLF after version" #f))
+                                   "Expected CRLF after version" #f)
+           ;; --- the header section -----------------------------------------
+           ;; Four llhttp reasons share code 10 here and are four declarations,
+           ;; per decision 0013.
+           (make-error-declaration 'unexpected-space 'unexpected-space
+                                   "Unexpected space after start line" #f)
+           (make-error-declaration 'bad-header-field-char 'invalid-header-token
+                                   "Invalid header field char" #f)
+           (make-error-declaration 'bad-header-token 'invalid-header-token
+                                   "Invalid header token" #f)
+           (make-error-declaration 'bad-header-value-char 'invalid-header-token
+                                   "Invalid header value char" #f)
+           (make-error-declaration 'ws-after-value 'invalid-header-token
+                                   "Unexpected whitespace after header value" #f)
+           (make-error-declaration 'lf-after-cr-in-value 'strict
+                                   "Expected LF after CR" #f)
+           (make-error-declaration 'cr-after-value 'cr-expected
+                                   "Missing expected CR after header value" #f)
+           (make-error-declaration 'lf-after-value 'lf-expected
+                                   "Missing expected LF after header value" #f)
+           (make-error-declaration 'lf-after-headers 'strict
+                                   "Expected LF after headers" #f))
      (append
       (list
       ;; --- the first byte -----------------------------------------------------
@@ -392,11 +429,150 @@
         (make-edge 'e-no-crlf 'reexecute) 'e-eof-none #f)
       (make-byte-dispatch-node 'expect-lf
         (list (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'request-line-done 'advance) #f))
+                              (make-edge 'headers-start 'advance) #f))
         (make-edge 'e-lf-after-cr 'reexecute) 'e-eof-none #f)
-      ;; M2 stops at the end of the request line; M3 replaces this with the
-      ;; header section and the message loop.
-      (make-stop-node 'request-line-done #f)
+      ;; --- the header section -------------------------------------------------
+      ;;
+      ;; Strict throughout. Every lenient arm of llhttp's header machine is an
+      ;; error here -- decision 0009's scope, not a simplification. OBS-FOLD IS
+      ;; REJECTED in two places: `value-discard-lws` after an empty value and
+      ;; `value-lws` after a non-empty one, which are llhttp's two
+      ;; LENIENT_FLAGS.HEADERS arms and carry different reasons.
+      ;;
+      ;; FIELD NAMES ARE OPAQUE. llhttp routes `Connection`, `Content-Length`
+      ;; and `Transfer-Encoding` through a special-header table that changes
+      ;; what a space before the colon does; that table, and the framing it
+      ;; feeds, is M4's. Here every name is a general one.
+      ;; The space is CONSUMED before it fails -- llhttp `.match`es it into a
+      ;; lenient test strict mode refuses, and a match consumes. So the error
+      ;; is one past it: request/invalid.md#20 records `off=17` for a space at
+      ;; 16. The same trap as the bare LF after the version.
+      (make-byte-dispatch-node 'headers-start
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'e-unexpected-space 'advance) #f))
+        (make-edge 'header-field-start 'reexecute) 'e-eof-none #f)
+
+      ;; Three ways a field can fail to start, each with its own reason: a bare
+      ;; LF is `Invalid header field char`, a leading colon is `Invalid header
+      ;; token`, and CR begins the empty line that ends the section.
+      (make-byte-dispatch-node 'header-field-start
+        (list (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'headers-almost-done 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'e-bad-header-field-char 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher COLON)
+                              (make-edge 'e-bad-header-token 'reexecute) #f))
+        (make-edge 'header-field-open 'reexecute) 'e-eof-none #f)
+
+      (make-span-start-node 'header-field-open 'header-field-span 'header-field-loop #f)
+      (make-byte-dispatch-node 'header-field-loop
+        (list (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
+                              (make-edge 'header-field-loop 'advance) #f))
+        (make-edge 'after-field-name 'reexecute) 'e-eof-header-field #f)
+
+      ;; A name not followed by a colon errors WITH THE SPAN OPEN, so no
+      ;; fragment is delivered: `Fo@: Failure` records no `span[header_field]`
+      ;; at all, only the error at the `@` (request/invalid.md#11).
+      (make-byte-dispatch-node 'after-field-name
+        (list (make-byte-case (make-exact-byte-matcher COLON)
+                              (make-edge 'header-field-close 'reexecute) #f))
+        (make-edge 'e-bad-header-token-open 'reexecute) 'e-eof-header-field #f)
+      ;; The span ends BEFORE the colon and the colon is then consumed, so
+      ;; `header_field complete` fires one byte past it -- the same asymmetry
+      ;; `url complete` has. `Line1:` records the span at 16 len 5 and the
+      ;; event at 22, with the colon at 21.
+      (make-span-end-node 'header-field-close 'header-field-span 'eat-colon #f)
+      (make-byte-dispatch-node 'eat-colon
+        (list (make-byte-case (make-exact-byte-matcher COLON)
+                              (make-edge 'header-field-complete 'advance) #f))
+        (make-edge 'e-bad-header-token 'reexecute) 'e-eof-none #f)
+      (ev 'header-field-complete 'on-header-field-complete 'value-discard-ws)
+
+      ;; --- the value ----------------------------------------------------------
+      ;; Leading OWS is discarded and is not part of the span.
+      (make-byte-dispatch-node 'value-discard-ws
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'value-discard-ws 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'value-discard-ws-cr 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'e-bad-header-value-char 'advance) #f))
+        (make-edge 'value-open 'reexecute) 'e-eof-none #f)
+
+      (make-byte-dispatch-node 'value-discard-ws-cr
+        (list (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'value-discard-lws 'advance) #f))
+        (make-edge 'e-lf-after-cr-in-value 'reexecute) 'e-eof-none #f)
+
+      ;; Obs-fold, first site: a continuation line after an EMPTY value. The
+      ;; whitespace is CONSUMED before it fails (llhttp `.match`es it), unlike
+      ;; the second site below, which peeks.
+      (make-byte-dispatch-node 'value-discard-lws
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'e-bad-header-value-char 'advance) #f))
+        (make-edge 'value-empty-open 'reexecute) 'e-eof-none #f)
+
+      ;; An empty value is ANNOUNCED, not omitted: llhttp opens and immediately
+      ;; closes the span, which is the upstream empty-span behaviour this
+      ;; project asked for and picked up at v0.2.0.
+      (make-span-start-node 'value-empty-open 'header-value-span 'value-empty-close #f)
+      (make-span-end-node 'value-empty-close 'header-value-span 'value-complete #f)
+
+      (make-span-start-node 'value-open 'header-value-span 'value-loop #f)
+      (make-byte-dispatch-node 'value-loop
+        (list (make-byte-case (make-byte-set-matcher httparse-header-bytes)
+                              (make-edge 'value-loop 'advance) #f))
+        (make-edge 'after-value 'reexecute) 'e-eof-header-value #f)
+
+      ;; All three arms close the span first and differ in what follows. A bare
+      ;; LF is `Missing expected CR after header value` AT the LF, unconsumed.
+      (make-byte-dispatch-node 'after-value
+        (list (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'value-close 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'value-close-no-cr 'reexecute) #f))
+        (make-edge 'value-close-bad 'reexecute) 'e-eof-header-value #f)
+      (make-span-end-node 'value-close 'header-value-span 'eat-cr #f)
+      (make-span-end-node 'value-close-no-cr 'header-value-span 'e-cr-after-value #f)
+      (make-span-end-node 'value-close-bad 'header-value-span 'e-bad-header-value-char #f)
+      (make-byte-dispatch-node 'eat-cr
+        (list (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'value-almost-done 'advance) #f))
+        (make-edge 'e-cr-after-value 'reexecute) 'e-eof-none #f)
+
+      (make-byte-dispatch-node 'value-almost-done
+        (list (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'value-lws 'advance) #f))
+        (make-edge 'e-lf-after-value 'reexecute) 'e-eof-none #f)
+
+      ;; Obs-fold, second site: a continuation line after a NON-EMPTY value.
+      ;; llhttp's reason differs from the empty-value one.
+      (make-byte-dispatch-node 'value-lws
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'e-ws-after-value 'reexecute) #f))
+        (make-edge 'value-complete 'reexecute) 'e-eof-none #f)
+      (ev 'value-complete 'on-header-value-complete 'header-field-start)
+
+      ;; --- the empty line ------------------------------------------------------
+      (make-byte-dispatch-node 'headers-almost-done
+        (list (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'headers-complete 'advance) #f))
+        (make-edge 'e-lf-after-headers 'reexecute) 'e-eof-none #f)
+      ;; M3 stops here. The trace line `headers complete` carries `flags=` and
+      ;; `content_length=`, which are M4's; this is the EVENT, and no fixture
+      ;; M3 claims prints that line.
+      (ev 'headers-complete 'on-headers-complete 'after-headers)
+      ;; A TERMINAL CANNOT SIT DIRECTLY BEHIND THE EVENT. `headers complete` is
+      ;; a callback node and therefore zero-width, so a stop behind it is
+      ;; EOF-reachable (`eof-reachable-stop`) and a finish behind it is
+      ;; byte-reachable (`non-eof-into-finish`) -- the verifier refuses both,
+      ;; and the request line's stop tripped neither because it sat directly
+      ;; behind a consumed byte. A dispatch separates them: end of input is a
+      ;; clean end of message, and a byte is the body, which M4 builds here.
+      (make-byte-dispatch-node 'after-headers
+        '()
+        (make-edge 'message-done 'reexecute) 'clean-eof #f)
+      (make-stop-node 'message-done #f)
 
       ;; --- errors, one node per span state ------------------------------------
       (make-error-node 'e-bad-method 'bad-method #f)
@@ -420,5 +596,21 @@
       (make-error-node 'e-eof-method 'eof #f)
       (make-error-node 'e-eof-url 'eof #f)
       (make-error-node 'e-eof-protocol 'eof #f)
-      (make-error-node 'e-eof-version 'eof #f)))
+      (make-error-node 'e-eof-version 'eof #f)
+      (make-error-node 'e-unexpected-space 'unexpected-space #f)
+      (make-error-node 'e-bad-header-field-char 'bad-header-field-char #f)
+      (make-error-node 'e-bad-header-token 'bad-header-token #f)
+      ;; The same reason reached with the field span OPEN -- a separate node
+      ;; because the verifier's flat lattice refuses one node reached with two
+      ;; span states, and the open one is what keeps `Fo@: Failure` from
+      ;; delivering a fragment.
+      (make-error-node 'e-bad-header-token-open 'bad-header-token #f)
+      (make-error-node 'e-bad-header-value-char 'bad-header-value-char #f)
+      (make-error-node 'e-ws-after-value 'ws-after-value #f)
+      (make-error-node 'e-lf-after-cr-in-value 'lf-after-cr-in-value #f)
+      (make-error-node 'e-cr-after-value 'cr-after-value #f)
+      (make-error-node 'e-lf-after-value 'lf-after-value #f)
+      (make-error-node 'e-lf-after-headers 'lf-after-headers #f)
+      (make-error-node 'e-eof-header-field 'eof #f)
+      (make-error-node 'e-eof-header-value 'eof #f)))
      'eof #f)))
