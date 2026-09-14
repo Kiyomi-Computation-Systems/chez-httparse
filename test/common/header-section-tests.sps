@@ -268,6 +268,148 @@
                      '("off=40 headers complete method=4 v=1/1 flags=20 content_length=0"
                        "off=40 message complete"))))))
 
+(harness-group "Connection, Transfer-Encoding and Upgrade set the flags"
+  (lambda ()
+    (harness-case "each Connection token sets its own bit"
+      (lambda ()
+        ;; request/connection.md, one fixture per bit. The value span is
+        ;; untouched by any of it -- the tokens are read for their flags and
+        ;; copied through unchanged.
+        (check-equal "keep-alive is flags=1"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nConnection: keep-alive\r\n\r\n") 11)
+                     '("off=31 len=10 span[header_value]=\"keep-alive\""
+                       "off=43 header_value complete"
+                       "off=45 headers complete method=4 v=1/1 flags=1 content_length=0"
+                       "off=45 message complete"))
+        (check-equal "close is flags=2"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nConnection: close\r\n\r\n") 11)
+                     '("off=31 len=5 span[header_value]=\"close\""
+                       "off=38 header_value complete"
+                       "off=40 headers complete method=4 v=1/1 flags=2 content_length=0"
+                       "off=40 message complete"))
+        ;; "Setting flag on `close` followed by tab": the tab is inside the
+        ;; span, because `header_value_connection_ws` MATCHES it.
+        (check-equal "a trailing tab stays in the span"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nConnection: close\t\r\n\r\n") 11)
+                     '("off=31 len=6 span[header_value]=\"close\t\""
+                       "off=39 header_value complete"
+                       "off=41 headers complete method=4 v=1/1 flags=2 content_length=0"
+                       "off=41 message complete"))))
+    (harness-case "a comma-separated list sets every bit it names"
+      (lambda ()
+        ;; request/connection.md "Sample": three known tokens and two unknown
+        ;; ones, giving flags=7 -- and the unknown tokens neither set nor
+        ;; clear anything.
+        (check-equal "flags=7"
+                     (list-tail (trace (string-append
+                                        "PUT /url HTTP/1.1\r\n"
+                                        "Connection: close, token, upgrade, token, keep-alive\r\n\r\n")) 11)
+                     '("off=31 len=40 span[header_value]=\"close, token, upgrade, token, keep-alive\""
+                       "off=73 header_value complete"
+                       "off=75 headers complete method=4 v=1/1 flags=7 content_length=0"
+                       "off=75 message complete"))))
+    (harness-case "the value tables are case-folded too, not just the name table"
+      (lambda ()
+        ;; llhttp lowercases the value before matching, in `header_value_connection`
+        ;; and in `header_value_te_chunked`. The corpus shows it at work in the
+        ;; "Upgrade GET request" fixture, whose `Connection: Upgrade` -- capital
+        ;; U -- contributes CONNECTION_UPGRADE to flags=14. The inputs here are
+        ;; the lowercase fixtures with the case flipped and nothing else, so the
+        ;; offsets are those fixtures' own and only the case is under test.
+        (check-equal "CLOSE is close"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nConnection: CLOSE\r\n\r\n") 13)
+                     '("off=40 headers complete method=4 v=1/1 flags=2 content_length=0"
+                       "off=40 message complete"))
+        ;; A chunked request parks after `headers complete` until there is a
+        ;; chunk reader, so this asserts the flag and stops where M4 does.
+        (check-equal "CHUNKED is chunked"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nTransfer-Encoding: CHUNKED\r\n\r\n") 13)
+                     '("off=49 headers complete method=4 v=1/1 flags=208 content_length=0"))))
+    (harness-case "lowercase chunked sets both bits, and the trace stops there"
+      (lambda ()
+        ;; The pair to the case test above and to `pigeons`: same shape, same
+        ;; offsets, and the only difference is that this one IS chunked --
+        ;; flags=208 rather than 200, and no `Request has invalid` refusal.
+        (check-equal "flags=208"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n") 11)
+                     '("off=38 len=7 span[header_value]=\"chunked\""
+                       "off=47 header_value complete"
+                       "off=49 headers complete method=4 v=1/1 flags=208 content_length=0"))))
+    (harness-case "close is not closed, and the table knows the difference"
+      (lambda ()
+        ;; The `close` / `closed` pair a Gate 0 spike measured, and the reason
+        ;; `make-sequence-dispatch-node` could not have been used here: the
+        ;; longer token is not a Connection keyword, so no bit is set.
+        (check-equal "closed sets nothing"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nConnection: closed\r\n\r\n") 13)
+                     '("off=41 headers complete method=4 v=1/1 flags=0 content_length=0"
+                       "off=41 message complete"))))
+    (harness-case "an Upgrade header sets its own bit, beside Connection's"
+      (lambda ()
+        ;; request/connection.md, "Upgrade GET request" (the short one): every
+        ;; line of that fixture except its last, which is the upgrade PAUSE --
+        ;; a later milestone's. flags=15 is UPGRADE | CONNECTION_UPGRADE |
+        ;; CONNECTION_KEEP_ALIVE, so all three bits and two headers are pinned
+        ;; by one expectation.
+        (check-equal "flags=15"
+                     (trace (string-append
+                             "GET /demo HTTP/1.1\r\n"
+                             "Connection: keep-alive, upgrade\r\n"
+                             "Upgrade: WebSocket\r\n\r\n"))
+                     '("off=0 message begin"
+                       "off=0 len=3 span[method]=\"GET\""
+                       "off=3 method complete"
+                       "off=4 len=5 span[url]=\"/demo\""
+                       "off=10 url complete"
+                       "off=10 len=4 span[protocol]=\"HTTP\""
+                       "off=14 protocol complete"
+                       "off=15 len=3 span[version]=\"1.1\""
+                       "off=18 version complete"
+                       "off=20 len=10 span[header_field]=\"Connection\""
+                       "off=31 header_field complete"
+                       "off=32 len=19 span[header_value]=\"keep-alive, upgrade\""
+                       "off=53 header_value complete"
+                       "off=53 len=7 span[header_field]=\"Upgrade\""
+                       "off=61 header_field complete"
+                       "off=62 len=9 span[header_value]=\"WebSocket\""
+                       "off=73 header_value complete"
+                       "off=75 headers complete method=1 v=1/1 flags=15 content_length=0"
+                       "off=75 message complete"))))
+    (harness-case "a bare Transfer-Encoding is a request error, after the line that reports it"
+      (lambda ()
+        ;; request/transfer-encoding.md, "Ignoring `pigeons`": the flag is set
+        ;; and PRINTED, and only then does the body decision refuse it --
+        ;; llhttp's `after_headers_complete` returning 5.
+        (check-equal "pigeons"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nTransfer-Encoding: pigeons\r\n\r\n") 11)
+                     '("off=38 len=7 span[header_value]=\"pigeons\""
+                       "off=47 header_value complete"
+                       "off=49 headers complete method=4 v=1/1 flags=200 content_length=0"
+                       "off=49 error code=15 reason=\"Request has invalid `Transfer-Encoding`\""))))
+    (harness-case "chunkedchunked is not chunked"
+      (lambda ()
+        ;; request/transfer-encoding.md. The table takes `chunked` whole and
+        ;; the next byte continues the token, so the value falls through to
+        ;; the token loop and no CHUNKED bit is set -- flags=200, not 208.
+        (check-equal "flags=200"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nTransfer-Encoding: chunkedchunked\r\n\r\n") 11)
+                     '("off=38 len=14 span[header_value]=\"chunkedchunked\""
+                       "off=54 header_value complete"
+                       "off=56 headers complete method=4 v=1/1 flags=200 content_length=0"
+                       "off=56 error code=15 reason=\"Request has invalid `Transfer-Encoding`\""))))
+    (harness-case "Content-Length after Transfer-Encoding is the mirror conflict"
+      (lambda ()
+        ;; The other half of the pair M4 Slice ① could only build one side of:
+        ;; the TRANSFER_ENCODING flag can now be set, so this branch is
+        ;; reachable and carries its own reason and its own code.
+        (check-equal "trace"
+                     (list-tail (trace (string-append
+                                        "PUT /url HTTP/1.1\r\n"
+                                        "Transfer-Encoding: pigeons\r\nContent-Length: 1\r\n\r\n")) 13)
+                     '("off=47 len=14 span[header_field]=\"Content-Length\""
+                       "off=62 header_field complete"
+                       "off=62 error code=11 reason=\"Content-Length can't be present with Transfer-Encoding\""))))))
+
 (harness-group "obs-fold is rejected, in both of its places"
   (lambda ()
     (harness-case "a continuation line after a non-empty value"

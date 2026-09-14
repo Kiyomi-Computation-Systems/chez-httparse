@@ -20,18 +20,18 @@
 # Regenerate the skeleton (statuses are NOT preserved) only when the corpus is
 # refreshed, and review the diff fixture by fixture.
 #
-not-yet  request/connection.md#1
+passing  request/connection.md#1
 not-yet  request/connection.md#2
 not-yet  request/connection.md#3
 deferred request/connection.md#4                         lenient
 not-yet  request/connection.md#5
 passing  request/connection.md#6
-not-yet  request/connection.md#7
-not-yet  request/connection.md#8
+passing  request/connection.md#7
+passing  request/connection.md#8
 not-yet  request/connection.md#9
 not-yet  request/connection.md#10
 deferred request/connection.md#11                        lenient
-not-yet  request/connection.md#12
+passing  request/connection.md#12
 deferred request/connection.md#13                        lenient
 not-yet  request/connection.md#14
 deferred request/connection.md#15                        lenient
@@ -129,7 +129,7 @@ not-yet  request/pipelining.md#1
 passing  request/sample.md#1
 passing  request/sample.md#2
 passing  request/sample.md#3
-not-yet  request/sample.md#4
+passing  request/sample.md#4
 passing  request/sample.md#5
 passing  request/sample.md#6
 passing  request/sample.md#7
@@ -145,7 +145,7 @@ passing  request/sample.md#16
 passing  request/sample.md#17
 deferred request/sample.md#18                            lenient
 passing  request/transfer-encoding.md#1
-not-yet  request/transfer-encoding.md#2
+passing  request/transfer-encoding.md#2
 not-yet  request/transfer-encoding.md#3
 not-yet  request/transfer-encoding.md#4
 not-yet  request/transfer-encoding.md#5
@@ -156,17 +156,17 @@ not-yet  request/transfer-encoding.md#9
 not-yet  request/transfer-encoding.md#10
 not-yet  request/transfer-encoding.md#11
 not-yet  request/transfer-encoding.md#12
-not-yet  request/transfer-encoding.md#13
-not-yet  request/transfer-encoding.md#14
+passing  request/transfer-encoding.md#13
+passing  request/transfer-encoding.md#14
 deferred request/transfer-encoding.md#15                 lenient
 passing  request/transfer-encoding.md#16
-not-yet  request/transfer-encoding.md#17
-not-yet  request/transfer-encoding.md#18
+passing  request/transfer-encoding.md#17
+passing  request/transfer-encoding.md#18
 deferred request/transfer-encoding.md#19                 lenient
 deferred request/transfer-encoding.md#20                 lenient
 not-yet  request/transfer-encoding.md#21
 not-yet  request/transfer-encoding.md#22
-not-yet  request/transfer-encoding.md#23
+passing  request/transfer-encoding.md#23
 not-yet  request/transfer-encoding.md#24
 not-yet  request/transfer-encoding.md#25
 deferred request/transfer-encoding.md#26                 lenient

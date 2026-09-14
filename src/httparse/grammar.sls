@@ -79,6 +79,7 @@
   (define httparse-header-bytes
     (append '(9 32) (range 33 126) (range 128 255)))
 
+  (define COMMA 44)
   (define SP 32)
   (define CR 13)
   (define LF 10)
@@ -233,6 +234,10 @@
   (define HS-CONTENT-LENGTH 2)
   (define HS-TRANSFER-ENCODING 3)
   (define HS-UPGRADE 4)
+  (define HS-CONNECTION-KEEP-ALIVE 5)
+  (define HS-CONNECTION-CLOSE 6)
+  (define HS-CONNECTION-UPGRADE 7)
+  (define HS-TRANSFER-ENCODING-CHUNKED 8)
 
   (define F-CONNECTION-KEEP-ALIVE 1)
   (define F-CONNECTION-CLOSE 2)
@@ -257,6 +262,12 @@
           (cons "transfer-encoding" HS-TRANSFER-ENCODING)
           (cons "upgrade" HS-UPGRADE)))
 
+  ;; llhttp's CONNECTION_TOKEN_CHARS: the header bytes minus the one that
+  ;; separates the tokens. Derived rather than transcribed, so the two sets
+  ;; cannot drift apart.
+  (define httparse-connection-token-bytes
+    (filter (lambda (b) (not (= b COMMA))) httparse-header-bytes))
+
   (define (header-state-store-name v)
     (string->symbol (string-append "header-state-store-" (number->string v))))
 
@@ -273,6 +284,70 @@
                                    (list 'header-state v)
                                    'header-field-colon #f #f))
          header-state-values))
+
+  ;; The three Connection keywords store their sub-state and continue at the
+  ;; token separator rather than at the colon, so they need their own store
+  ;; nodes rather than the field table's.
+  (define (conn-state-store-name v)
+    (string->symbol (string-append "conn-state-store-" (number->string v))))
+  (define connection-keyword-states
+    (list (cons "close" HS-CONNECTION-CLOSE)
+          (cons "upgrade" HS-CONNECTION-UPGRADE)
+          (cons "keep-alive" HS-CONNECTION-KEEP-ALIVE)))
+  (define (conn-state-store-nodes)
+    (map (lambda (row)
+           (make-field-action-node (conn-state-store-name (cdr row)) 'store
+                                   (list 'header-state (cdr row)) 'conn-ws #f #f))
+         connection-keyword-states))
+
+  ;; llhttp's `setHeaderFlags`: a connection sub-state becomes a flag bit and
+  ;; collapses back to CONNECTION, and the chunked sub-state becomes CHUNKED.
+  ;; This is why `Connection: close, token, upgrade, token, keep-alive` ends at
+  ;; flags=7 -- the chain runs once per comma and once at the end of the value.
+  ;;
+  ;; THREE CALL SITES, THREE COPIES, AND NOT BY CHOICE. The value span is open
+  ;; at one of them and closed at the other two, and the verifier's flat span
+  ;; lattice refuses one node reached with two different span states. So the
+  ;; chain is generated from a prefix and a continuation.
+  (define (set-header-flags-nodes prefix next)
+    (define (nm suffix) (string->symbol (string-append prefix "-" suffix)))
+    (list
+     (make-field-branch-node (nm "keep-alive") 'equal
+                             (list 'header-state HS-CONNECTION-KEEP-ALIVE)
+                             (nm "set-keep-alive") (nm "close") #f)
+     (make-field-action-node (nm "set-keep-alive") 'set-mask
+                             (list 'flags F-CONNECTION-KEEP-ALIVE)
+                             (nm "to-connection") #f #f)
+     (make-field-branch-node (nm "close") 'equal
+                             (list 'header-state HS-CONNECTION-CLOSE)
+                             (nm "set-close") (nm "upgrade") #f)
+     (make-field-action-node (nm "set-close") 'set-mask
+                             (list 'flags F-CONNECTION-CLOSE)
+                             (nm "to-connection") #f #f)
+     (make-field-branch-node (nm "upgrade") 'equal
+                             (list 'header-state HS-CONNECTION-UPGRADE)
+                             (nm "set-upgrade") (nm "chunked") #f)
+     (make-field-action-node (nm "set-upgrade") 'set-mask
+                             (list 'flags F-CONNECTION-UPGRADE)
+                             (nm "to-connection") #f #f)
+     (make-field-branch-node (nm "chunked") 'equal
+                             (list 'header-state HS-TRANSFER-ENCODING-CHUNKED)
+                             (nm "set-chunked") next #f)
+     (make-field-action-node (nm "set-chunked") 'set-mask
+                             (list 'flags F-CHUNKED) next #f #f)
+     ;; NO CHECK COVERS THIS LINE, and the mutation that changes it survives
+     ;; both lanes. Collapsing to CONNECTION rather than to GENERAL is
+     ;; unobservable in strict REQUEST parsing: the chain above tests only the
+     ;; four sub-states, so 1 and 0 fall through it alike, and the field table
+     ;; overwrites the state at the next name either way. It is llhttp's value
+     ;; and it stays, because the obs-fold arm that reads it back is a lenient
+     ;; mode's and responses reach it differently. The slice that makes it
+     ;; observable owes this line a test.
+     (make-field-action-node (nm "to-connection") 'store
+                             (list 'header-state HS-CONNECTION) next #f #f)))
+
+  (define (set-header-flags-entry prefix)
+    (string->symbol (string-append prefix "-keep-alive")))
 
   (define DIGITS '(0 1 2 3 4 5 6 7 8 9))
 
@@ -484,7 +559,13 @@
                                    "Empty Transfer-Encoding" #f)
            (make-error-declaration 'te-with-content-length
                                    'invalid-transfer-encoding
-                                   "Transfer-Encoding can't be present with Content-Length" #f))
+                                   "Transfer-Encoding can't be present with Content-Length" #f)
+           (make-error-declaration 'cl-with-te 'invalid-content-length
+                                   "Content-Length can't be present with Transfer-Encoding" #f)
+           (make-error-declaration 'bad-te-value 'invalid-transfer-encoding
+                                   "Invalid `Transfer-Encoding` header value" #f)
+           (make-error-declaration 'request-invalid-te 'invalid-transfer-encoding
+                                   "Request has invalid `Transfer-Encoding`" #f))
      (append
       (list
       ;; --- the first byte -----------------------------------------------------
@@ -737,17 +818,25 @@
                               (make-edge 'header-field-complete 'advance) #f))
         (make-edge 'e-bad-header-token 'reexecute) 'e-eof-none #f)
       ;; llhttp's `onHeaderFieldComplete` loads the header state and, for the
-      ;; two framing headers, refuses the pair before the value is read. Only
-      ;; the Transfer-Encoding side exists here: the CONTENT_LENGTH flag can be
-      ;; set by this slice and the TRANSFER_ENCODING flag cannot, so the mirror
-      ;; branch would be an unreachable node -- which the verifier refuses.
+      ;; two framing headers, refuses the pair before the value is read. BOTH
+      ;; sides exist now -- each has its own code AND its own reason, which is
+      ;; decision 0013's point yet again:
+      ;;
+      ;;   TE then CL   code 11  Content-Length can't be present with Transfer-Encoding
+      ;;   CL then TE   code 15  Transfer-Encoding can't be present with Content-Length
       (ev 'header-field-complete 'on-header-field-complete 'after-field-complete)
       (make-field-branch-node 'after-field-complete 'equal
                               (list 'header-state HS-TRANSFER-ENCODING)
-                              'check-te-conflict 'value-discard-ws #f)
+                              'check-te-conflict 'after-field-complete-cl #f)
       (make-field-branch-node 'check-te-conflict 'mask-any
                               (list 'flags F-CONTENT-LENGTH)
                               'e-te-with-content-length 'value-discard-ws #f)
+      (make-field-branch-node 'after-field-complete-cl 'equal
+                              (list 'header-state HS-CONTENT-LENGTH)
+                              'check-cl-conflict 'value-discard-ws #f)
+      (make-field-branch-node 'check-cl-conflict 'mask-any
+                              (list 'flags F-TRANSFER-ENCODING)
+                              'e-cl-with-te 'value-discard-ws #f)
 
       ;; --- the value ----------------------------------------------------------
       ;; Leading OWS is discarded and is not part of the span.
@@ -781,7 +870,10 @@
                               'e-empty-content-length 'value-empty-check-te #f)
       (make-field-branch-node 'value-empty-check-te 'equal
                               (list 'header-state HS-TRANSFER-ENCODING)
-                              'e-empty-transfer-encoding 'value-empty-open #f)
+                              'e-empty-transfer-encoding
+                              (set-header-flags-entry "shf-empty") #f))
+      (set-header-flags-nodes "shf-empty" 'value-empty-open)
+      (list
 
       ;; An empty value is ANNOUNCED, not omitted: llhttp opens and immediately
       ;; closes the span, which is the upstream empty-span behaviour this
@@ -794,11 +886,114 @@
       ;; and Upgrade take llhttp's own default arm, `resetHeaderState`, until
       ;; the slice that reads them.
       (make-span-start-node 'value-open 'header-value-span 'value-start #f)
-      (make-field-branch-node 'value-start 'equal
+      (make-field-branch-node 'value-start 'equal (list 'header-state HS-UPGRADE)
+                              'upgrade-set-flag 'value-start-te #f)
+      (make-field-action-node 'upgrade-set-flag 'set-mask (list 'flags F-UPGRADE)
+                              'value-state-general #f #f)
+      (make-field-branch-node 'value-start-te 'equal
+                              (list 'header-state HS-TRANSFER-ENCODING)
+                              'te-check-chunked 'value-start-cl #f)
+      (make-field-branch-node 'value-start-cl 'equal
                               (list 'header-state HS-CONTENT-LENGTH)
-                              'cl-once 'value-state-general #f)
+                              'cl-once 'value-start-conn #f)
+      (make-field-branch-node 'value-start-conn 'equal
+                              (list 'header-state HS-CONNECTION)
+                              'conn-value 'value-state-general #f)
       (make-field-action-node 'value-state-general 'store (list 'header-state HS-GENERAL)
                               'value-loop #f #f)
+
+      ;; --- Transfer-Encoding ---------------------------------------------------
+      ;;
+      ;; ONCE CHUNKED IS CHOSEN NO OTHER CODING IS ALLOWED IN A REQUEST, and
+      ;; llhttp enforces that at the START of the next value and at the comma
+      ;; inside one. Strict mode takes the refusing arm both times, so the
+      ;; span is ended -- EMPTY at the value start -- and one byte is skipped
+      ;; before the error, because `skipTo` consumes.
+      (make-field-branch-node 'te-check-chunked 'mask-any (list 'flags F-CHUNKED)
+                              'te-after-chunked 'te-set-flag #f)
+      (make-span-end-node 'te-after-chunked 'header-value-span 'te-eat-one #f)
+      (make-byte-dispatch-node 'te-eat-one
+        '() (make-edge 'e-bad-te-value 'advance) 'e-eof-none #f)
+
+      ;; The CHUNKED bit is CLEARED on the way in and set again only by
+      ;; `setHeaderFlags` at the end of a value that really was `chunked`, so a
+      ;; later coding un-chunks the message rather than adding to it.
+      (make-field-action-node 'te-set-flag 'set-mask (list 'flags F-TRANSFER-ENCODING)
+                              'te-unset-chunked #f #f)
+      ;; ALSO UNCHECKED, AND ALSO DELIBERATE. In a strict request the branch
+      ;; above refuses any coding that follows `chunked`, so this clear only
+      ;; ever runs with the bit already clear -- measured, not argued: the
+      ;; mutation that removes it survives both lanes. Lenient transfer
+      ;; encoding and responses both reach it with the bit set.
+      (make-field-action-node 'te-unset-chunked 'clear-mask (list 'flags F-CHUNKED)
+                              'te-chunked #f #f)
+      (make-keyword-table-node 'te-chunked
+        (list (make-keyword-entry (ascii-bytes "chunked") 'te-chunked-last #f))
+        (make-edge 'te-token 'reexecute) 'e-eof-header-value #t #f)
+
+      ;; `chunkedchunked` is not chunked: the table takes the first seven bytes
+      ;; and the eighth continues the token, so this falls through to the token
+      ;; loop and no sub-state is stored. Only SP is skipped here, not HTAB.
+      (make-byte-dispatch-node 'te-chunked-last
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'te-chunked-last 'advance) #f)
+              (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'te-mark-chunked 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher COMMA)
+                              (make-edge 'te-after-chunked 'reexecute) #f))
+        (make-edge 'te-token 'reexecute) 'e-eof-header-value #f)
+      (make-field-action-node 'te-mark-chunked 'store
+                              (list 'header-state HS-TRANSFER-ENCODING-CHUNKED)
+                              'after-value #f #f)
+
+      (make-byte-dispatch-node 'te-token
+        (list (make-byte-case (make-exact-byte-matcher COMMA)
+                              (make-edge 'te-token-ows 'advance) #f)
+              (make-byte-case (make-byte-set-matcher httparse-connection-token-bytes)
+                              (make-edge 'te-token 'advance) #f))
+        (make-edge 'value-state-general 'reexecute) 'e-eof-header-value #f)
+      (make-byte-dispatch-node 'te-token-ows
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'te-token-ows 'advance) #f))
+        (make-edge 'te-chunked 'reexecute) 'e-eof-header-value #f)
+
+      ;; --- Connection ----------------------------------------------------------
+      ;;
+      ;; `close` IS NOT `closed`. The table takes the keyword and reexecutes
+      ;; the byte after it; `conn-ws` then finds a byte that is neither comma,
+      ;; space nor line ending, resets the sub-state and hands the rest to the
+      ;; token loop -- so `closed` sets nothing. This is the pair a Gate 0
+      ;; spike measured, and the reason `make-sequence-dispatch-node` could
+      ;; not be used here even if the names were case-sensitive.
+      (make-byte-dispatch-node 'conn-value
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'conn-value 'advance) #f))
+        (make-edge 'conn-table 'reexecute) 'e-eof-header-value #f))
+      (list
+      (make-keyword-table-node 'conn-table
+        (map (lambda (row)
+               (make-keyword-entry (ascii-bytes (car row))
+                                   (conn-state-store-name (cdr row)) #f))
+             connection-keyword-states)
+        (make-edge 'conn-token 'reexecute) 'e-eof-header-value #t #f))
+      (conn-state-store-nodes)
+      (list
+      (make-byte-dispatch-node 'conn-ws
+        (list (make-byte-case (make-exact-byte-matcher COMMA)
+                              (make-edge (set-header-flags-entry "shf-comma") 'advance) #f)
+              (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'conn-ws 'advance) #f)
+              (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'after-value 'reexecute) #f))
+        (make-edge 'conn-token-reset 'reexecute) 'e-eof-header-value #f)
+      (make-field-action-node 'conn-token-reset 'store (list 'header-state HS-GENERAL)
+                              'conn-token #f #f)
+      (make-byte-dispatch-node 'conn-token
+        (list (make-byte-case (make-exact-byte-matcher COMMA)
+                              (make-edge 'conn-value 'advance) #f)
+              (make-byte-case (make-byte-set-matcher httparse-connection-token-bytes)
+                              (make-edge 'conn-token 'advance) #f))
+        (make-edge 'after-value 'reexecute) 'e-eof-header-value #f)
 
       ;; --- Content-Length ------------------------------------------------------
       ;;
@@ -872,7 +1067,10 @@
       (make-byte-dispatch-node 'value-lws
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
                               (make-edge 'e-ws-after-value 'reexecute) #f))
-        (make-edge 'value-complete 'reexecute) 'e-eof-none #f)
+        (make-edge (set-header-flags-entry "shf-complete") 'reexecute) 'e-eof-none #f))
+      (set-header-flags-nodes "shf-complete" 'value-complete)
+      (set-header-flags-nodes "shf-comma" 'conn-value)
+      (list
       (ev 'value-complete 'on-header-value-complete 'header-field-start)
 
       ;; --- the empty line ------------------------------------------------------
@@ -901,7 +1099,18 @@
       ;; A CONTENT LENGTH OF ZERO IS NOT AN EMPTY BODY. llhttp answers 0 -- no
       ;; body at all -- so there is no `span[body]=""` for `Content-Length: 0`,
       ;; which is the opposite of what an empty HEADER value does.
-      (make-field-branch-node 'after-headers 'mask-any (list 'flags F-CONTENT-LENGTH)
+      ;; CHUNKED FIRST -- it overrides a Content-Length that is also present.
+      ;; Its target is the parking dispatch until M5 builds a chunk reader, so
+      ;; a chunked request's trace simply STOPS after `headers complete`
+      ;; rather than continuing with something llhttp never wrote.
+      (make-field-branch-node 'after-headers 'mask-any (list 'flags F-CHUNKED)
+                              'after-message 'after-headers-te #f)
+      ;; A request that named a transfer coding and did not end with `chunked`
+      ;; has no reliable body length: llhttp's `after_headers_complete`
+      ;; returns 5, AFTER the line that printed the flag.
+      (make-field-branch-node 'after-headers-te 'mask-any (list 'flags F-TRANSFER-ENCODING)
+                              'e-request-invalid-te 'after-headers-cl #f)
+      (make-field-branch-node 'after-headers-cl 'mask-any (list 'flags F-CONTENT-LENGTH)
                               'body-length-check 'message-complete #f)
       (make-field-branch-node 'body-length-check 'nonzero (list 'content-length)
                               'body-open 'message-complete #f)
@@ -972,5 +1181,8 @@
       (make-error-node 'e-bad-content-length-char 'bad-content-length-char #f)
       (make-error-node 'e-empty-content-length 'empty-content-length #f)
       (make-error-node 'e-empty-transfer-encoding 'empty-transfer-encoding #f)
-      (make-error-node 'e-te-with-content-length 'te-with-content-length #f)))
+      (make-error-node 'e-te-with-content-length 'te-with-content-length #f)
+      (make-error-node 'e-cl-with-te 'cl-with-te #f)
+      (make-error-node 'e-bad-te-value 'bad-te-value #f)
+      (make-error-node 'e-request-invalid-te 'request-invalid-te #f)))
      'eof #f)))
