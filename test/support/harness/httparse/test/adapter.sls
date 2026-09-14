@@ -57,6 +57,7 @@
       ;; this layer a rename, because not one of the numbers is reconstructed
       ;; from the headers that produced them (decision 0014).
       (on-headers-complete       state-line "headers complete")
+      (on-body-data              span       "body")
       (on-message-complete       event      "message complete")))
 
   ;; The fields a state line reads, in llhttp's print order. Exported so the
@@ -68,15 +69,18 @@
   ;; `unexpected-eof` has no row deliberately: llhttp reports nothing at all
   ;; when input runs out mid-token, so a trace can never carry one.
   (define adapter-error-codes
-    '((strict               . 2)
-      (lf-expected          . 3)
-      (invalid-method       . 6)
-      (invalid-url          . 7)
-      (invalid-constant     . 8)
-      (invalid-version      . 9)
-      (invalid-header-token . 10)
-      (cr-expected          . 25)
-      (unexpected-space     . 30)))
+    '((strict                    . 2)
+      (lf-expected               . 3)
+      (unexpected-content-length . 4)
+      (invalid-method            . 6)
+      (invalid-url               . 7)
+      (invalid-constant          . 8)
+      (invalid-version           . 9)
+      (invalid-header-token      . 10)
+      (invalid-content-length    . 11)
+      (invalid-transfer-encoding . 15)
+      (cr-expected               . 25)
+      (unexpected-space          . 30)))
 
   ;; field-value : (Listof (Pair Symbol ExactInteger)) Symbol -> ExactInteger
   ;; No default and no coercion: a field the parser did not supply, or supplied

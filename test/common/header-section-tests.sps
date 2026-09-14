@@ -132,6 +132,142 @@
                      '("off=24 len=0 span[header_value]=\"\""
                        "off=24 header_value complete"))))))
 
+(harness-group "Content-Length, and the body it measures"
+  (lambda ()
+    (harness-case "request/content-length.md#1 reproduces exactly, body included"
+      (lambda ()
+        ;; The whole expected block of that fixture. `flags=20` is
+        ;; FLAGS.CONTENT_LENGTH, and the body arrives as a span like any other.
+        (check-equal "trace"
+                     (trace "PUT /url HTTP/1.1\r\nContent-Length: 003\r\n\r\nabc")
+                     '("off=0 message begin"
+                       "off=0 len=3 span[method]=\"PUT\""
+                       "off=3 method complete"
+                       "off=4 len=4 span[url]=\"/url\""
+                       "off=9 url complete"
+                       "off=9 len=4 span[protocol]=\"HTTP\""
+                       "off=13 protocol complete"
+                       "off=14 len=3 span[version]=\"1.1\""
+                       "off=17 version complete"
+                       "off=19 len=14 span[header_field]=\"Content-Length\""
+                       "off=34 header_field complete"
+                       "off=35 len=3 span[header_value]=\"003\""
+                       "off=40 header_value complete"
+                       "off=42 headers complete method=4 v=1/1 flags=20 content_length=3"
+                       "off=42 len=3 span[body]=\"abc\""
+                       "off=45 message complete"))))
+    (harness-case "the name table is case-insensitive, as llhttp's transform makes it"
+      (lambda ()
+        ;; llhttp lowercases the field name before `select(SPECIAL_HEADERS)`.
+        ;; The SPAN still carries the bytes as they arrived.
+        (check-equal "content_length is still set"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\ncOnTeNt-LeNgTh: 5\r\n\r\nabcde") 9)
+                     '("off=19 len=14 span[header_field]=\"cOnTeNt-LeNgTh\""
+                       "off=34 header_field complete"
+                       "off=35 len=1 span[header_value]=\"5\""
+                       "off=38 header_value complete"
+                       "off=40 headers complete method=4 v=1/1 flags=20 content_length=5"
+                       "off=40 len=5 span[body]=\"abcde\""
+                       "off=45 message complete"))))
+    (harness-case "a longer name that merely starts with a special one is general"
+      (lambda ()
+        ;; llhttp's own comment: `Connection-Duration` instead of `Connection`.
+        ;; The table matches the prefix, the colon check falls through, and the
+        ;; general token loop carries on from where the walk stopped.
+        (check-equal "no flag, and the whole name in the span"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length-Ish: 3\r\n\r\n") 9)
+                     '("off=19 len=18 span[header_field]=\"Content-Length-Ish\""
+                       "off=38 header_field complete"
+                       "off=39 len=1 span[header_value]=\"3\""
+                       "off=42 header_value complete"
+                       "off=44 headers complete method=4 v=1/1 flags=0 content_length=0"
+                       "off=44 message complete"))))
+    (harness-case "a space before the colon is a different error on a special name"
+      (lambda ()
+        ;; request/connection.md, "Invalid whitespace token with `Connection`
+        ;; header field": the name completes into a SPAN and the error is at
+        ;; 30, one PAST the space at 29, because llhttp peeks the space, ends
+        ;; the span, and then `skipTo`s -- and a skip consumes.
+        (check-equal "Connection"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nConnection : upgrade\r\n\r\n") 9)
+                     '("off=19 len=10 span[header_field]=\"Connection\""
+                       "off=30 error code=10 reason=\"Invalid header field char\""))
+        ;; The same rule for another name in llhttp's SPECIAL_HEADERS, which
+        ;; no fixture exercises: `proxy-connection` is in the table, so it
+        ;; takes the same path. This is what makes its presence observable at
+        ;; all in this slice -- the connection FLAGS it also selects are the
+        ;; next slice's.
+        (check-equal "Proxy-Connection"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nProxy-Connection : x\r\n\r\n") 9)
+                     '("off=19 len=16 span[header_field]=\"Proxy-Connection\""
+                       "off=36 error code=10 reason=\"Invalid header field char\""))
+        ;; And the contrast that makes the pair mean something. The same
+        ;; sixteen-byte length, so the space is at 35 either way and only the
+        ;; RULE moves the number: a name not in the table errors AT the space
+        ;; rather than past it, with a different reason, and with the span
+        ;; still open so no fragment is delivered at all.
+        (check-equal "a general name of the same length"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nProxy-Connexions : x\r\n\r\n") 9)
+                     '("off=35 error code=10 reason=\"Invalid header token\""))))
+    (harness-case "the accumulator overflows where llhttp's does, one digit late"
+      (lambda ()
+        ;; request/content-length.md, "Error on `Content-Length` overflow":
+        ;; 22 digits in, and the span is 21 of them -- the offending digit is
+        ;; CONSUMED before the overflow is reported, so the error is at 56 and
+        ;; not at 55. Only the accumulator can produce that span, which is why
+        ;; this fixture is this milestone's and not the header section's.
+        (check-equal "trace"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length: 1000000000000000000000\r\n\r\n") 11)
+                     '("off=35 len=21 span[header_value]=\"100000000000000000000\""
+                       "off=56 error code=11 reason=\"Content-Length overflow\""))))
+    (harness-case "a second Content-Length is a duplicate, checked at the value"
+      (lambda ()
+        ;; request/content-length.md, "Error on duplicate `Content-Length`":
+        ;; the second field name completes and THEN the error fires, because
+        ;; the flag is tested where the value starts.
+        (check-equal "trace"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n") 11)
+                     '("off=35 len=1 span[header_value]=\"1\""
+                       "off=38 header_value complete"
+                       "off=38 len=14 span[header_field]=\"Content-Length\""
+                       "off=53 header_field complete"
+                       "off=54 error code=4 reason=\"Duplicate Content-Length\""))))
+    (harness-case "trailing space is inside the value span but not inside the number"
+      (lambda ()
+        ;; `header_value_content_length_ws` MATCHES spaces, so they are
+        ;; consumed and the span ends at the CR past them.
+        (check-equal "span keeps the space"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length: 4 \r\n\r\nabcd") 11)
+                     '("off=35 len=2 span[header_value]=\"4 \""
+                       "off=39 header_value complete"
+                       "off=41 headers complete method=4 v=1/1 flags=20 content_length=4"
+                       "off=41 len=4 span[body]=\"abcd\""
+                       "off=45 message complete"))))
+    (harness-case "a non-digit in Content-Length is its own reason, at the byte"
+      (lambda ()
+        ;; `.otherwise` does not consume, so the error is AT the character --
+        ;; and the span is ended first, which is why the value still renders.
+        (check-equal "trace"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length: 4x\r\n\r\n") 11)
+                     '("off=35 len=1 span[header_value]=\"4\""
+                       "off=36 error code=11 reason=\"Invalid character in Content-Length\""))))
+    (harness-case "an empty Content-Length is an error, not an empty span"
+      (lambda ()
+        ;; `checkEmptyHeaderValue` loads the header state BEFORE the empty
+        ;; span is announced, so a general header still gets its empty span
+        ;; (asserted above) and this one does not.
+        (check-equal "trace"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length:\r\n\r\n") 11)
+                     '("off=36 error code=11 reason=\"Empty Content-Length\""))))
+    (harness-case "Content-Length zero has no body at all"
+      (lambda ()
+        ;; llhttp's body decision: the flag is set but the length is zero, so
+        ;; the answer is 0 -- no body -- and not an empty body span.
+        (check-equal "trace"
+                     (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length: 0\r\n\r\n") 13)
+                     '("off=40 headers complete method=4 v=1/1 flags=20 content_length=0"
+                       "off=40 message complete"))))))
+
 (harness-group "obs-fold is rejected, in both of its places"
   (lambda ()
     (harness-case "a continuation line after a non-empty value"

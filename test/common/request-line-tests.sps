@@ -55,6 +55,7 @@
                                  (list 'on-header-value-data (span 'header-value))
                                  (list 'on-header-value-complete (ev 'header-value-complete))
                                  (list 'on-headers-complete (ev 'headers-complete))
+                                 (list 'on-body-data (span 'body))
                                  (list 'on-message-complete (ev 'message-complete)))
                            #f))
            (bv (string->utf8 input))
@@ -103,6 +104,7 @@
         (list 'on-header-value-data ignore-span)
         (list 'on-header-value-complete ignore-event)
         (list 'on-headers-complete ignore-event)
+        (list 'on-body-data ignore-span)
         (list 'on-message-complete ignore-event)))
 ;; Since M3 the request line no longer terminates the parse -- it runs on into
 ;; the header section -- so a well-formed line leaves the parser wanting more
@@ -344,6 +346,7 @@
                                        (list 'on-header-value-data (span 'header-value))
                                        (list 'on-header-value-complete (ev 'header-value-complete))
                                        (list 'on-headers-complete (ev 'headers-complete))
+                                       (list 'on-body-data (span 'body))
                                        (list 'on-message-complete (ev 'message-complete)))
                                  #f)))
             (let loop ((i 0))

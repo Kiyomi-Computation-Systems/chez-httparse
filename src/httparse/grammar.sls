@@ -221,6 +221,61 @@
                                    'method-close #f #f))
          method-masks))
 
+  ;; --- llhttp's HEADER_STATE and FLAGS -------------------------------------
+  ;;
+  ;; Both are llhttp's own numbering, not ours, because both are OBSERVABLE:
+  ;; `flags=%x` is printed verbatim on the `headers complete` line, and
+  ;; `header_state` decides which value machine a field name selects. Renaming
+  ;; either would mean the adapter had to translate a number back, which is a
+  ;; computation it may not do (decision 0014).
+  (define HS-GENERAL 0)
+  (define HS-CONNECTION 1)
+  (define HS-CONTENT-LENGTH 2)
+  (define HS-TRANSFER-ENCODING 3)
+  (define HS-UPGRADE 4)
+
+  (define F-CONNECTION-KEEP-ALIVE 1)
+  (define F-CONNECTION-CLOSE 2)
+  (define F-CONNECTION-UPGRADE 4)
+  (define F-CHUNKED 8)
+  (define F-UPGRADE 16)
+  (define F-CONTENT-LENGTH 32)
+  (define F-TRANSFER-ENCODING 512)
+
+  ;; llhttp's SPECIAL_HEADERS: the five field names that select a value machine
+  ;; rather than being copied through. `proxy-connection` shares CONNECTION's
+  ;; state, so five names collapse to four store nodes.
+  ;;
+  ;; THE TABLE IS CASE-FOLDED, which is the second of the two reasons this
+  ;; project asked for a keyword-table primitive upstream: llhttp lowercases
+  ;; the field name before matching it, and `make-sequence-case` takes exact
+  ;; bytes. The SPAN still carries the bytes as they arrived.
+  (define httparse-special-headers
+    (list (cons "connection" HS-CONNECTION)
+          (cons "content-length" HS-CONTENT-LENGTH)
+          (cons "proxy-connection" HS-CONNECTION)
+          (cons "transfer-encoding" HS-TRANSFER-ENCODING)
+          (cons "upgrade" HS-UPGRADE)))
+
+  (define (header-state-store-name v)
+    (string->symbol (string-append "header-state-store-" (number->string v))))
+
+  (define header-state-values
+    (let loop ((rows httparse-special-headers) (acc '()))
+      (cond ((null? rows) (list-sort < acc))
+            ((member (cdar rows) acc) (loop (cdr rows) acc))
+            (else (loop (cdr rows) (cons (cdar rows) acc))))))
+
+  ;; llhttp's `select(SPECIAL_HEADERS, store('header_state', 'header_field_colon'))`
+  (define (header-state-store-nodes)
+    (map (lambda (v)
+           (make-field-action-node (header-state-store-name v) 'store
+                                   (list 'header-state v)
+                                   'header-field-colon #f #f))
+         header-state-values))
+
+  (define DIGITS '(0 1 2 3 4 5 6 7 8 9))
+
   (define DOT 46)
   (define (digit n) (+ 48 n))
   (define (other-digits ok)
@@ -328,7 +383,10 @@
            (make-uint-field 'http-major 8 0 #f)
            (make-uint-field 'http-minor 8 0 #f)
            (make-uint-field 'flags 16 0 #f)
-           (make-uint-field 'content-length 64 0 #f))
+           (make-uint-field 'content-length 64 0 #f)
+           ;; Which value machine the field name selected. Not printed, but
+           ;; llhttp's numbering all the same -- see the constants above.
+           (make-uint-field 'header-state 8 0 #f))
      (list (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
            (make-callback-declaration 'on-method-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-method-complete 'event #t '() #f #f)
@@ -343,13 +401,15 @@
            (make-callback-declaration 'on-header-value-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-header-value-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-headers-complete 'event #t '() #f #f)
+           (make-callback-declaration 'on-body-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-message-complete 'event #t '() #f #f))
      (list (make-span-declaration 'method-span 'on-method-data #f #f)
            (make-span-declaration 'url-span 'on-url-data #f #f)
            (make-span-declaration 'protocol-span 'on-protocol-data #f #f)
            (make-span-declaration 'version-span 'on-version-data #f #f)
            (make-span-declaration 'header-field-span 'on-header-field-data #f #f)
-           (make-span-declaration 'header-value-span 'on-header-value-data #f #f))
+           (make-span-declaration 'header-value-span 'on-header-value-data #f #f)
+           (make-span-declaration 'body-span 'on-body-data #f #f))
      ;; ONE CODE SYMBOL PER llhttp ERROR NUMBER, AND llhttp's REASON VERBATIM.
      ;; The corpus records `error code=N reason="..."`, and two of llhttp's
      ;; reasons are the same string under different numbers ("Expected CRLF
@@ -406,7 +466,25 @@
            (make-error-declaration 'lf-after-value 'lf-expected
                                    "Missing expected LF after header value" #f)
            (make-error-declaration 'lf-after-headers 'strict
-                                   "Expected LF after headers" #f))
+                                   "Expected LF after headers" #f)
+           ;; --- framing ----------------------------------------------------
+           ;; Four reasons under code 11 and two under 15, which is decision
+           ;; 0013's shape again: the code alone identifies neither.
+           (make-error-declaration 'duplicate-content-length
+                                   'unexpected-content-length
+                                   "Duplicate Content-Length" #f)
+           (make-error-declaration 'content-length-overflow 'invalid-content-length
+                                   "Content-Length overflow" #f)
+           (make-error-declaration 'bad-content-length-char 'invalid-content-length
+                                   "Invalid character in Content-Length" #f)
+           (make-error-declaration 'empty-content-length 'invalid-content-length
+                                   "Empty Content-Length" #f)
+           (make-error-declaration 'empty-transfer-encoding
+                                   'invalid-transfer-encoding
+                                   "Empty Transfer-Encoding" #f)
+           (make-error-declaration 'te-with-content-length
+                                   'invalid-transfer-encoding
+                                   "Transfer-Encoding can't be present with Content-Length" #f))
      (append
       (list
       ;; --- the first byte -----------------------------------------------------
@@ -592,7 +670,51 @@
                               (make-edge 'e-bad-header-token 'reexecute) #f))
         (make-edge 'header-field-open 'reexecute) 'e-eof-none #f)
 
-      (make-span-start-node 'header-field-open 'header-field-span 'header-field-loop #f)
+      ;; THE NAME IS MATCHED AGAINST llhttp's FIVE SPECIAL HEADERS FIRST, and
+      ;; what the match changes is not the span -- it is which value machine
+      ;; runs, and what a space before the colon means.
+      ;;
+      ;; A no-match leaves the walk where it broke and reexecutes, so the
+      ;; general loop resumes mid-name with the span still open and the whole
+      ;; name still lands in it: `Content-Type` breaks at the `T` that does not
+      ;; continue `content-l`, and its span is all twelve bytes.
+      (make-span-start-node 'header-field-open 'header-field-span 'header-field-table #f))
+      (list
+      (make-keyword-table-node 'header-field-table
+        (map (lambda (row)
+               (make-keyword-entry (ascii-bytes (car row))
+                                   (header-state-store-name (cdr row)) #f))
+             httparse-special-headers)
+        (make-edge 'header-state-general 'reexecute)
+        'e-eof-header-field #t #f))
+      (header-state-store-nodes)
+      (list
+      ;; llhttp's `.otherwise(resetHeaderState('header_field_general'))`, shared
+      ;; by the table's no-match and by a special name that turns out to be a
+      ;; longer one -- `Connection-Duration` matches `connection`, then falls
+      ;; through here at the hyphen.
+      (make-field-action-node 'header-state-general 'store (list 'header-state HS-GENERAL)
+                              'header-field-loop #f #f)
+
+      ;; A SPACE BEFORE THE COLON IS A DIFFERENT ERROR FROM A SPACE ANYWHERE
+      ;; ELSE, and only on this path. llhttp peeks it, ends the span, and then
+      ;; `skipTo`s the error -- a skip CONSUMES -- so the reason is `Invalid
+      ;; header field char` and the offset is one past the space, while the
+      ;; general path's `Invalid header token` is at the character itself.
+      ;; Two fixtures turn on the pair.
+      (make-byte-dispatch-node 'header-field-colon
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'field-close-before-space 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher COLON)
+                              (make-edge 'header-field-close 'reexecute) #f))
+        (make-edge 'header-state-general 'reexecute) 'e-eof-header-field #f)
+      (make-span-end-node 'field-close-before-space 'header-field-span
+                          'eat-space-before-colon #f)
+      (make-byte-dispatch-node 'eat-space-before-colon
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'e-bad-header-field-char 'advance) #f))
+        (make-edge 'e-bad-header-field-char 'reexecute) 'e-eof-none #f)
+
       (make-byte-dispatch-node 'header-field-loop
         (list (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
                               (make-edge 'header-field-loop 'advance) #f))
@@ -614,7 +736,18 @@
         (list (make-byte-case (make-exact-byte-matcher COLON)
                               (make-edge 'header-field-complete 'advance) #f))
         (make-edge 'e-bad-header-token 'reexecute) 'e-eof-none #f)
-      (ev 'header-field-complete 'on-header-field-complete 'value-discard-ws)
+      ;; llhttp's `onHeaderFieldComplete` loads the header state and, for the
+      ;; two framing headers, refuses the pair before the value is read. Only
+      ;; the Transfer-Encoding side exists here: the CONTENT_LENGTH flag can be
+      ;; set by this slice and the TRANSFER_ENCODING flag cannot, so the mirror
+      ;; branch would be an unreachable node -- which the verifier refuses.
+      (ev 'header-field-complete 'on-header-field-complete 'after-field-complete)
+      (make-field-branch-node 'after-field-complete 'equal
+                              (list 'header-state HS-TRANSFER-ENCODING)
+                              'check-te-conflict 'value-discard-ws #f)
+      (make-field-branch-node 'check-te-conflict 'mask-any
+                              (list 'flags F-CONTENT-LENGTH)
+                              'e-te-with-content-length 'value-discard-ws #f)
 
       ;; --- the value ----------------------------------------------------------
       ;; Leading OWS is discarded and is not part of the span.
@@ -638,7 +771,17 @@
       (make-byte-dispatch-node 'value-discard-lws
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
                               (make-edge 'e-bad-header-value-char 'advance) #f))
-        (make-edge 'value-empty-open 'reexecute) 'e-eof-none #f)
+        (make-edge 'value-empty-check 'reexecute) 'e-eof-none #f)
+
+      ;; llhttp's `checkEmptyHeaderValue`: an empty value is announced as an
+      ;; empty span for a general header and is an ERROR for the two framing
+      ;; ones, and the state is read BEFORE the span is opened.
+      (make-field-branch-node 'value-empty-check 'equal
+                              (list 'header-state HS-CONTENT-LENGTH)
+                              'e-empty-content-length 'value-empty-check-te #f)
+      (make-field-branch-node 'value-empty-check-te 'equal
+                              (list 'header-state HS-TRANSFER-ENCODING)
+                              'e-empty-transfer-encoding 'value-empty-open #f)
 
       ;; An empty value is ANNOUNCED, not omitted: llhttp opens and immediately
       ;; closes the span, which is the upstream empty-span behaviour this
@@ -646,7 +789,58 @@
       (make-span-start-node 'value-empty-open 'header-value-span 'value-empty-close #f)
       (make-span-end-node 'value-empty-close 'header-value-span 'value-complete #f)
 
-      (make-span-start-node 'value-open 'header-value-span 'value-loop #f)
+      ;; llhttp's `header_value_start` loads the header state and picks a value
+      ;; machine. Content-Length is this slice's; Transfer-Encoding, Connection
+      ;; and Upgrade take llhttp's own default arm, `resetHeaderState`, until
+      ;; the slice that reads them.
+      (make-span-start-node 'value-open 'header-value-span 'value-start #f)
+      (make-field-branch-node 'value-start 'equal
+                              (list 'header-state HS-CONTENT-LENGTH)
+                              'cl-once 'value-state-general #f)
+      (make-field-action-node 'value-state-general 'store (list 'header-state HS-GENERAL)
+                              'value-loop #f #f)
+
+      ;; --- Content-Length ------------------------------------------------------
+      ;;
+      ;; The flag is tested where the VALUE starts, not where the name matches,
+      ;; so a duplicate reports after the second name has completed.
+      (make-field-branch-node 'cl-once 'mask-any (list 'flags F-CONTENT-LENGTH)
+                              'e-duplicate-content-length 'cl-digits #f)
+
+      ;; THE OFFENDING DIGIT IS CONSUMED BEFORE THE OVERFLOW IS REPORTED, and
+      ;; that is the whole of `off=56 len=21` for a 22-digit length. llhttp
+      ;; `select`s the digit -- which consumes -- and only then runs `mulAdd`,
+      ;; so the value span holds the digit that broke it. This node reexecutes
+      ;; on overflow instead, so the digit is eaten here, one dispatch wide.
+      ;; Both overflow on the SAME digit: the check is `v > (max - d) / base`
+      ;; against a uint64 either way, which for `1` followed by zeros is the
+      ;; twenty-first.
+      (make-integer-accumulate-node 'cl-digits 'content-length 10
+                                    'cl-digits
+                                    (make-edge 'cl-ws 'reexecute)
+                                    'cl-overflow-eat
+                                    'e-eof-header-value #f)
+      (make-byte-dispatch-node 'cl-overflow-eat
+        (list (make-byte-case (make-byte-set-matcher (map digit DIGITS))
+                              (make-edge 'cl-overflow-close 'advance) #f))
+        (make-edge 'cl-overflow-close 'reexecute) 'e-eof-header-value #f)
+      (make-span-end-node 'cl-overflow-close 'header-value-span
+                          'e-content-length-overflow #f)
+
+      ;; Trailing spaces are MATCHED, so they are consumed and the span ends
+      ;; past them: `Content-Length: 4 ` records `span[header_value]="4 "`.
+      ;; Anything else is a reason of its own, at the character, with the span
+      ;; ended first so the digits still render.
+      (make-byte-dispatch-node 'cl-ws
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'cl-ws 'advance) #f)
+              (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'cl-set-flag 'reexecute) #f))
+        (make-edge 'cl-bad-close 'reexecute) 'e-eof-header-value #f)
+      (make-field-action-node 'cl-set-flag 'set-mask (list 'flags F-CONTENT-LENGTH)
+                              'after-value #f #f)
+      (make-span-end-node 'cl-bad-close 'header-value-span
+                          'e-bad-content-length-char #f)
       (make-byte-dispatch-node 'value-loop
         (list (make-byte-case (make-byte-set-matcher httparse-header-bytes)
                               (make-edge 'value-loop 'advance) #f))
@@ -700,11 +894,26 @@
       ;;   CONTENT_LENGTH and nonzero   -> read that many bytes
       ;;   otherwise                    -> no body
       ;;
-      ;; M4 Slice 0 sets no flag and accumulates no length, so every message
-      ;; takes the last arm. The branch nodes arrive with the slices that can
-      ;; make their conditions true; putting them here now would be three
-      ;; unreachable nodes, which the verifier refuses anyway.
-      (ev 'after-headers 'on-message-complete 'after-message)
+      ;; This slice can make the third condition true, so its two branches are
+      ;; here. The chunked and transfer-encoding arms wait for the slice that
+      ;; can set their flags -- an unreachable node is refused, not stubbed.
+      ;;
+      ;; A CONTENT LENGTH OF ZERO IS NOT AN EMPTY BODY. llhttp answers 0 -- no
+      ;; body at all -- so there is no `span[body]=""` for `Content-Length: 0`,
+      ;; which is the opposite of what an empty HEADER value does.
+      (make-field-branch-node 'after-headers 'mask-any (list 'flags F-CONTENT-LENGTH)
+                              'body-length-check 'message-complete #f)
+      (make-field-branch-node 'body-length-check 'nonzero (list 'content-length)
+                              'body-open 'message-complete #f)
+
+      ;; The counted consume DECREMENTS `content-length` as it goes, which is
+      ;; llhttp's own `p.consume('content_length')`; the number the trace
+      ;; prints was already printed by then.
+      (make-span-start-node 'body-open 'body-span 'body-consume #f)
+      (make-counted-consume-node 'body-consume 'content-length 'body-close 'e-eof-body #f)
+      (make-span-end-node 'body-close 'body-span 'message-complete #f)
+
+      (ev 'message-complete 'on-message-complete 'after-message)
 
       ;; A TERMINAL CANNOT SIT DIRECTLY BEHIND A ZERO-WIDTH EVENT. A stop behind
       ;; one is EOF-reachable (`eof-reachable-stop`) and a finish behind one is
@@ -756,5 +965,12 @@
       (make-error-node 'e-lf-after-value 'lf-after-value #f)
       (make-error-node 'e-lf-after-headers 'lf-after-headers #f)
       (make-error-node 'e-eof-header-field 'eof #f)
-      (make-error-node 'e-eof-header-value 'eof #f)))
+      (make-error-node 'e-eof-header-value 'eof #f)
+      (make-error-node 'e-eof-body 'eof #f)
+      (make-error-node 'e-duplicate-content-length 'duplicate-content-length #f)
+      (make-error-node 'e-content-length-overflow 'content-length-overflow #f)
+      (make-error-node 'e-bad-content-length-char 'bad-content-length-char #f)
+      (make-error-node 'e-empty-content-length 'empty-content-length #f)
+      (make-error-node 'e-empty-transfer-encoding 'empty-transfer-encoding #f)
+      (make-error-node 'e-te-with-content-length 'te-with-content-length #f)))
      'eof #f)))

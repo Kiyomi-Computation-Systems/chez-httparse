@@ -35,26 +35,26 @@ not-yet  request/connection.md#12
 deferred request/connection.md#13                        lenient
 not-yet  request/connection.md#14
 deferred request/connection.md#15                        lenient
-not-yet  request/connection.md#16
+passing  request/connection.md#16
 deferred request/connection.md#17                        lenient
 not-yet  request/connection.md#18
 not-yet  request/connection.md#19
 not-yet  request/connection.md#20
 not-yet  request/connection.md#21
-not-yet  request/content-length.md#1
-not-yet  request/content-length.md#2
-not-yet  request/content-length.md#3
-not-yet  request/content-length.md#4
-not-yet  request/content-length.md#5
-not-yet  request/content-length.md#6
+passing  request/content-length.md#1
+passing  request/content-length.md#2
+passing  request/content-length.md#3
+passing  request/content-length.md#4
+passing  request/content-length.md#5
+passing  request/content-length.md#6
 deferred request/content-length.md#7                     lenient
 deferred request/content-length.md#8                     lenient
-not-yet  request/content-length.md#9
-not-yet  request/content-length.md#10
-not-yet  request/content-length.md#11
-not-yet  request/content-length.md#12
-not-yet  request/content-length.md#13
-not-yet  request/content-length.md#14
+passing  request/content-length.md#9
+passing  request/content-length.md#10
+passing  request/content-length.md#11
+passing  request/content-length.md#12
+passing  request/content-length.md#13
+passing  request/content-length.md#14
 passing  request/content-length.md#15
 deferred request/content-length.md#16                    skip-body
 passing  request/content-length.md#17
@@ -101,7 +101,7 @@ not-yet  request/method.md#2
 not-yet  request/method.md#3
 not-yet  request/method.md#4
 passing  request/method.md#5
-not-yet  request/method.md#6
+passing  request/method.md#6
 passing  request/method.md#7
 passing  request/method.md#8
 passing  request/method.md#9
@@ -111,7 +111,7 @@ passing  request/method.md#12
 passing  request/method.md#13
 passing  request/method.md#14
 not-yet  request/method.md#15
-not-yet  request/method.md#16
+passing  request/method.md#16
 deferred request/pausing.md#1                            pausing
 deferred request/pausing.md#2                            pausing
 deferred request/pausing.md#3                            pausing
@@ -144,7 +144,7 @@ not-yet  request/sample.md#15
 passing  request/sample.md#16
 passing  request/sample.md#17
 deferred request/sample.md#18                            lenient
-not-yet  request/transfer-encoding.md#1
+passing  request/transfer-encoding.md#1
 not-yet  request/transfer-encoding.md#2
 not-yet  request/transfer-encoding.md#3
 not-yet  request/transfer-encoding.md#4
@@ -159,7 +159,7 @@ not-yet  request/transfer-encoding.md#12
 not-yet  request/transfer-encoding.md#13
 not-yet  request/transfer-encoding.md#14
 deferred request/transfer-encoding.md#15                 lenient
-not-yet  request/transfer-encoding.md#16
+passing  request/transfer-encoding.md#16
 not-yet  request/transfer-encoding.md#17
 not-yet  request/transfer-encoding.md#18
 deferred request/transfer-encoding.md#19                 lenient

@@ -42,12 +42,12 @@
         ;; A callback added to the grammar without a row here raises at the
         ;; first fixture that reaches it rather than being rendered as
         ;; something plausible.
-        (check-equal "rows" (length adapter-trace-names) 15)
+        (check-equal "rows" (length adapter-trace-names) 16)
         (check-equal "spans"
                      (map car (filter (lambda (r) (eq? (cadr r) 'span))
                                       adapter-trace-names))
                      '(on-method-data on-url-data on-protocol-data on-version-data
-                       on-header-field-data on-header-value-data))))
+                       on-header-field-data on-header-value-data on-body-data))))
     (harness-case "an unknown callback is refused, not guessed"
       (lambda ()
         (check "refused"
@@ -140,9 +140,12 @@
     (harness-case "every code this table knows is one llhttp number"
       (lambda ()
         (check-equal "codes" adapter-error-codes
-                     '((strict . 2) (lf-expected . 3) (invalid-method . 6)
+                     '((strict . 2) (lf-expected . 3)
+                       (unexpected-content-length . 4) (invalid-method . 6)
                        (invalid-url . 7) (invalid-constant . 8)
                        (invalid-version . 9) (invalid-header-token . 10)
+                       (invalid-content-length . 11)
+                       (invalid-transfer-encoding . 15)
                        (cr-expected . 25) (unexpected-space . 30)))))
     (harness-case "the four header reasons under code 10 all render as 10"
       (lambda ()
