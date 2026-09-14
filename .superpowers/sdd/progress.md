@@ -759,3 +759,39 @@ rule applied to the file that actually ships, not only to the generator.
 
 Evidence: make test-all 54/54, no-scheme 10/10, `make parser-refresh`
 idempotent.
+
+M2 CLOSED (2026-09-14). Squash-merged as a035812 (#6), main caught up, branch
+deleted locally and on the remote, main re-verified green: test-all 54/54,
+no-scheme 10/10.
+
+CI was the billing refusal again -- run 34827434748, linux-amd64, 0 steps, no
+logs, 4s. Decision 0004: a billing refusal is not a test result, and the local
+run stands in its place.
+
+REFLECTION, three standards added to AGENTS.md, each from something that nearly
+entered a record wrong:
+
+  1. "Reading a red lane" -- read the failure, not the exit status. A mutation
+     REFUSED AT VERIFICATION is not a test witness; it says the verifier would
+     stop you, not that a test would notice. Three of Slice ③'s ten were
+     structural refusals, and one in the pin-bump slice first reported CAUGHT to
+     a check that only asked whether ctest went red. This is "assert the edit
+     landed" taken one step further: assert WHY it went red.
+  2. "Numbers in a test come from the oracle, never from the code under test."
+     Slice ①'s bare-LF offset 14 was read off our own parser, passed for two
+     slices, and was wrong -- the corpus records one past the LF.
+  3. "Extracting a set from someone else's source." The recogniser is what fails
+     silently, and it fails by matching LESS than it should. A quoted key
+     (`'M-SEARCH': 24`) cost eleven methods their class until the 47-name table
+     contradicted the 46-name union. Give the extraction an invariant it can
+     violate, in the tree.
+
+M2 SHIPPED: the request line, the method table as one keyword-table node, the
+protocol constants, the method-versus-protocol matrix, the version pair, the
+error taxonomy (decision 0013), the trace adapter, the conformance driver with a
+two-way ratchet at 9/181/84, and the parser as a checked-in derived artifact the
+gate runs. byte-machine v0.1.0 -> v0.3.0, generated ABI 5 -> 6 (decision 0012).
+Both upstream briefs discharged.
+
+NEXT: M3, the header section as syntax. Six of the eight remaining
+request-line-reachable fixtures are waiting on it.

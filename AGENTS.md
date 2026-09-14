@@ -44,6 +44,61 @@ We run this when we're done and ready to merge the PR.
 3. Clean up branches. Delete the merged branch locally and on the remote.
 4. Reflect.
 
+## Reading a red lane
+
+A lane going red is not yet evidence. **Read the failure, not the exit status.**
+
+M2 ran mutations whose "caught" was a different thing than it looked. A
+mutation routing a span-close somewhere illegal made an error node unreachable,
+so the machine was **refused at verification** — exit 255, no assertion, no
+summary line. A check that asked only whether `ctest` went red called that
+CAUGHT, and it nearly went into the record as a test witness. It is not one: it
+says the verifier would stop you, not that a test would notice. Three of Slice
+③'s ten mutations were structural refusals of exactly this kind, and they are
+recorded as structural.
+
+The distinction matters because the two failure modes recommend opposite
+actions. A caught mutation means the test set is doing its job. A refused
+mutation means the *type system* is doing its job and the test set has not been
+exercised at all — so if you were trying to witness a specific assertion, you
+still have not.
+
+This is `assert the edit landed before believing the result` taken one step
+further: assert **why** it went red.
+
+## Numbers in a test come from the oracle, never from the code under test
+
+An expectation you read off your own parser is not an expectation. It is a
+snapshot, and it will keep passing after the behaviour it describes turns out to
+be wrong.
+
+M2 Slice ① asserted that a bare LF after the version errors at offset 14. That
+number came from running the parser, not from a fixture, and it was wrong:
+`request/invalid.md#21` records the error one past the LF, because llhttp
+matches the LF into a lenient test strict mode refuses and a match consumes,
+while its `.otherwise` does not. The test passed for two slices and was found by
+the conformance driver on its first run.
+
+When the oracle has no row for the input you want to check, say so in the test —
+write the input the oracle *does* record beside it, or pick a different input.
+"This is what we do" is a comment, not a check.
+
+## Extracting a set from someone else's source
+
+Script it, then check the result's shape against something you already have.
+
+M2's method-versus-protocol matrix needed llhttp's three method classes out of
+`constants.ts`. The extractor's key pattern matched bare identifiers and missed
+`'M-SEARCH': 24`, whose key is quoted because of the hyphen — producing a
+46-name union against our own 47-name table. The mismatch is the only reason it
+was caught; every individual class looked plausible.
+
+So: the recogniser is the part that fails silently, and it fails by matching
+*less* than it should. Give the result an independent invariant to violate — a
+count you already trust, a union that must equal a set you already have, a
+partition that must cover it — and make that invariant a check in the tree, not
+a thing you eyeballed once.
+
 ## Traps this repo has already hit
 
 Each of these shipped a passing test or a working-looking build that was wrong.
