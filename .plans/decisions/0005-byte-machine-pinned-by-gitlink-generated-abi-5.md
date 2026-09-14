@@ -1,9 +1,18 @@
 # 0005: byte-machine is pinned by gitlink starting at v0.1.0, the generated ABI target is 5, and the pin is expected to move
 
 Date: 2026-09-13
-Status: accepted
+Status: accepted, amended in part
 Supersedes: [0002](0002-byte-machine-consumption-and-abi.md), decision item 3
+Amended by: [0012](0012-generated-abi-6-and-keyword-tables.md), decision item 2
 Milestone: Gate 0 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md)
+
+> **Decision item 2's ABI number is amended by
+> [0012](0012-generated-abi-6-and-keyword-tables.md) (2026-09-13).** The target
+> is **6**, not 5: byte-machine `v0.3.0` added the `keyword-table` node kind
+> opened from this project's own brief, and its lowering depends on a runtime op
+> that did not exist at ABI 5. The title and filename here keep the number this
+> record was written with, so links to it do not rot. Items 1, 3, 4 and 5 stand
+> as written — item 5 is what produced the amendment, by failing at the pin.
 
 ## Context
 

@@ -4,10 +4,10 @@
 ;;; by a running parser. A generated parser depends on (byte-machine runtime)
 ;;; and nothing else.
 ;;;
-;;; M2 SLICE ①: the request line alone -- `method SP request-target SP
-;;; HTTP-version CRLF`. Later slices extend this same machine: the method table
-;;; and `Expected space after method`, then the protocol constants, version
-;;; validity and llhttp's method-versus-protocol rules, then the header section.
+;;; M2: the request line alone -- `method SP request-target SP HTTP-version
+;;; CRLF` -- with the method matched against llhttp's 47-name table. Later
+;;; slices extend this same machine: the protocol constants, version validity
+;;; and llhttp's method-versus-protocol rules, then the header section.
 ;;;
 ;;; THE EVENT OFFSETS ARE ASYMMETRIC, AND THAT IS NOT A MISTAKE. Read off
 ;;; `request/sample.md`, for `OPTIONS /url HTTP/1.1`:
@@ -56,10 +56,6 @@
   (define LF 10)
   (define SLASH 47)
 
-  ;; An event invocation. `pause-continuation` is mandatory -- every callback
-  ;; declares where to resume if it pauses -- and for an event that is the same
-  ;; place `continue` goes, so a paused-then-resumed run re-enters the graph
-  ;; exactly where an un-paused one would.
   ;; --- the method table ---------------------------------------------------
   ;;
   ;; llhttp matches the method against a TABLE, not against `1*tchar`, and the
@@ -71,13 +67,14 @@
   ;; corpus shows `ANNOUNCE` (RTSP-only) parsed into a method span and rejected
   ;; only later, by the method-versus-protocol rule, so the matcher accepts it.
   ;;
-  ;; WHY A TRIE AND NOT `make-sequence-dispatch-node`. That construct exists for
-  ;; exactly this and cannot be used: it rejects a case list where one entry is
-  ;; a proper prefix of another (`ambiguous-sequence-prefix`), and `GET` is a
-  ;; proper prefix of `GET-PARAMETER`. A trie with an explicit terminator
-  ;; handles the pair correctly -- at `GET`, a `-` continues and anything else
-  ;; terminates -- which is the same shape a Gate 0 spike measured on
-  ;; `close`/`closed`.
+  ;; WHY `keyword-table` AND NOT `make-sequence-dispatch-node`. Sequence
+  ;; dispatch rejects a case list where one entry is a proper prefix of another
+  ;; (`ambiguous-sequence-prefix`), and `GET` is a proper prefix of
+  ;; `GET-PARAMETER` -- the only such pair across the 47, and one is enough.
+  ;; `keyword-table` tolerates proper prefixes: the longer wins when the input
+  ;; reaches it, the shorter when the next byte cannot extend it, and the
+  ;; closing byte is reexecuted so the span ends at the keyword's own length.
+  ;; That is what makes `MKCOLA` close the span at MKCOL and fail after it.
   (define httparse-method-names
     '("ACL" "ANNOUNCE" "BIND" "CHECKOUT" "CONNECT" "COPY" "DELETE" "DESCRIBE"
       "FLUSH" "GET" "GET-PARAMETER" "HEAD" "LINK" "LOCK" "M-SEARCH" "MERGE"
@@ -87,69 +84,10 @@
       "SOURCE" "SUBSCRIBE" "TEARDOWN" "TRACE" "UNBIND" "UNLINK" "UNLOCK"
       "UNSUBSCRIBE"))
 
-  (define (string-prefix-of? p s)
-    (and (<= (string-length p) (string-length s))
-         (string=? p (substring s 0 (string-length p)))))
-
-  ;; Every distinct prefix of every method name, shortest first, "" included.
-  (define method-prefixes
-    (let ((seen '()))
-      (for-each
-       (lambda (name)
-         (let loop ((i 0))
-           (when (<= i (string-length name))
-             (let ((p (substring name 0 i)))
-               (unless (member p seen) (set! seen (cons p seen))))
-             (loop (+ i 1)))))
-       httparse-method-names)
-      (list-sort (lambda (a b) (< (string-length a) (string-length b)))
-                 (reverse seen))))
-
-  (define (method-node-name p)
-    (string->symbol
-     (string-append "m" (number->string
-                         (let loop ((xs method-prefixes) (i 0))
-                           (cond ((null? xs) (assertion-violation 'grammar "no prefix" p))
-                                 ((string=? (car xs) p) i)
-                                 (else (loop (cdr xs) (+ i 1)))))))))
-
-  ;; The bytes that may follow prefix `p` within some method name.
-  (define (method-children p)
-    (let ((out '()))
-      (for-each
-       (lambda (name)
-         (when (and (> (string-length name) (string-length p))
-                    (string-prefix-of? p name))
-           (let ((b (char->integer (string-ref name (string-length p)))))
-             (unless (member b out) (set! out (cons b out))))))
-       httparse-method-names)
-      (reverse out)))
-
-  (define (method-terminal? p) (member p httparse-method-names))
-
-  ;; One byte-dispatch per prefix. A byte that continues the trie advances; the
-  ;; fallback TERMINATES the method when this prefix is a complete name --
-  ;; reexecuting so the delimiter is unconsumed when the span closes -- and
-  ;; rejects otherwise.
-  (define (method-trie-nodes)
-    (map (lambda (p)
-           (make-byte-dispatch-node
-            (method-node-name p)
-            (map (lambda (b)
-                   (make-byte-case
-                    (make-exact-byte-matcher b)
-                    (make-edge (method-node-name
-                                (string-append p (string (integer->char b))))
-                               'advance)
-                    #f))
-                 (method-children p))
-            (if (method-terminal? p)
-                (make-edge 'method-close 'reexecute)
-                (make-edge 'e-bad-method-open 'reexecute))
-            (if (method-terminal? p) 'e-eof-method 'e-eof-method)
-            #f))
-         method-prefixes))
-
+  ;; An event invocation. `pause-continuation` is mandatory -- every callback
+  ;; declares where to resume if it pauses -- and for an event that is the same
+  ;; place `continue` goes, so a paused-then-resumed run re-enters the graph
+  ;; exactly where an un-paused one would.
   (define (ev node callback continue)
     (make-callback-node node callback continue '() continue #f))
 
@@ -178,7 +116,7 @@
            (make-error-declaration 'bad-protocol 'invalid-constant "expected a protocol name" #f)
            (make-error-declaration 'bad-version 'invalid-version "invalid version" #f)
            (make-error-declaration 'bad-crlf 'invalid-line-ending "expected CRLF" #f))
-     (append (method-trie-nodes) (list
+     (list
       ;; --- the first byte -----------------------------------------------------
       ;; A dispatch rather than a callback node: the first method byte must be
       ;; available but UNCONSUMED when `message begin` fires at offset 0, and
@@ -192,12 +130,23 @@
       (ev 'message-begin 'on-message-begin 'method-open)
 
       ;; --- method -------------------------------------------------------------
-      (make-span-start-node 'method-open 'method-span (method-node-name "") #f)
+      (make-span-start-node 'method-open 'method-span 'method-table #f)
+      ;; No match leaves the span OPEN and reexecutes, so a method that is only
+      ;; a prefix of real ones (`GE `) errors at the byte that broke the walk
+      ;; with no span fragment delivered -- which is what the corpus records:
+      ;; `span[method]` never precedes an error in any of the 253 fixtures.
+      (make-keyword-table-node 'method-table
+        (map (lambda (name)
+               (make-keyword-entry (bytevector->u8-list (string->utf8 name))
+                                   'method-close #f))
+             httparse-method-names)
+        (make-edge 'e-bad-method-open 'reexecute)
+        'e-eof-method #f #f)
       (make-span-end-node 'method-close 'method-span 'method-complete #f)
       ;; fires AT the delimiter: `off=7 method complete` with SP still at 7
       (ev 'method-complete 'on-method-complete 'after-method)
-      ;; `MKCOLA`: the trie terminated at MKCOL, the span closed and the event
-      ;; fired at offset 5, and the byte here is `A` rather than SP.
+      ;; `MKCOLA`: the table took MKCOL, the span closed and the event fired at
+      ;; offset 5, and the byte here is `A` rather than SP.
       (make-byte-dispatch-node 'after-method
         (list (make-byte-case (make-exact-byte-matcher SP)
                               (make-edge 'url-open 'advance) #f))
@@ -256,7 +205,7 @@
 
       ;; --- errors, one node per span state ------------------------------------
       (make-error-node 'e-bad-method 'bad-method #f)
-      ;; Reached from inside the trie, where the method span IS open -- a
+      ;; Reached from the table's no-match, where the method span IS open -- a
       ;; separate node from `e-bad-method` because the verifier's flat lattice
       ;; refuses one node reached with two different span states.
       (make-error-node 'e-bad-method-open 'bad-method #f)
@@ -268,5 +217,5 @@
       (make-error-node 'e-eof-method 'eof #f)
       (make-error-node 'e-eof-url 'eof #f)
       (make-error-node 'e-eof-protocol 'eof #f)
-      (make-error-node 'e-eof-version 'eof #f)))
+      (make-error-node 'e-eof-version 'eof #f))
      'eof #f)))

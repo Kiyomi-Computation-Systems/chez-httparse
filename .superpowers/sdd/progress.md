@@ -462,3 +462,73 @@ partial-match spans — the same primitive the trie brief asks for, now wanted a
 third time, and Slice 3 cannot be honest without it.
 
 Evidence: make test-all 48/48 at the new pin.
+
+M2 PIN BUMP II (2026-09-13): byte-machine v0.2.0 -> v0.3.0, generated ABI 5 -> 6,
+and the method table stops being a hand-built trie. Milestone 11 upstream added a
+`keyword-table` node kind, opened from this project's SECOND brief. Both briefs
+are now discharged: empty spans at v0.2.0, keyword tables at v0.3.0.
+
+THE ABI LANE DID ITS JOB BEFORE ANYTHING ELSE NOTICED. Moving the pin turned
+`httparse.unit.generator-abi.chez.source` red with `abi version -- expected 5,
+got 6`, at the pin, not at load time in some later slice. That is decision 0005
+item 5 working exactly as written, and it is why 0012 is a decision record rather
+than a silent edit to a constant.
+
+THE SWAP, MEASURED:
+
+                          emitted bytes   states
+    242-node hand trie          120,218      281
+    one keyword-table            26,323       40
+
+4.57x on the whole request-line parser from replacing ONE node; upstream measured
+the table alone at 96,169 -> 2,795. 63 lines of trie construction deleted
+(`string-prefix-of?`, `method-prefixes`, `method-node-name`, `method-children`,
+`method-terminal?`, `method-trie-nodes`). `httparse-method-names` survives — it
+is the table's content and the subject of the round-trip lane.
+
+BEHAVIOUR DID NOT MOVE, AND THAT IS THE EVIDENCE. All 30 cases and 40 checks of
+the request-line lane pass unchanged across the swap. Nothing in the test file
+was weakened to accommodate it; three comments that said "trie" were corrected,
+and two cases were STRENGTHENED, because the walk's failure point is now a
+property of the table rather than of hand-wired fallbacks:
+
+    FOO  / HTTP/1.1   error at 1   no method fragment   (F begins FLUSH; O ends it)
+    MKCO / HTTP/1.1   error at 4   no method fragment   (prefix of MKCOL, not a name)
+
+Both are consistent with the corpus, where `span[method]` never precedes an error
+in any of the 253 fixtures — checked, not assumed.
+
+THREE MUTATIONS, AND ONE OF THEM CHANGED WHAT I WOULD HAVE CLAIMED. Each edit was
+asserted to have landed before its result was read.
+
+  1. no-match ADVANCES instead of reexecuting — CAUGHT, and caught by the two new
+     offset assertions ALONE (FOO expected 1 got 2, MKCO expected 4 got 5).
+     Without them the mutation is green. That is the witness the strengthening
+     was for.
+  2. GET-PARAMETER dropped from the entries — CAUGHT.
+  3. no-match routed somewhere that closes the span — NOT a test catch. Routing
+     it to `method-close` is refused as `unreachable-node e-bad-method-open`, and
+     to `e-bad-method` as `inconsistent-span-state` ("incoming edges disagree
+     about the active span"). So "no fragment on the no-match path" is a
+     STRUCTURAL guarantee of the verifier's span lattice, not something a test
+     could lose. The first run of this mutation reported CAUGHT and I nearly
+     recorded it as a test witness; it exits 255 at verification, which the
+     crude "did ctest go red" check cannot tell from a failed assertion. Read the
+     failure, not the exit status.
+
+ALSO CHECKED RATHER THAN BELIEVED: upstream claims a machine declaring no keyword
+table emits byte-identically but for the ABI literal. Rendering this grammar at
+both pins BEFORE the swap: one line differs, one character, `5` -> `6`; same
+120,218 bytes, same IR fingerprint 14988618514841855427.
+
+A LEDGER GAP FOUND AND CLOSED WHILE FOLLOWING THE CONVENTION. Decision 0011
+claims to amend 0003 criterion 5, but 0003 carried no back-link — only 0004's.
+A reader of 0003 would have applied criterion 5 as written. 0003 now records
+both amendments.
+
+STILL OPEN: Slice ③ (protocol constants, version validity, the method-versus-
+protocol matrix) and Slice ④ (the generated lane, the checked-in derived
+artifact, the conformance driver). Every in-scope fixture is still `not-yet` in
+the ratchet because no conformance driver exists yet to run one.
+
+Evidence: make test-all 48/48, no-scheme 10/10.

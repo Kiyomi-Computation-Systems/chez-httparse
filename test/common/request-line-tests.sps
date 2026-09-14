@@ -316,7 +316,7 @@
   (lambda ()
     (harness-case "every method in the table parses as itself"
       (lambda ()
-        ;; 47 names, each fed as a complete request line. A trie that dropped or
+        ;; 47 names, each fed as a complete request line. A table that dropped or
         ;; mis-wired one name would show up here rather than in whichever
         ;; fixture happened to use it.
         (check-equal "methods that did not round-trip"
@@ -344,8 +344,10 @@
         (check-equal "offset" (error-offset-of "MKCOLA / HTTP/1.1\r\n") 5)))
     (harness-case "GET-PARAMETER matches whole, though GET is a proper prefix of it"
       (lambda ()
-        ;; This pair is why the table is a trie: make-sequence-dispatch-node
-        ;; rejects a case list where one entry is a proper prefix of another.
+        ;; This pair is why the table cannot be `make-sequence-dispatch-node`,
+        ;; which rejects a case list where one entry is a proper prefix of
+        ;; another. A keyword table tolerates the pair and takes the longer
+        ;; name when the input reaches it.
         (check-equal "method" (assq 'method (events-of "GET-PARAMETER / HTTP/1.1\r\n"))
                      '(method 0 13 "GET-PARAMETER"))))
     (harness-case "GET followed by a space matches GET, not the longer name"
@@ -358,16 +360,26 @@
                      '(method 0 8 "M-SEARCH"))))
     (harness-case "an unknown method is rejected inside the table walk"
       (lambda ()
-        ;; `F` begins FLUSH, so the trie advances one byte and then finds no
-        ;; continuation for `O`.
+        ;; `F` begins FLUSH, so the walk advances one byte and then finds no
+        ;; continuation for `O`. The error lands on that byte, and the span is
+        ;; still open when it fires, so no fragment is delivered.
         (check-equal "status" (status-of "FOO / HTTP/1.1\r\n") 'error)
+        (check-equal "offset" (error-offset-of "FOO / HTTP/1.1\r\n") 1)
         (check-equal "no method span"
                      (filter (lambda (e) (eq? (car e) 'method))
                              (events-of "FOO / HTTP/1.1\r\n"))
                      '())))
     (harness-case "a method that is only a prefix of a real one is rejected"
       (lambda ()
-        ;; `MKCO` is a prefix of MKCOL but is not itself a method.
-        (check-equal "status" (status-of "MKCO / HTTP/1.1\r\n") 'error)))))
+        ;; `MKCO` is a prefix of MKCOL but is not itself a method, so the walk
+        ;; consumes all four bytes and then fails on the space at 4. No fragment
+        ;; is delivered -- and the corpus agrees: `span[method]` never precedes
+        ;; an error in any of the 253 fixtures.
+        (check-equal "status" (status-of "MKCO / HTTP/1.1\r\n") 'error)
+        (check-equal "offset" (error-offset-of "MKCO / HTTP/1.1\r\n") 4)
+        (check-equal "no method span"
+                     (filter (lambda (e) (eq? (car e) 'method))
+                             (events-of "MKCO / HTTP/1.1\r\n"))
+                     '())))))
 
 (harness-finish)

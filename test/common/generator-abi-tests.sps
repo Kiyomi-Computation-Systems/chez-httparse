@@ -19,8 +19,11 @@
         (byte-machine interpret)
         (byte-machine runtime))
 
-;; The generated-runtime ABI this repository targets (decision 0005 item 2).
-(define expected-abi 5)
+;; The generated-runtime ABI this repository targets (decision 0012, amending
+;; decision 0005 item 2). Upstream bumped 5 -> 6 for the keyword-table lowering;
+;; this lane is what named the move, at the pin, rather than at load time in
+;; some later slice.
+(define expected-abi 6)
 
 (define (substring-at? s i sub)
   (and (<= (+ i (string-length sub)) (string-length s))
