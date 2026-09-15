@@ -1,6 +1,6 @@
 # Gate 0: the HTTP parser milestone plan
 
-Status: delivered. Gate 0's milestone ladder is complete and v0.1.0 is tagged. Decisions [0005](decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)–[0018](decisions/0018-a-divergence-is-named-and-witnessed-or-it-fails-the-lane.md) fix what this document planned and what building it corrected.
+Status: delivered. Gate 0's milestone ladder is complete and v0.1.0 is tagged. The [decision records](decisions/) fix what this document planned and what building it corrected.
 
 ## Goal
 
@@ -12,8 +12,8 @@ parsing: 190 of the 253 upstream HTTP fixtures ([0009](decisions/0009-v01-is-str
 Slice 1 ported the harness and build layer, and this plan covered everything
 from there to the release. `src/` now holds the grammar,
 `httparse/grammar.sls`, and the parser emitted from it,
-`generated/httparse-message.sls`. M9, M10 and M11 are the work it scoped and
-deferred rather than delivered.
+`generated/httparse-message.sls`. Each milestone below carries its own
+status, and what is still deferred is listed after them.
 
 ## The shape of the work
 

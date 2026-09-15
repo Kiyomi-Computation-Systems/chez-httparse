@@ -110,6 +110,19 @@ httparse_add_test(
   TIMEOUT 120
   LABELS unit)
 
+# A plan's header summarises which decisions govern it and which milestones are
+# still ahead of it, and both went stale twice -- most recently when M9 marked
+# its own heading DONE and left the header calling it deferred. A third hand
+# correction would buy one pull request of accuracy, so the contradiction is a
+# registered check. It needs no Scheme runtime, so it also holds under the
+# no-scheme preset.
+httparse_add_test(
+  NAME httparse.harness.plan-header-audit.cmake.direct
+  COMMAND "${CMAKE_COMMAND}" -P
+          "${CMAKE_CURRENT_LIST_DIR}/support/cmake/PlanHeaderAuditSpec.cmake"
+  TIMEOUT 120
+  LABELS unit)
+
 # --- Harness paths ---------------------------------------------------------
 
 # The generator arrives as a submodule pinned by gitlink (decisions 0002, 0005).
