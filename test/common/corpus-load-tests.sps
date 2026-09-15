@@ -227,6 +227,48 @@
             ((string=? needle (substring hay i (+ i n))) #t)
             (else (loop (+ i 1)))))))
 
+;; llhttp's FLAGS, the two that mean "this message says how long its body is".
+;; Both are read off the `headers complete` line, which prints them as `%x`.
+(define framing-flags (+ 8 32))     ; CHUNKED | CONTENT_LENGTH
+
+;; The prefix a `headers complete` line carries for one status code, and the
+;; flags that follow it. Returns #f when the line is not one.
+(define (headers-complete-flags line code)
+  (let ((head (string-append "headers complete status=" (number->string code) " v=")))
+    (and (substring-of? head line)
+         (let* ((i (+ (index-of head line) (string-length head)))
+                (j (index-of " flags=" (substring line i (string-length line)))))
+           (and j
+                (let ((k (+ i j (string-length " flags="))))
+                  (hex-prefix line k)))))))
+
+(define (index-of needle hay)
+  (let ((n (string-length needle)) (h (string-length hay)))
+    (let loop ((i 0))
+      (cond ((> (+ i n) h) #f)
+            ((string=? needle (substring hay i (+ i n))) i)
+            (else (loop (+ i 1)))))))
+
+(define (hex-prefix line k)
+  (let loop ((i k) (acc 0) (any #f))
+    (if (>= i (string-length line))
+        (and any acc)
+        (let ((d (hex-digit (string-ref line i))))
+          (if d (loop (+ i 1) (+ (* acc 16) d) #t) (and any acc))))))
+
+(define (hex-digit c)
+  (cond ((and (char<=? #\0 c) (char<=? c #\9)) (- (char->integer c) 48))
+        ((and (char<=? #\a c) (char<=? c #\f)) (- (char->integer c) 87))
+        (else #f)))
+
+(define (corpus-frames-status? code)
+  (let ((lines (map expectation-text
+                    (apply append (map fixture-expected (load-all))))))
+    (exists (lambda (line)
+              (let ((f (headers-complete-flags line code)))
+                (and f (not (= 0 (bitwise-and f framing-flags))))))
+            lines)))
+
 (harness-group "the vendored corpus"
   (lambda ()
     (harness-case "the corpus directory was provided to the lane"
@@ -318,6 +360,26 @@
         (check-equal "recorded"
                      (filter (lambda (reason) (corpus-records-reason? reason))
                              '("Invalid status code" "Invalid response status"))
-                     '("Invalid status code"))))))
+                     '("Invalid status code"))))
+    (harness-case "only one of the five no-body status codes is recorded with framing"
+      (lambda ()
+        ;; WHY THREE M7 MUTATIONS SURVIVED EVERY LANE. llhttp asks two
+        ;; overlapping questions about a response: the body decision names
+        ;; 100, 102, 103, 204 and 304 exactly, and `message_needs_eof` names
+        ;; 1xx, 204 and 304 again. On a message with NO framing header the two
+        ;; agree, so either alone produces the right trace and a mutation to
+        ;; one of them changes nothing. They part only when such a status
+        ;; arrives WITH a `Content-Length` or a `Transfer-Encoding`, and the
+        ;; corpus records that for 304 alone -- which is exactly why the 304
+        ;; mutation was caught and the 204 one was not.
+        ;;
+        ;; A fact about the fixtures, so it needs no parser and can be neither
+        ;; a snapshot nor a change-detector. A refresh that brings a `204` or
+        ;; a `103` with a body length turns this red, and the right response
+        ;; is to check the arm against the new trace rather than to update the
+        ;; list.
+        (check-equal "framed"
+                     (filter corpus-frames-status? '(100 102 103 204 304))
+                     '(304))))))
 
 (harness-finish)

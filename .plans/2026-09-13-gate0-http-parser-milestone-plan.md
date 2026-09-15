@@ -321,11 +321,50 @@ scope it.
 ### M7 — responses
 
 The status line, `status` span, `status complete`, and the response branch of
-the framing table (1xx / 204 / 304, HEAD skip-body, `message_needs_eof` for
-responses).
+the framing table (1xx / 204 / 304, `message_needs_eof` for responses).
 
 **Exit**: all 66 strict response fixtures pass — 190 cumulative, which is
 [0009](decisions/0009-v01-is-strict-request-and-response-parsing.md)'s v0.1 bar.
+
+**Done, in two slices.** Ratchet **124 → 190 passing, 0 not-yet**, 84
+deferred. **The exit criterion is met exactly**: every strict fixture in
+llhttp's corpus passes and everything left is deferred with a reason.
+
+| | |
+|---|---|
+| ⓪ | the type switch and the status line (+43) |
+| ① | the response framing table (+23) |
+
+**This section said "HEAD skip-body" and should not have.** `skipBody` is one
+of [0009](decisions/0009-v01-is-strict-request-and-response-parsing.md)'s own
+deferrals — two fixtures, one request and one response — and the ratchet has
+carried them as `deferred skip-body` since M1. The plan's parenthetical was
+wrong and the ratchet was right, which is what item 4 of that decision means
+by "the ratchet is the exit criterion, not a judgement call".
+
+**A parser cannot be started in a mode**
+([0017](decisions/0017-the-message-kind-is-a-decision-callback-not-a-field-the-embedder-writes.md)).
+llhttp reads the kind from a field its embedder wrote; byte-machine's runtime
+has no field writer and a field's initial belongs to the MACHINE, so the same
+configuration arrives as a `decision` callback whose branches store llhttp's
+own number. Three nodes, against a doubled artifact for the alternative. The
+gap is general and is filed upstream as this consumer's fourth brief; nothing
+waited on it.
+
+**Two subgraphs are now shared where llhttp writes them twice** — the protocol
+constants and the version pair — each with a zero-width branch on `type` where
+llhttp forks. What a response does NOT share is its first line and its body
+decision.
+
+**THREE MUTATIONS SURVIVED EVERY LANE, AND ALL THREE ARE ONE FINDING.** llhttp
+asks two overlapping questions about a response: the body decision names 100,
+102, 103, 204 and 304 exactly, and `message_needs_eof` names 1xx, 204 and 304
+again. On a message with no framing header the two agree, so either alone
+produces the right trace. They part only when such a status arrives WITH a
+`Content-Length` or a `Transfer-Encoding`, and the corpus records that for 304
+alone — which is why the 304 mutation was caught and the 204 one was not. The
+corpus-load lane now pins which of the five the oracle separates, as M5's pins
+which chunk-extension reasons it records.
 
 ### M8 — release
 
@@ -358,6 +397,7 @@ under-counts others, and no care with the arithmetic fixes that.
 | M4 | +15 and a share of 63 | 87 cumulative, +58 |
 | M5 | — | 113 cumulative, +17 |
 | M6 | — | 124 cumulative, +11 |
+| M7 | 66 | 190 cumulative, +66 |
 
 M2 and M3 both fell short; M4 overshot, because the header-section row's
 fixtures mostly needed framing and the `message complete` row's mostly did not
@@ -369,6 +409,14 @@ grouping is an ordering. `Content-Length: 1000000000000000000000` is the case th
 the mechanism: it errors inside the header section and buckets there, but
 llhttp's value span is 21 of its 22 digits — bounded by where the accumulator
 overflows — so only the framing milestone could ever produce it.
+
+**M7 is the one row the table got exactly right, and it proves nothing.** Its
+66 are simply every response fixture in scope: the grouping and the capability
+coincide because the milestone's boundary IS the request/response split, not
+because bucketing on the deepest event predicted anything. Read at M6's close
+the measurement was degenerate — all 66 failed at line 1, on the first byte,
+because there was no response parser — so the only honest prediction available
+was the partition itself.
 
 Read the table as a rough order of work. **The ratchet is the measurement**,
 and the honest way to state a ceiling is to run every remaining fixture and
