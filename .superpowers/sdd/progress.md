@@ -1175,3 +1175,82 @@ REFLECTION. One standard added, one extended.
 
 NEXT: M5, chunked bodies. 17 fixtures measured as waiting on it, and nothing
 upstream is outstanding.
+
+M5 — CHUNKED BODIES (2026-09-15). Branch feat/m5-chunked-bodies.
+
+Ratchet 96 -> 113 passing (77 not-yet, 84 deferred). ALL SEVENTEEN chunked
+fixtures, which is every one the measurement at M4's close named -- and M5 has
+no request fixture left that chunked bodies alone can reach. The eleven
+remaining requests are M6 (nine) and M11 (two), unchanged from that
+measurement.
+
+Two slices, measured between them by running every not-yet fixture and reading
+its first mismatch:
+
+  0  the chunk reader, the zero chunk and trailers   +13
+  1  chunk extensions: names, values, quoted values  +4
+
+THE CHUNK READER ADDED NO FIELD AND NO SPAN. llhttp accumulates the size into
+`content_length` and its `on_chunk_header` prints that field, so the size
+shares the field a fixed-length body counts down, the data shares `span[body]`
+and its end-of-input node, and the zero chunk shares `header_field_start`. The
+whole of the trailer support is one field-branch on a flag and one callback
+node -- trailers ARE the header section, and the flag is the only thing that
+tells the empty line at the end which block it just closed.
+
+Artifact 144,303 -> 211,520 bytes, 294 -> 358 states. ABI unchanged at 7.
+
+TWO NEW SHAPES IN THE ADAPTER AND ONE NEW VERIFIER RULE MET.
+
+  - `count-line`: the second kind of callback whose text carries a parser
+    field, after `state-line`. One name, read off the parser and refused
+    rather than zeroed when missing (decision 0014). llhttp prints it with
+    `%d` on an `(int)` cast rather than the state line's `%llu`; no fixture
+    carries a chunk above 51, so nothing records what it does past INT_MAX and
+    there was nothing to reproduce.
+  - `span-active-at-pause`: a callback node may not be reachable with a span
+    open. llhttp opens the extension value's span and THEN fires the name's
+    complete event; the two are zero-width and land on the same byte, so
+    firing the event first is trace-identical -- and it is the order that
+    stays right if the callback ever pauses.
+
+THE MUTATION PASS FOUND SOMETHING THE FIXTURES COULD NOT. Nineteen mutations,
+all inversions or wrong values, each run against both the unit lane and the
+conformance lane with the artifact re-emitted. Sixteen CAUGHT in both. THREE
+SURVIVED IN BOTH -- and a survivor that is the same in every lane is not the
+lane-difference finding M4 recorded; it is a finding about the ORACLE.
+
+Chased down: of the eight reasons llhttp's chunk-extension states can emit,
+the corpus records TWO. `Invalid character in chunk extensions` (#10) and
+`... quoted value` (#12). The other six appear in no fixture of the 274, so no
+trace can judge their offsets.
+
+What was done about it, in preference order:
+
+  1. NOT a test asserting our own output -- that is a change-detector, and the
+     `.match`/`.peek` trap has been wrong three times in this project
+     precisely where no fixture looked.
+  2. The grammar now names, arm by arm, the llparse IDIOM behind each of the
+     six and WHERE THAT IDIOM IS MEASURED: `end().skipTo(error)` one past the
+     byte (the quoted catch-all, #12); `.otherwise(error)` at it
+     (chunk_size_digit's, #24); `.peek(LF, end(...))` at the LF (the header
+     value's `Missing expected CR`); `.match(byte, error)` one past it
+     (chunk_extensions', #10). Every one of the six is an instance of an idiom
+     the corpus measures elsewhere.
+  3. A CHECK, not only a note: the corpus-load lane now pins which two of the
+     eight the corpus records. A refresh that brings a fixture for any of the
+     six goes red, and the response is to check the arm against the new trace
+     rather than to update the number. Witnessed with two mutations.
+
+The chunk-size overflow shim is the same situation and got the same treatment:
+no fixture carries `Chunk size overflow`, so the one-dispatch eat rests on the
+shared llhttp production (the same `mulAdd` behind the same `select` as
+Content-Length's, which #23's 22-digit value DOES measure) rather than on a
+recorded offset. Having the two copies of one production differ is the outcome
+worth avoiding.
+
+Found in passing and fixed: `set(HTTPARSE_ADAPTER ...)` sat BELOW the lanes
+that name it, so the header-section lane's SOURCES entry expanded to nothing
+and the dependency was dropped without a word. Moved up beside
+HTTPARSE_TRACE_FORMAT.
+

@@ -9,13 +9,19 @@
 ;;; header section, strictly, and the framing that section decides: a field
 ;;; NAME selects a value machine, `Content-Length` measures a body, and
 ;;; `Transfer-Encoding`, `Connection` and `Upgrade` set the FLAGS bits that
-;;; `headers complete` prints.
+;;; `headers complete` prints -- and the chunked body those bits can ask for,
+;;; extensions and trailers included.
 ;;;
-;;; Still to come: chunked bodies, the message loop (pipelining, reset,
-;;; keep-alive), responses, and the url sub-parser. The CHUNKED arm of the body
-;;; decision parks on `after-message` until there is a chunk reader, so a
-;;; chunked request's trace STOPS after `headers complete` rather than
-;;; continuing with a line llhttp never wrote.
+;;; Still to come: the message loop (pipelining, reset, keep-alive), responses,
+;;; and the url sub-parser. A complete message parks on `after-message`, the
+;;; dispatch that would decide between the next message and a clean end, so a
+;;; pipelined request's trace STOPS after the first `message complete` rather
+;;; than continuing with a line llhttp never wrote.
+;;;
+;;; THE HEADER SECTION IS PARSED TWICE, by the same states. A chunked
+;;; message's trailers re-enter `header-field-start`, and the flag the zero
+;;; chunk sets is the only thing that tells the empty line at the end which
+;;; block it just closed.
 ;;;
 ;;; THE EVENT OFFSETS ARE ASYMMETRIC, AND THAT IS NOT A MISTAKE. Read off
 ;;; `request/sample.md`, for `OPTIONS /url HTTP/1.1`:
