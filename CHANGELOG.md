@@ -232,6 +232,32 @@ the bootstrap slice design is
   error node would give a bit-identical trace and would be wrong — a paused
   parser is resumable — and no test in the corpus could tell.
 
+- **byte-machine pinned at `v0.4.0`** (`9c027fd..18fcc8b`, two commits), and
+  **the generated ABI moves 6 → 7**
+  ([0015](.plans/decisions/0015-generated-abi-7-and-a-pause-carries-its-reason.md),
+  amending [0012](.plans/decisions/0012-generated-abi-6-and-keyword-tables.md)
+  item 1). The bump delivers this project's **third** upstream ask,
+  [the pause-reason brief](.plans/2026-09-14-upstream-pause-reason-brief.md):
+  a pause now carries its own `(code, reason)`, read through the new
+  `parser-result-pause`.
+
+  `parser-result-error` stays `#f` for a pause — upstream rejected folding the
+  reason into the error slot, because a consumer that reads "has an error" as
+  "failed" would mis-read a resumable pause. So `off=N error code=22
+  reason="Pause on CONNECT/Upgrade"` is now a **rename** like every other row
+  rather than a refusal, and **nine fixtures** move to passing: ratchet
+  **87 → 96** (94 not-yet, 84 deferred).
+
+  **That the pause is a pause is a check in the tree**, because no trace can
+  show it: a parser that errored where llhttp pauses would match every fixture
+  in the corpus byte for byte and would be unresumable. Three unit cases ask
+  the parser directly instead.
+
+  Measured across the pin with the grammar unchanged, the emitted parser is
+  byte-identical but for the ABI literal — 144,172 bytes both sides, same IR
+  fingerprint `12284084569705248381`. All three upstream briefs are now
+  discharged.
+
 ### Removed
 
 ### Fixed

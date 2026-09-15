@@ -110,12 +110,12 @@
                          result)))
           (when (and final (eq? (parser-result-status final) 'error))
             (trace-recorder-note-error! r (parser-result-error final)))
-          ;; A PAUSE IS AN OUTCOME, NOT AN ENDING. llhttp prints one as an
-          ;; error line; this adapter has no code for it and says so, so the
-          ;; fixture fails with "adapter refused" rather than quietly matching
-          ;; a prefix of its own trace.
+          ;; A PAUSE IS AN OUTCOME, NOT AN ENDING, and it is a renameable
+          ;; one: the pause reason arrives in its own result slot, leaving the
+          ;; error slot #f so a resumable outcome is still distinguishable
+          ;; from a failed one.
           (when (and final (eq? (parser-result-status final) 'paused))
-            (trace-recorder-note-paused! r (parser-stream-offset p)))
+            (trace-recorder-note-paused! r (parser-result-pause final)))
           (trace-format (trace-recorder-events r))))
        (else
         (let ((res (parser-feed! p bv (caar bounds) (cdar bounds))))

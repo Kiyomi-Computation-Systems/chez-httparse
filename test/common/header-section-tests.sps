@@ -5,6 +5,11 @@
 ;;; than a transliteration of it. Where a case uses an input the corpus does
 ;;; not carry, the comment says which fixture establishes the shape.
 ;;;
+;;; A PAUSE RENDERS AS AN ERROR LINE, which is what llhttp's own harness
+;;; does. It is a RENAME and not an invention: the generator gives a pause its
+;;; own (code, reason), and `parser-result-error` stays #f, so the resumable
+;;; outcome is still distinguishable from the failed one.
+;;;
 ;;; `headers complete` renders here from M4 on. Its line carries four numbers
 ;;; -- method, version pair, flags, content length -- and every one is READ OFF
 ;;; THE PARSER'S OWN FIELDS, never recomputed from the headers this lane fed
@@ -23,8 +28,7 @@
 
 ;; trace : String -> (Listof String)
 (define (trace input)
-  (let* ((paused #f)
-         (r (make-trace-recorder))
+  (let* ((r (make-trace-recorder))
          (p (make-parser machine (trace-recorder-bindings r) #f))
          (bv (string->utf8 input))
          (refused
@@ -36,11 +40,11 @@
                 (let ((res (parser-feed! p bv 0 (bytevector-length bv))))
                   (when (eq? (parser-result-status res) 'error)
                     (trace-recorder-note-error! r (parser-result-error res)))
-                  (set! paused (parser-result-status res))
+                  (when (eq? (parser-result-status res) 'paused)
+                    (trace-recorder-note-paused! r (parser-result-pause res)))
                   #f)))))))
     (append (map utf8->string (trace-format (trace-recorder-events r)))
-            (if refused '("(refused)") '())
-            (if (eq? paused 'paused) '("(paused)") '()))))
+            (if refused '("(refused)") '()))))
 
 ;; The request line every case below shares, so the header lines start at a
 ;; known offset: `GET / HTTP/1.1` is 14 bytes and its CRLF ends at 16.
@@ -380,10 +384,11 @@
                        "off=75 message complete"
                        ;; Both upgrade bits and no body, so llhttp's decision
                        ;; answers 1: complete, then pause. The fixture's own
-                       ;; last line is `error code=22`, which is the pause
-                       ;; rendered -- and the one thing the adapter cannot
-                       ;; spell, so the run ends here instead.
-                       "(paused)"))))
+                       ;; last line is `error code=22`, which llhttp's
+                       ;; harness prints for a pause and which this adapter
+                       ;; can now RENAME -- a pause carries its own
+                       ;; (code, reason) of its own.
+                       "off=75 error code=22 reason=\"Pause on CONNECT/Upgrade\""))))
     (harness-case "a bare Transfer-Encoding is a request error, after the line that reports it"
       (lambda ()
         ;; request/transfer-encoding.md, "Ignoring `pigeons`": the flag is set
@@ -436,7 +441,7 @@
                                         "Content-Length: 10\r\n\r\nblarfcicle\"")) 21)
                      '("off=127 headers complete method=5 v=1/0 flags=20 content_length=10"
                        "off=127 message complete"
-                       "(paused)"))))
+                       "off=127 error code=22 reason=\"Pause on CONNECT/Upgrade\""))))
     (harness-case "an upgrade that HAS a body reads it, and pauses afterwards"
       (lambda ()
         ;; request/connection.md, "Emitting part of body and pausing". The
@@ -453,7 +458,7 @@
                      '("off=74 headers complete method=4 v=1/1 flags=34 content_length=4"
                        "off=74 len=4 span[body]=\"abcd\""
                        "off=78 message complete"
-                       "(paused)"))))
+                       "off=78 error code=22 reason=\"Pause on CONNECT/Upgrade\""))))
     (harness-case "an ordinary request does not pause"
       (lambda ()
         ;; The contrast: `upgrade` is zero, so the same decision falls through

@@ -583,7 +583,14 @@
            (make-error-declaration 'pri-upgrade 'paused-h2-upgrade
                                    "Pause on PRI/Upgrade" #f)
            (make-error-declaration 'bad-h2-preface 'invalid-version
-                                   "Expected HTTP/2 Connection Preface" #f))
+                                   "Expected HTTP/2 Connection Preface" #f)
+           ;; A PAUSE'S REASON, not an error's. It is declared in the same
+           ;; shape because the generator reuses `error-declaration` for both
+           ;; -- the difference is at the RESULT, where the error slot stays #f
+           ;; and the reason arrives in its own. Nothing here may name this
+           ;; declaration from an error node.
+           (make-error-declaration 'upgrade-paused 'paused-upgrade
+                                   "Pause on CONNECT/Upgrade" #f))
      (append
       (list
       ;; --- the first byte -----------------------------------------------------
@@ -1153,12 +1160,12 @@
                               (list 'content-length)
                               'after-headers-chunked 'message-complete #f)
 
-      ;; THE PAUSE HAS NO WORDS. llhttp's is `p.pause(ERROR.PAUSED_UPGRADE,
-      ;; 'Pause on CONNECT/Upgrade')` and prints as `error code=22 reason=...`;
-      ;; a pause here carries neither, so the trace adapter refuses rather than
-      ;; inventing the pair. Measured, not read: a paused result reports
-      ;; `error #f`. The gap is briefed upstream under decision 0006.
-      (make-pause-node 'upgrade-pause 'after-message #f)
+      ;; THE PAUSE CARRIES ITS REASON, which llhttp's harness prints as an
+      ;; error line and which this parser can therefore render. It is still a
+      ;; PAUSE: the result's status is `paused`, its error slot is #f, and the
+      ;; continuation is where a resumed feed re-enters. The optional reason
+      ;; came from this project's third upstream brief.
+      (make-pause-node 'upgrade-pause 'after-message 'upgrade-paused #f)
 
       ;; --- is there a body? ----------------------------------------------------
       ;;
