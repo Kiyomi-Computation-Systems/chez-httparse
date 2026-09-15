@@ -264,6 +264,12 @@
   (define F-TRAILING 128)
   (define F-TRANSFER-ENCODING 512)
 
+  ;; llhttp's FINISH, printed verbatim by the fixture harness as
+  ;; `off=NULL finish=N`. SAFE-WITH-CB is a RESPONSE's, set where a body runs
+  ;; to end of input, so nothing in this grammar reaches it yet.
+  (define FINISH-SAFE 0)
+  (define FINISH-UNSAFE 2)
+
   ;; llhttp's HEX_MAP as a byte set: both cases, which `request/transfer-
   ;; encoding.md#3` and `#4` establish by differing in nothing but that byte.
   ;; Only the overflow shim needs the set spelled out -- the accumulator reads
@@ -504,8 +510,18 @@
            ;; the flags and the method and read by the body decision. Not
            ;; printed -- it is the one piece of framing state the trace does
            ;; not show, and it changes whether a body is read at all.
-           (make-uint-field 'upgrade 8 0 #f))
-     (list (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
+           (make-uint-field 'upgrade 8 0 #f)
+           ;; llhttp's `finish`: how safe it would be for the input to stop
+           ;; HERE. Not printed on any callback line -- the fixture harness
+           ;; prints the field itself once the input runs out, which is what
+           ;; `off=NULL finish=N` is.
+           (make-uint-field 'finish 8 FINISH-SAFE #f)
+           ;; llhttp's `initial_message_completed`, the only thing that tells
+           ;; a restart from a first start. It is what makes `reset` fire
+           ;; between two messages and not before the first.
+           (make-uint-field 'initial-message-completed 8 0 #f))
+     (list (make-callback-declaration 'on-reset 'event #t '() #f #f)
+           (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
            (make-callback-declaration 'on-method-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-method-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-url-data 'span-data #t '() #f #f)
@@ -659,6 +675,13 @@
                                    "Missing expected CR after chunk extension name" #f)
            (make-error-declaration 'cr-after-chunk-ext-value 'cr-expected
                                    "Missing expected CR after chunk extension value" #f)
+           ;; --- the message loop -------------------------------------------
+           ;; llhttp's reason names `Connection: close` even when what closed
+           ;; the connection was an HTTP/1.0 request that never said
+           ;; keep-alive (request/connection.md#3). The reason is the oracle's,
+           ;; so it is reproduced as written.
+           (make-error-declaration 'data-after-close 'closed-connection
+                                   "Data after `Connection: close`" #f)
            ;; PRI's HTTP/2 preface. llhttp calls it a pause in the reason and
            ;; implements it as an ERROR, which is why this one has a number to
            ;; rename and the CONNECT/Upgrade pause does not.
@@ -688,9 +711,22 @@
         (list (make-byte-case (make-byte-set-matcher (list CR LF))
                               (make-edge 'start 'advance) #f)
               (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
-                              (make-edge 'message-begin 'reexecute) #f))
+                              (make-edge 'start-check-reset 'reexecute) #f))
         (make-edge 'e-bad-method 'reexecute) 'clean-eof #f)
       (make-finish-node 'clean-eof #f)
+
+      ;; THE SKIPPED CRLF COMES FIRST AND `reset` SECOND, which is the order
+      ;; the corpus records: `request/pipelining.md#1` ends a body at 44 and
+      ;; fires `reset` at 46, having eaten the CRLF between. So the loop above
+      ;; is not a leading-whitespace convenience -- it is where a pipelined
+      ;; message's separator is consumed.
+      (make-field-branch-node 'start-check-reset 'nonzero
+                              (list 'initial-message-completed)
+                              'start-reset 'after-start #f)
+      (ev 'start-reset 'on-reset 'after-start)
+      ;; From here to the end of this message, stopping would lose data.
+      (make-field-action-node 'after-start 'store (list 'finish FINISH-UNSAFE)
+                              'message-begin #f #f)
       (ev 'message-begin 'on-message-begin 'method-open)
 
       ;; --- method -------------------------------------------------------------
@@ -1557,17 +1593,66 @@
       (make-field-branch-node 'after-message-upgrade 'nonzero (list 'upgrade)
                               'upgrade-pause 'after-message #f)
 
-      ;; A TERMINAL CANNOT SIT DIRECTLY BEHIND A ZERO-WIDTH EVENT. A stop behind
-      ;; one is EOF-reachable (`eof-reachable-stop`) and a finish behind one is
-      ;; byte-reachable (`non-eof-into-finish`) -- the verifier refuses both,
-      ;; and the request line's stop tripped neither because it sat directly
-      ;; behind a consumed byte. A dispatch separates them: end of input after
-      ;; a complete message is clean, and a byte is the next message, which is
-      ;; the pipelining milestone's.
-      (make-byte-dispatch-node 'after-message
-        '()
-        (make-edge 'message-done 'reexecute) 'clean-eof #f)
-      (make-stop-node 'message-done #f)
+      ;; --- what a message leaves behind ----------------------------------------
+      ;;
+      ;; llhttp's `llhttp__after_message_complete` does three things and its
+      ;; RETURN VALUE is the fourth: it computes `should_keep_alive` from the
+      ;; state as it stands, sets `finish` to SAFE, clears the flags, and
+      ;; answers whether to restart. The order matters -- the answer is read
+      ;; off the flags the message set, and the flags are cleared after -- so
+      ;; the test comes first here and each arm then does its own resetting.
+      ;;
+      ;; `should_keep_alive` FOR A REQUEST is the version test and one flag:
+      ;;
+      ;;   major > 0 && minor > 0   ->   keep alive unless CONNECTION_CLOSE
+      ;;   otherwise (1.0 or 0.9)   ->   keep alive only if CONNECTION_KEEP_ALIVE
+      ;;
+      ;; because `message_needs_eof` is unconditionally 0 for a request, so
+      ;; the `!needs_eof` that ends llhttp's function is always 1 here. The
+      ;; response arms of that function are M7's.
+      ;;
+      ;; ONE ARM HAS NO STRICT FIXTURE: HTTP/1.0 WITH `Connection: keep-alive`
+      ;; restarting. `request/connection.md#4` records it and is lenient, so
+      ;; decision 0009 defers it and no gated trace can judge the arm. The
+      ;; other three are measured -- #2 for 1.1, #9 for 1.1 with close, #3 for
+      ;; 1.0 without keep-alive.
+      (make-field-branch-node 'after-message 'nonzero (list 'http-major)
+                              'amc-check-minor 'amc-old #f)
+      (make-field-branch-node 'amc-check-minor 'nonzero (list 'http-minor)
+                              'amc-modern 'amc-old #f)
+      (make-field-branch-node 'amc-modern 'mask-any (list 'flags F-CONNECTION-CLOSE)
+                              'amc-close 'amc-keep-alive #f)
+      (make-field-branch-node 'amc-old 'mask-any (list 'flags F-CONNECTION-KEEP-ALIVE)
+                              'amc-keep-alive 'amc-close #f)
+
+      ;; THE FLAGS RESET IS WHAT MAKES A SECOND MESSAGE PARSEABLE AT ALL, and
+      ;; `request/pipelining.md#1` is the only fixture that measures it: each
+      ;; of its three messages carries a `Content-Length`, and the duplicate
+      ;; test is `flags & CONTENT_LENGTH`, so a loop that kept the flags would
+      ;; report `Duplicate Content-Length` on the second.
+      (make-field-action-node 'amc-keep-alive 'store (list 'finish FINISH-SAFE)
+                              'restart-clear-flags #f #f)
+      (make-field-action-node 'restart-clear-flags 'store (list 'flags 0)
+                              'restart-clear-length #f #f)
+      (make-field-action-node 'restart-clear-length 'store (list 'content-length 0)
+                              'restart-mark #f #f)
+      (make-field-action-node 'restart-mark 'store (list 'initial-message-completed 1)
+                              'start #f #f)
+
+      (make-field-action-node 'amc-close 'store (list 'finish FINISH-SAFE)
+                              'closed-clear-flags #f #f)
+      (make-field-action-node 'closed-clear-flags 'store (list 'flags 0)
+                              'closed #f #f)
+
+      ;; A CLOSED CONNECTION STILL EATS LINE ENDINGS. llhttp matches CR and LF
+      ;; back to this node, so the blank line after a body is consumed and only
+      ;; the first real byte is data -- `request/connection.md#9` records
+      ;; off=138 for a `G` at 137, two CRLFs after the body. The refusal
+      ;; CONSUMES that byte, which is what puts the error one past it.
+      (make-byte-dispatch-node 'closed
+        (list (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'closed 'advance) #f))
+        (make-edge 'e-data-after-close 'advance) 'clean-eof #f)
 
       ;; --- errors, one node per span state ------------------------------------
       (make-error-node 'e-bad-method 'bad-method #f)
@@ -1643,6 +1728,7 @@
       ;; verifier's flat lattice requires.
       (make-error-node 'e-eof-chunk-ext-name 'eof #f)
       (make-error-node 'e-eof-chunk-ext-value 'eof #f)
+      (make-error-node 'e-data-after-close 'data-after-close #f)
       (make-error-node 'e-pri-upgrade 'pri-upgrade #f)
       (make-error-node 'e-bad-h2-preface 'bad-h2-preface #f)))
      'eof #f)))

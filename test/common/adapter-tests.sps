@@ -42,7 +42,7 @@
         ;; A callback added to the grammar without a row here raises at the
         ;; first fixture that reaches it rather than being rendered as
         ;; something plausible.
-        (check-equal "rows" (length adapter-trace-names) 22)
+        (check-equal "rows" (length adapter-trace-names) 23)
         (check-equal "spans"
                      (map car (filter (lambda (r) (eq? (cadr r) 'span))
                                       adapter-trace-names))
@@ -170,7 +170,8 @@
       (lambda ()
         (check-equal "codes" adapter-error-codes
                      '((strict . 2) (lf-expected . 3)
-                       (unexpected-content-length . 4) (invalid-method . 6)
+                       (unexpected-content-length . 4) (closed-connection . 5)
+                       (invalid-method . 6)
                        (invalid-url . 7) (invalid-constant . 8)
                        (invalid-version . 9) (invalid-header-token . 10)
                        (invalid-content-length . 11)

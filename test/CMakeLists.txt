@@ -950,6 +950,25 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- The message loop (M6) --------------------------------------------------
+#
+# What a message leaves behind for the next one: whether it restarts, what it
+# forgets when it does, and what it refuses when it does not.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.message-loop.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/message-loop-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/message-loop-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- The checked-in generated parser (M2 Slice 4) ---------------------------
 #
 # A derived artifact, committed so that what this project ships is reviewable as

@@ -38,7 +38,9 @@
   ;; trace-name is the text llhttp prints -- `off=N method complete` for an
   ;; event, `span[method]` for a span.
   (define adapter-trace-names
-    '((on-message-begin     event "message begin")
+    '(;; Between two messages on one connection, and never before the first.
+      (on-reset             event "reset")
+      (on-message-begin     event "message begin")
       (on-method-data       span  "method")
       (on-method-complete   event "method complete")
       (on-url-data          span  "url")
@@ -88,6 +90,7 @@
     '((strict                    . 2)
       (lf-expected               . 3)
       (unexpected-content-length . 4)
+      (closed-connection         . 5)
       (invalid-method            . 6)
       (invalid-url               . 7)
       (invalid-constant          . 8)
