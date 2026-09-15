@@ -15,7 +15,7 @@
 ;;; lane that gated on them would be asserting something this milestone has
 ;;; deliberately not built.
 ;;;
-;;; THE GATE RUNS THE SHIPPED ARTIFACT. `(generated httparse-request-line)` is
+;;; THE GATE RUNS THE SHIPPED ARTIFACT. `(generated httparse-message)` is
 ;;; the committed derived parser, loaded and run here as itself rather than
 ;;; re-derived from the grammar -- an emitter that wrote a wrong-but-well-formed
 ;;; artifact would otherwise survive, because nothing read what it wrote. The
@@ -35,7 +35,7 @@
         (httparse test ratchet)
         (httparse test adapter)
         (httparse grammar)
-        (generated httparse-request-line)
+        (generated httparse-message)
         (byte-machine verify)
         (byte-machine interpret)
         (byte-machine runtime))
@@ -77,9 +77,9 @@
 ;; The committed artifact, run as itself. The interpreter is built beside it
 ;; from the same grammar and is compared against it below, never substituted
 ;; for it.
-(define generated httparse-request-line-machine)
+(define generated httparse-message-machine)
 (define interpreted
-  (make-interpreted-machine (verify-machine (make-request-line-machine))))
+  (make-interpreted-machine (verify-machine (make-message-machine))))
 
 ;; llhttp's own harness asks for a finish LINE only for the `*-finish` fixture
 ;; types (test/fixtures/index.ts, which defines `LLPARSE__TEST_FINISH` for
@@ -223,7 +223,7 @@
        (not (equal? (outcome generated f bv n) (outcome interpreted f bv n)))))
    (map car results)))
 
-(harness-begin "conformance.request-line")
+(harness-begin "conformance.message")
 
 (harness-group "the ratchet, both ways"
   (lambda ()

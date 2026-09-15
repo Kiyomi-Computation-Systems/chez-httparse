@@ -56,6 +56,19 @@ the bootstrap slice design is
 
 ### Changed
 
+- **The generated parser is named for what it parses.** It was
+  `request-line` from M2, when that is all it read, and it has since grown
+  the header section, framing, chunked bodies, the message loop and both
+  response productions — so the shipped artifact is now
+  `src/generated/httparse-message.sls`, the library `(generated
+  httparse-message)` exporting `httparse-message-machine`, emitted by
+  `tools/emit-message.ss` from `(httparse grammar)`'s `make-message-machine`.
+  The conformance lanes follow: `httparse.conformance.message.chez.source`
+  and `httparse.conformance.message-full-scan.chez.source`. Nothing else
+  moved — the re-emitted artifact is byte-identical to its predecessor once
+  the name is substituted, and ABI stays at 7. **`request-line` survives
+  where it is still true**: `test/common/request-line-tests.sps` and
+  `httparse.unit.request-line.chez.*` really are about the request line.
 - **The byte-machine pin moved from `v0.1.0` to `v0.2.0`**
   (`c38e76f` to `19e2c05`), so that an empty span is observable. A span that
   opens and closes having delivered no bytes now invokes its data callback

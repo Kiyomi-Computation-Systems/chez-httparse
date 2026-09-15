@@ -1,7 +1,7 @@
 ;;; The checked-in generated parser is fresh, deterministic, and self-contained.
 ;;;
-;;; `src/generated/httparse-request-line.sls` is a DERIVED artifact: emitted
-;;; from `(httparse grammar)` by `tools/emit-request-line.ss` and committed so
+;;; `src/generated/httparse-message.sls` is a DERIVED artifact: emitted
+;;; from `(httparse grammar)` by `tools/emit-message.ss` and committed so
 ;;; that what this project ships is reviewable as a diff and loadable without a
 ;;; generator. A derived file in the tree is a file that can silently stop
 ;;; describing its source, so this lane re-emits and compares BYTES.
@@ -22,8 +22,8 @@
   (call-with-port (open-file-input-port path) get-bytevector-all))
 
 (define (emit)
-  (render-machine (compile-machine (make-request-line-machine) '())
-                  'httparse-request-line-machine))
+  (render-machine (compile-machine (make-message-machine) '())
+                  'httparse-message-machine))
 
 (define committed (read-bytes artifact-path))
 
@@ -82,7 +82,7 @@
     (harness-case "it is the library the conformance lanes import"
       (lambda ()
         (let ((s (text)))
-          (check "library name" (find-substring s "(library (generated httparse-request-line)"))
-          (check "export" (find-substring s "(export httparse-request-line-machine)")))))))
+          (check "library name" (find-substring s "(library (generated httparse-message)"))
+          (check "export" (find-substring s "(export httparse-message-machine)")))))))
 
 (harness-finish)

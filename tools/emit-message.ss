@@ -1,15 +1,15 @@
-;;; Emit the request-line parser as a checked-in derived artifact.
+;;; Emit the HTTP/1 message parser as a checked-in derived artifact.
 ;;;
 ;;; Usage:
-;;;   chez --libdirs <src>:<generator-src> --script tools/emit-request-line.ss \
-;;;        --output src/generated/httparse-request-line.sls
+;;;   chez --libdirs <src>:<generator-src> --script tools/emit-message.ss \
+;;;        --output src/generated/httparse-message.sls
 ;;;
 ;;; This is the ONLY way the artifact is written. `make parser-refresh` runs it
-;;; and `httparse.determinism.request-line.chez.source` runs it again and
+;;; and `httparse.determinism.generated-artifact.chez.source` runs it again and
 ;;; compares, so a grammar edit that is not followed by a refresh reddens rather
 ;;; than shipping an artifact that no longer matches its source.
 ;;;
-;;; The library it writes is `(generated httparse-request-line)` -- the
+;;; The library it writes is `(generated httparse-message)` -- the
 ;;; collection is the machine's own name, which the generator chooses -- and it
 ;;; imports `(byte-machine runtime)` and nothing above it.
 (import (rnrs) (chezscheme) (httparse grammar) (byte-machine compile))
@@ -28,8 +28,8 @@
 (define out (or (flag-value "--output") (die "--output is required")))
 
 (define bytes
-  (render-machine (compile-machine (make-request-line-machine) '())
-                  'httparse-request-line-machine))
+  (render-machine (compile-machine (make-message-machine) '())
+                  'httparse-message-machine))
 
 (when (file-exists? out) (delete-file out))
 (call-with-port (open-file-output-port out (file-options no-fail))

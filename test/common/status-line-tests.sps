@@ -28,7 +28,7 @@
         (byte-machine runtime))
 
 (define machine
-  (make-interpreted-machine (verify-machine (make-request-line-machine))))
+  (make-interpreted-machine (verify-machine (make-message-machine))))
 
 ;; trace-as : Symbol String -> (Listof String)
 ;; The KIND is an argument because the parser cannot be built without it, and

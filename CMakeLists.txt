@@ -43,9 +43,9 @@ if(HTTPARSE_CHEZ_EXECUTABLE)
   add_custom_target(httparse_parser_refresh
     COMMAND "${HTTPARSE_CHEZ_EXECUTABLE}"
             --libdirs "${CMAKE_SOURCE_DIR}/src:${CMAKE_SOURCE_DIR}/vendor/byte-machine/src"
-            --script "${CMAKE_SOURCE_DIR}/tools/emit-request-line.ss"
-            --output "${CMAKE_SOURCE_DIR}/src/generated/httparse-request-line.sls"
-    COMMENT "httparse: re-emitting the generated request-line parser"
+            --script "${CMAKE_SOURCE_DIR}/tools/emit-message.ss"
+            --output "${CMAKE_SOURCE_DIR}/src/generated/httparse-message.sls"
+    COMMENT "httparse: re-emitting the generated message parser"
     VERBATIM)
 endif()
 
