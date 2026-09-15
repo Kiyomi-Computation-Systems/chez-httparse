@@ -179,12 +179,22 @@ one of M4's put a terminal somewhere the verifier refuses, so it never reached
 the comparison it was written to exercise. Before believing a mutation's
 result, check that the mutant is a machine that could have run.
 
-**A survivor is either a missing test or a statement about scope, and which
-one is a measurement.** M4 had two mutations survive both lanes. Neither was
-argued from the graph: each was re-run against the unit lane *and* the
-conformance lane, and only then recorded as unobservable under this
-milestone's scope — with a comment at the code naming the slice that owes it a
-test. Four other survivors turned out to be real gaps and became checks.
+**A survivor is a missing test, a statement about scope, or the finding
+itself — and which one is a measurement.** M4 had two mutations survive both
+lanes. Neither was argued from the graph: each was re-run against the unit
+lane *and* the conformance lane, and only then recorded as unobservable under
+this milestone's scope, with a comment at the code naming the slice that owes
+it a test. Four other survivors turned out to be real gaps and became checks.
+
+The third kind is rarer and worth recognising. Replacing the upgrade pause
+with an *error node* was CAUGHT by the unit lane and SURVIVED the conformance
+lane — all 96 fixtures still passed, because llhttp prints a pause as an error
+line and no fixture in the corpus resumes. That survival is not a gap to
+close; it **is** the evidence for the decision that the substitution would be
+undetectable in a trace, which is why the property is checked against the
+parser directly. When a mutation's outcome differs between two lanes, the
+DIFFERENCE is the finding — run it against both before concluding anything
+from either.
 
 ## A blocked fixture stops gating everything else it covered
 
@@ -203,6 +213,24 @@ else its trace was pinning, and put that in a unit case built from the
 fixture's own numbers. M4 did this for the two upgrade arms — an upgrade with a
 body reads it, one without does not — and the mutation that collapses them
 survives without that case. It was written because the survivor pointed at it.
+
+## Explain the behaviour in the code and the version in the changelog
+
+The rename audit has caught the same thing in four consecutive milestones, most
+recently in five places at once. It is never the code — it is a *comment*,
+explaining why something is the way it is, and the explanation names the
+dependency and the release it arrived in.
+
+That is the shape criterion 5 forbids in the build and test tree, and it is
+easy to write without noticing, because naming the version genuinely is the
+clearest way to explain a change. `CHANGELOG.md` is an exempt surface and is
+where the version narrative belongs; a decision record is where the reasoning
+belongs. A comment beside the code should say what the code does and why that
+is right — "the generator gives a pause its own reason", not "as of X v0.4.0".
+
+The audit catches it every time, so nothing ships wrong. What it costs is a
+red lane and a rewrite, every milestone, and the habit is worth breaking at
+the point of writing instead.
 
 ## Traps this repo has already hit
 

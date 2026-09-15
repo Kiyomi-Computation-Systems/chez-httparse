@@ -1132,3 +1132,46 @@ reason", from this project's third brief -- so the gap is closed upstream and
 nine fixtures are waiting on the pin. Decision 0005 item 3 makes a bump its own
 pull request, and this one is of a PUBLISHED pin, so unlike M2's two it does
 not ride a milestone branch. M5 (chunked bodies, 17 fixtures) follows.
+
+PIN BUMP CLOSED (2026-09-15). byte-machine v0.3.0 -> v0.4.0, generated ABI
+6 -> 7, decision 0015. Squash-merged as 77be8d0 (#9), main caught up, branch
+deleted locally and on the remote, main re-verified green: test-all 56/56,
+ratchet 96 / 94 / 84.
+
+Its OWN pull request, per decision 0005 item 3 -- unlike M2's two bumps, which
+rode the milestone branch because the pin had never been published. This one
+carried the commit range (9c027fd..18fcc8b), the re-measurement, a CHANGELOG
+entry on both sides, and a pointer to the brief that asked.
+
+THE THIRD UPSTREAM BRIEF IS DISCHARGED, and with it all three. Nine fixtures:
+connection.md #14 #18 #19 #20 #21, method.md #2 #3 #4, uri.md #9.
+
+Upstream decided two things differently from the brief and both are better:
+the reason is a DISTINCT result slot rather than the error slot -- they
+rejected the error slot by name, with the failure it would cause, which the
+brief had merely allowed -- and the boundary is drawn at author-declared pause
+points, leaving the span-callback pauses alone. The brief did not distinguish
+them.
+
+Measured across the pin with the grammar unchanged: byte-identical but for the
+ABI literal, 144,172 bytes both sides, same IR fingerprint
+12284084569705248381. 144,303 once the grammar names the reason.
+
+REFLECTION. One standard added, one extended.
+
+  1. "Explain the behaviour in the code and the version in the changelog." The
+     rename audit has caught the same shape in FOUR consecutive milestones,
+     five places this time -- always a comment whose explanation names the
+     dependency and its release. It never ships wrong, because the audit
+     catches it; what it costs is a red lane and a rewrite every milestone.
+     CHANGELOG.md is the exempt surface and the decision records hold the
+     reasoning.
+  2. "Mutate by inverting a branch" gained a THIRD kind of survivor. Replacing
+     the pause with an error node was CAUGHT by the unit lane and SURVIVED the
+     conformance lane -- all 96 fixtures still passed. That survival is not a
+     gap; it IS the evidence for decision 0015 item 5, that the substitution
+     is undetectable in a trace. When a mutation's outcome differs between two
+     lanes, the DIFFERENCE is the finding.
+
+NEXT: M5, chunked bodies. 17 fixtures measured as waiting on it, and nothing
+upstream is outstanding.
