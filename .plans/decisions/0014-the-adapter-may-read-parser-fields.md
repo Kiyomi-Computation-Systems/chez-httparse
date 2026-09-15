@@ -3,6 +3,7 @@
 Date: 2026-09-14
 Status: accepted
 Refines: [0008](0008-bit-exact-trace-conformance-and-the-ratchet.md), decision item 2
+Applied again by: [0016](0016-a-finish-fixture-prints-a-field-not-an-ending.md), item 2 (the `finish` field)
 Milestone: M4 Slice ⓪ (.plans/2026-09-13-gate0-http-parser-milestone-plan.md)
 
 ## Context

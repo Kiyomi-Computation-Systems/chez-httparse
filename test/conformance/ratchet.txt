@@ -21,15 +21,15 @@
 # refreshed, and review the diff fixture by fixture.
 #
 passing  request/connection.md#1
-not-yet  request/connection.md#2
-not-yet  request/connection.md#3
+passing  request/connection.md#2
+passing  request/connection.md#3
 deferred request/connection.md#4                         lenient
-not-yet  request/connection.md#5
+passing  request/connection.md#5
 passing  request/connection.md#6
 passing  request/connection.md#7
 passing  request/connection.md#8
-not-yet  request/connection.md#9
-not-yet  request/connection.md#10
+passing  request/connection.md#9
+passing  request/connection.md#10
 deferred request/connection.md#11                        lenient
 passing  request/connection.md#12
 deferred request/connection.md#13                        lenient
@@ -59,9 +59,9 @@ passing  request/content-length.md#15
 deferred request/content-length.md#16                    skip-body
 passing  request/content-length.md#17
 deferred request/content-length.md#18                    lenient
-not-yet  request/finish.md#1
-not-yet  request/finish.md#2
-not-yet  request/finish.md#3
+passing  request/finish.md#1
+passing  request/finish.md#2
+passing  request/finish.md#3
 passing  request/invalid.md#1
 passing  request/invalid.md#2
 passing  request/invalid.md#3
@@ -125,7 +125,7 @@ deferred request/pausing.md#10                           pausing
 deferred request/pausing.md#11                           pausing
 deferred request/pausing.md#12                           pausing
 deferred request/pausing.md#13                           pausing
-not-yet  request/pipelining.md#1
+passing  request/pipelining.md#1
 passing  request/sample.md#1
 passing  request/sample.md#2
 passing  request/sample.md#3
@@ -135,7 +135,7 @@ passing  request/sample.md#6
 passing  request/sample.md#7
 passing  request/sample.md#8
 passing  request/sample.md#9
-not-yet  request/sample.md#10
+passing  request/sample.md#10
 deferred request/sample.md#11                            lenient
 passing  request/sample.md#12
 passing  request/sample.md#13
@@ -182,7 +182,7 @@ passing  request/uri.md#3
 passing  request/uri.md#4
 passing  request/uri.md#5
 passing  request/uri.md#6
-not-yet  request/uri.md#7
+passing  request/uri.md#7
 passing  request/uri.md#8
 passing  request/uri.md#9
 passing  request/uri.md#10

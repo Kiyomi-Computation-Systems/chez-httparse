@@ -288,6 +288,36 @@ close.
 **Exit**: all 124 strict request fixtures pass. **This is a usable request
 parser**; the server layer can begin against it here rather than at the release.
 
+**Done, in three slices.** Ratchet **113 → 124 passing**, 66 not-yet, 84
+deferred. **The exit criterion is met**: every strict request fixture in
+llhttp's corpus passes, and everything left is a response or deferred.
+
+| | |
+|---|---|
+| ⓪ | the loop: keep-alive, reset, pipelining, `closed` (+6) |
+| ① | `off=NULL finish=N` is a field, not an ending (+3) |
+| ② | the request target's two ends (+2) |
+
+**`after_message_complete` reads its answer before it clears the state.**
+llhttp's C callback computes `should_keep_alive`, sets `finish`, clears the
+flags and returns the answer — in that order, and the order is load-bearing.
+The flags reset is measured by exactly one fixture, `request/pipelining.md#1`,
+because the duplicate-`Content-Length` test is `flags & CONTENT_LENGTH`.
+
+**A `*-finish` fixture prints a field, it does not end a parse**
+([0016](decisions/0016-a-finish-fixture-prints-a-field-not-an-ending.md)). The
+driver had modelled it as an ending since M1; llhttp's hook is one line and
+prints `s->finish`. Two of the three finish fixtures were already byte-exact
+without their last line.
+
+**The last two request fixtures were measured at M4's close as M11's**, and
+they turned out to need the target's BOUNDARY rather than its structure —
+eight nodes. So the exit criterion was met rather than amended, and M11 keeps
+`url.md`'s 21 fixtures and the schema/server/query/fragment machinery. That
+the measurement pointed at the right milestone and the wrong SIZE is the same
+lesson the ceilings table below teaches: a grouping orders work, it does not
+scope it.
+
 ### M7 — responses
 
 The status line, `status` span, `status complete`, and the response branch of
@@ -327,6 +357,7 @@ under-counts others, and no care with the arithmetic fixes that.
 | M3 | 44 cumulative | 29 |
 | M4 | +15 and a share of 63 | 87 cumulative, +58 |
 | M5 | — | 113 cumulative, +17 |
+| M6 | — | 124 cumulative, +11 |
 
 M2 and M3 both fell short; M4 overshot, because the header-section row's
 fixtures mostly needed framing and the `message complete` row's mostly did not
