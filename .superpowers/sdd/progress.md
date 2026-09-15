@@ -1293,3 +1293,72 @@ finish.md, one in pipelining.md -- and its exit criterion is all 124 strict
 request fixtures, which is the point where the server layer can begin against
 this parser rather than waiting for the release.
 
+
+M6 — THE MESSAGE LOOP (2026-09-15). Branch feat/m6-message-loop.
+
+Ratchet 113 -> 124 passing (66 not-yet, 84 deferred). THE EXIT CRITERION IS
+MET: all 124 strict request fixtures pass, which is every request fixture in
+llhttp's corpus that decision 0009 puts in v0.1. Everything left is a response
+(66) or deferred (84). This is the point the plan named as "a usable request
+parser".
+
+Three slices, measured between them:
+
+  0  the loop: keep-alive, reset, pipelining, `closed`     +6
+  1  `off=NULL finish=N` is a field, not an ending         +3
+  2  the request target's two ends                         +2
+
+THE ANSWER IS READ BEFORE THE STATE IS CLEARED.
+`llhttp__after_message_complete` computes should_keep_alive, sets finish,
+clears the flags and RETURNS the answer -- in that order, and the order is
+load-bearing because the answer is read off the very flags it then clears. So
+the test comes first in the graph and each arm does its own resetting.
+
+The flags reset is measured by EXACTLY ONE fixture. pipelining.md#1 carries a
+Content-Length on each of three messages and the duplicate test is
+`flags & CONTENT_LENGTH`, so a loop that kept the flags would report
+`Duplicate Content-Length` on the second message.
+
+DECISION 0016: A `*-finish` FIXTURE PRINTS A FIELD, NOT AN ENDING. Amends 0008
+item 5. `llhttp__test_finish` is one line -- `llparse__print(NULL, NULL,
+"finish=%d", s->finish)` -- and `test/fixtures/index.ts` defines
+LLPARSE__TEST_FINISH for exactly the two `*-finish` types. It never calls
+`llhttp_finish`: no callback fires, no end-of-input state is entered.
+
+The driver had modelled it as an ending SINCE M1 and called `parser-finish!`,
+which drove this parser to its eof-targets and produced an `unexpected-eof`
+the oracle never records. The adapter refused it, correctly, for four
+milestones -- and that refusal is the reason three fixtures stayed honestly
+red instead of passing for a wrong reason. THE REFUSAL WAS RIGHT AND THE MODEL
+BEHIND IT WAS NOT, which is worth separating: a correct check does not vouch
+for the theory that produced it.
+
+Two of the three were then already byte-exact without their last line, because
+an open span is flushed when a feed ends.
+
+THE LAST TWO REQUEST FIXTURES WERE MEASURED AT M4's CLOSE AS M11's. uri.md#7
+and sample.md#10 both need llhttp's url sub-parser -- and both need its
+BOUNDARY rather than its structure, which is eight nodes: an illegal byte
+errors with the url span STILL OPEN (so no fragment is delivered), and a
+target followed by CRLF is HTTP/0.9 with no protocol span, no version span and
+v=0/9. So M6's exit was met rather than amended, and M11 keeps url.md's 21
+fixtures and the schema/server/query/fragment machinery.
+
+The measurement pointed at the right MILESTONE and the wrong SIZE. That is the
+ceilings table's lesson again from the other side: a grouping orders work, it
+does not scope it -- and "needs X" is not "needs all of X".
+
+`bad-url`'s placeholder reason, "invalid request target", was replaced by
+llhttp's own two for that position. Checked first: no fixture in the corpus
+ever recorded the placeholder.
+
+Artifact 214,201 -> 217,945 bytes. ABI unchanged at 7.
+
+FOURTEEN MUTATIONS, all inversions or wrong values, each run against its unit
+lane AND the conformance lane with the artifact re-emitted. Thirteen caught in
+both on the first attempt. The fourteenth was a COLLAPSE in disguise --
+routing the illegal-byte arm to the span end made the error node unreachable,
+REFUSED-AT-VERIFICATION -- and was rewritten as an inversion (the space arm
+and the illegal-byte arm swapped), which two cases then caught. AGENTS.md's
+"mutate by inverting" rule, earning its place a fourth time.
+

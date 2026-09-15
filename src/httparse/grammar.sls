@@ -9,19 +9,23 @@
 ;;; header section, strictly, and the framing that section decides: a field
 ;;; NAME selects a value machine, `Content-Length` measures a body, and
 ;;; `Transfer-Encoding`, `Connection` and `Upgrade` set the FLAGS bits that
-;;; `headers complete` prints -- and the chunked body those bits can ask for,
-;;; extensions and trailers included.
+;;; `headers complete` prints -- the chunked body those bits can ask for,
+;;; extensions and trailers included -- and the loop back to the next message
+;;; on the same connection.
 ;;;
-;;; Still to come: the message loop (pipelining, reset, keep-alive), responses,
-;;; and the url sub-parser. A complete message parks on `after-message`, the
-;;; dispatch that would decide between the next message and a clean end, so a
-;;; pipelined request's trace STOPS after the first `message complete` rather
-;;; than continuing with a line llhttp never wrote.
+;;; THIS IS EVERY STRICT REQUEST llhttp'S CORPUS RECORDS. What is still to
+;;; come is responses, the url sub-parser's structure, pausing and the lenient
+;;; modes.
 ;;;
 ;;; THE HEADER SECTION IS PARSED TWICE, by the same states. A chunked
 ;;; message's trailers re-enter `header-field-start`, and the flag the zero
 ;;; chunk sets is the only thing that tells the empty line at the end which
 ;;; block it just closed.
+;;;
+;;; SO IS THE WHOLE MESSAGE. A message that keeps the connection alive clears
+;;; the flags and returns to `start`, where a second one begins -- and the
+;;; only thing separating a restart from a first start is a field, which is
+;;; what makes `reset` fire between two messages and not before the first.
 ;;;
 ;;; THE EVENT OFFSETS ARE ASYMMETRIC, AND THAT IS NOT A MISTAKE. Read off
 ;;; `request/sample.md`, for `OPTIONS /url HTTP/1.1`:

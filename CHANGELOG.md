@@ -291,6 +291,41 @@ the bootstrap slice design is
   goes red rather than quiet. The chunk-size overflow shim is the same shape:
   no fixture in the corpus carries a chunk larger than 51.
 
+- **The message loop** (M6, three slices), taking the ratchet from **113 to
+  124 passing** (66 not-yet, 84 deferred). **Every strict request fixture in
+  llhttp's corpus now passes** — the milestone's exit criterion, and the point
+  at which a server layer can begin against this parser.
+
+  `should_keep_alive` as a decision over the version and the flags, then
+  `restart` or `closed`; `reset` between two messages on one connection;
+  pipelining; and `off=NULL finish=N`.
+
+  **The answer is read before the state is cleared.** llhttp's C callback
+  computes `should_keep_alive`, sets `finish`, clears the flags and returns
+  the answer, in that order — and the order is load-bearing, because the
+  answer is read off the very flags it then clears. The flags reset is
+  measured by exactly one fixture: `request/pipelining.md#1` carries a
+  `Content-Length` on each of three messages, and the duplicate test is
+  `flags & CONTENT_LENGTH`.
+
+  **A `*-finish` fixture prints a field, it does not end a parse**
+  ([0016](.plans/decisions/0016-a-finish-fixture-prints-a-field-not-an-ending.md),
+  amending [0008](.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
+  item 5). llhttp's hook is one line and prints `s->finish`; it never calls
+  `llhttp_finish`. The driver had modelled it as an ending since M1 and drove
+  this parser to its end-of-input states, producing an `unexpected-eof` the
+  oracle never records — which the adapter refused, correctly, for four
+  milestones. The refusal was right and the model behind it was not.
+
+  **The request target gained its two ends**, which the last two request
+  fixtures needed: a byte no target may carry is an error with the span
+  **still open**, so no `span[url]` fragment is delivered; and a target
+  followed by CRLF is **HTTP/0.9** — no protocol span, no version span, and
+  `v=0/9` on the headers line. This is not the url sub-parser: the schema, the
+  server, the query and the fragment are still M11's, with `url.md`'s 21
+  fixtures still deferred. `bad-url`'s placeholder reason, which no fixture
+  ever recorded, is replaced by llhttp's own two for that position.
+
 ### Removed
 
 ### Fixed
