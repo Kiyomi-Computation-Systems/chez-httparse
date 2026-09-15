@@ -409,6 +409,10 @@ None is obvious from reading the code.
 * R6RS keeps `string-set!` out of `(rnrs)`; it lives in
   `(rnrs mutable-strings)`. A hex encoder built with `make-string` and
   `string-set!` fails at library load, not at the call.
+* R6RS forbids the `|...|` symbol-escape syntax, and Chez says so only when
+  it READS the file — so a lane whose source lane passes can still fail at
+  the aot compile, which is the first thing to read the program twice. The
+  error is `symbol escape syntax is not allowed in #!r6rs mode`.
 * `(verify-machine m)` **returns a verdict; it does not raise one.** A script
   that calls it and then prints "verified" has checked nothing — M7 wrote that
   script, believed it, and was corrected by the emitter, which reads

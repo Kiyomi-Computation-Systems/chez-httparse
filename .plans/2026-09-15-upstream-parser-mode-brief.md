@@ -77,6 +77,35 @@ costs is a callback invocation per message where llhttp has a field load, and a
 binding the embedder must supply for something that is a constant for the life
 of the parser.
 
+**What it costs at ELEVEN modes, measured at M10.** The table above prices one
+mode. llhttp's `lenient_flags` is an `i16` with eleven independent bits, and an
+embedder turns on any subset of them:
+
+```c
+/* llhttp test/fixtures/extra.c */
+void llhttp__test_init_request_lenient_all(llparse_t* s) {
+  llhttp__test_init_request(s);
+  s->lenient_flags |=
+    LENIENT_HEADERS | LENIENT_CHUNKED_LENGTH | LENIENT_KEEP_ALIVE | ...;
+}
+```
+
+A branch key cannot carry a subset — there are 2048 of them — and a loop that
+asked repeatedly is a zero-progress cycle the verifier refuses outright. So
+the decision-callback workaround does not generalise to a set; it multiplies.
+The consumer now declares **eleven optional decision callbacks and
+twenty-two nodes ahead of its entry state**, asked once per parser, to encode
+one integer the embedder already knows.
+
+Two things make that bearable and are worth keeping in any design that
+replaces it. Optional callbacks with a declared `default-branch` mean an
+embedder that wants none of the modes binds nothing and the 218 strict
+fixtures exercise the default rather than a binding that says "no". And
+putting the chain at the ENTRY rather than inside the message loop is what
+makes "once per parser" true — which is the semantics an initial-value
+argument would have for free, and which a `parser-reset!` that restored
+declared initials would silently undo.
+
 ## 3. What the shape probably is not
 
 Two designs look obvious and both have a problem this consumer can already see.
