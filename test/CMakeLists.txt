@@ -1187,6 +1187,24 @@ httparse_add_scheme_lane(
   TIMEOUT 600
   LABELS property)
 
+# --- The documented example -------------------------------------------------
+#
+# README.org shows this code. It runs here so the README cannot drift: a
+# documented example nothing executes is a claim about an older version.
+
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.example.parse-request.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/example-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GENERATED_PARSER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/example-tests.sps"
+    TIMEOUT 180
+    LABELS example)
+endforeach()
+
 # --- What parsing costs -----------------------------------------------------
 #
 # The allocation audit asserts a SHAPE and runs on every pull request; the

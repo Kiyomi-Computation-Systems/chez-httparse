@@ -366,12 +366,28 @@ alone — which is why the 304 mutation was caught and the 204 one was not. The
 corpus-load lane now pins which of the five the oracle separates, as M5's pins
 which chunk-extension reasons it records.
 
-### M8 — release
+### M8 — release — DONE
 
 The live llhttp differential as a local opt-in lane
 ([0010](decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md)), property
 and fuzz work over generated and fragmented input, allocation audit, benchmark
 baseline, the reference documentation set, and v0.1.
+
+**The lane found three defects in a parser that passes 190 of 190.** The
+first byte's validation happened before `message begin`; repeated spaces
+before the target produced an empty span; and the two RTSP methods were
+spelled with hyphens where llhttp's map uses underscores. None is visible to
+any fixture in the corpus, which is decision 0010's whole argument, cashed.
+Two divergences remain and are named, witnessed and published
+([0018](decisions/0018-a-divergence-is-named-and-witnessed-or-it-fails-the-lane.md)):
+the deferred URL sub-parser, and a completion event at the exact end of the
+input, in both directions. The upstream half of the second is the fifth
+brief.
+
+**Fragmentation invariance is true only for a parse that reaches no error**,
+measured at 71 of 71 against 13 of 169, and llhttp shares the exception
+exactly. The unqualified property would have been a false one and the corpus
+could not have said so.
 
 ### Deferred past v0.1, in order
 

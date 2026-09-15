@@ -1,0 +1,75 @@
+#+TITLE: What chez-httparse costs
+#+OPTIONS: toc:2
+
+Two lanes measure this, and they answer different kinds of question.
+
+* Allocation: a shape, asserted
+
+=httparse.property.allocation= runs on every pull request. It does not assert
+a byte count — a number read off the parser and written into a test is a
+snapshot that gets edited rather than thought about. It asserts the two
+properties an embedder depends on.
+
+** Parsing does not allocate in proportion to the input
+
+A span callback receives =(bv from to)= — bounds into the caller's
+bytevector. Nothing is copied, so a large body costs what a small one does.
+
+| message                         | allocated per whole-buffer parse |
+|---------------------------------+----------------------------------|
+| =POST= with a 10-byte body      | 6,496 B                          |
+| =POST= with a 10,000-byte body  | 6,548 B                          |
+
+A thousandfold more body, 0.8% more allocation. A parser that copied spans
+would show a thousandfold difference.
+
+** A feed costs the same whatever came before it
+
+Each =parser-feed!= returns a result record, so a parse fed in pieces
+allocates in proportion to the *number of feeds*. What must not happen is a
+per-feed cost that grows as the parse goes on — the signature of re-scanning
+or re-copying consumed input.
+
+| message fed one byte at a time | allocated per feed |
+|--------------------------------+--------------------|
+| 50 bytes                       | 398 B              |
+| 10,043 bytes                   | 384 B              |
+
+Flat, across a message two hundred times longer.
+
+** The instrument
+
+Chez's =bytes-allocated= reports what is allocated *right now*, so a
+collection inside a measured region makes the difference negative — which is
+how the first version of this lane reported a region as allocating −33,122
+bytes. The reading is taken from the statistics record's cumulative byte
+count instead, and the lane carries a case asserting that the counter never
+goes backwards, so a counter that stopped counting could not pass.
+
+* Throughput: numbers, printed
+
+=httparse.benchmark.throughput= carries a label the pull-request preset does
+not select. A measured rate moves with the machine, the build, and whatever
+else is running; gating a merge on one produces a lane that fails for
+reasons which are not about this code. The lane prints its figures and
+asserts only a floor loose enough that only a change of *kind* crosses it —
+an accidental quadratic, a per-byte allocation, a rescan.
+
+On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, source mode:
+
+| what                                         |    msg/s |   MB/s |
+|----------------------------------------------+----------+--------|
+| 308-byte request, 8 headers, whole buffer    |   20,000 |      6 |
+| 1,166-byte response, 1 KB body, whole buffer |   35,000 |     39 |
+| the same request, fed one byte at a time     |   11,000 |      3 |
+
+Read these as an order of magnitude, not a specification. They are here so
+that a later change can be compared against something, and so the cost of
+the worst case a resumable parser can be asked for — a byte at a time — is
+on the record rather than guessed at.
+
+To take your own:
+
+#+begin_src sh
+ctest --preset release -R benchmark
+#+end_src

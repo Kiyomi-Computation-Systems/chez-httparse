@@ -110,6 +110,26 @@ count you already trust, a union that must equal a set you already have, a
 partition that must cover it — and make that invariant a check in the tree, not
 a thing you eyeballed once.
 
+**And a count is an invariant over the SET, not over its ELEMENTS.** The same
+table was wrong again for six milestones in a way no count could see. Two of
+the 47 names were spelled `GET-PARAMETER` and `SET-PARAMETER`; llhttp's map
+keys them `GET_PARAMETER` and `SET_PARAMETER`, with underscores, because they
+are TypeScript identifiers — only `'M-SEARCH'` is quoted, which is the very
+thing the first extraction bug was about. The cardinality was right, the
+numbers were right, the union matched, and the hyphen looked more plausible
+than the underscore because RTSP methods are usually written that way.
+
+Nothing in the tree could have caught it: no fixture in a 253-fixture corpus
+uses either method, and the two checks that guard the table both range over
+the set. A live oracle found it in one run, by being asked about an input
+nobody had written down.
+
+So when an invariant is about a collection, ask what it would still accept.
+A count accepts any permutation of spellings; a union against a set you
+extracted the same way accepts the same mistake twice. The element-level
+check is an input that USES the element, and if your corpus has none, that is
+the finding.
+
 ## An estimate read off a grouping is not a prediction
 
 Name the attribute you grouped on and the attribute you are predicting. When
@@ -254,6 +274,31 @@ The tell is a survivor whose condition is duplicated somewhere downstream. Do
 not go looking for a test; go looking for the input that would tell the two
 apart, and when the oracle has not got one, pin that.
 
+## A property that looks universal may be a property of your corpus
+
+Before asserting an invariant over generated input, ask the oracle whether it
+holds for the oracle.
+
+M8 wrote "the trace is the same however the bytes arrive" as a property test,
+because that is what a resumable parser means and because the 190-fixture
+corpus passes at every chunk size. A third of the generated inputs failed
+it — and llhttp fails it identically. A span still open when the parse fails
+is printed only for the bytes a chunk boundary already flushed, so
+`Trailer : X-T` announces `span[header_field]="Trailer"` at one byte at a
+time and announces nothing at all whole-buffer. Upstream knows: `noScan` is
+in the fixture format for the cases where this bites.
+
+The property is true **for a parse that reaches no error** — 71 of 71
+generated inputs, measured — and the qualifier is the finding. Asserting the
+unqualified version would have produced a red lane that looked like a parser
+bug and was a test bug; deleting the property on seeing it fail would have
+thrown away the true one underneath.
+
+The corpus could not have told you. A corpus is a set of cases someone chose,
+and "the property holds for every case in it" is exactly what you would
+expect of cases chosen to be comparable. **Generated input is where a
+property gets tested; the oracle is where it gets qualified.**
+
 ## Check what the oracle covers, not only what your code does
 
 Having found an arm the oracle cannot judge, the tempting fix is a test that
@@ -335,6 +380,15 @@ None is obvious from reading the code.
   that named it in `SOURCES`, so both silently dropped that dependency. A
   lane's `SOURCES` list is the one place this hides well, because the lane
   still runs and still passes.
+* Chez's `bytes-allocated` reports what is allocated **right now**, not what
+  has been allocated in total, so a collection inside a measured region makes
+  the difference NEGATIVE. M8's allocation lane reported a region as
+  allocating -33122 bytes before anyone noticed. The cumulative figure is
+  `(sstats-bytes (statistics))`. The general form: when a counter can go
+  down, a before-and-after difference is not a measurement.
+* R6RS keeps `string-set!` out of `(rnrs)`; it lives in
+  `(rnrs mutable-strings)`. A hex encoder built with `make-string` and
+  `string-set!` fails at library load, not at the call.
 * `(verify-machine m)` **returns a verdict; it does not raise one.** A script
   that calls it and then prints "verified" has checked nothing — M7 wrote that
   script, believed it, and was corrected by the emitter, which reads

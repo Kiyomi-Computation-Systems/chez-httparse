@@ -2,22 +2,83 @@
 
 (CI badge goes here)
 
-HTTP Parser for Chez Scheme
+An HTTP/1.x parser for Chez Scheme, built as a byte-level state machine and
+measured against [[https://github.com/nodejs/llhttp][llhttp]]'s own conformance corpus — not by re-implementing
+its tests, but by replaying llhttp's *recorded traces* and comparing byte for
+byte, at every chunk size.
 
 #+begin_quote
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
-Status: pre-release. The test harness and build layer are in place (ported
-from [[https://github.com/Kiyomi-Computation-Systems/byte-machine][byte-machine]], whose state-machine generator this parser will be built
-on — see =.plans/decisions/=); the parser itself has not started.
+*Status: v0.1.* Strict-mode request and response parsing: 190 of the 253 HTTP
+fixtures in llhttp's corpus, with the remaining 63 and the 21 URL fixtures
+enumerated rather than omitted. Lenient modes, pausing, and the URL
+sub-parser are deferred, each to its own milestone, and each already
+vendored and counted. See [[file:docs/conformance.org][docs/conformance.org]].
+
+* What it is
+
+- *A state machine, not a reader.* You feed it bytes; it calls you back. It
+  keeps no buffer of its own, copies no spans, and allocates nothing in
+  proportion to the input — a 10 KB body costs what a 10-byte one does.
+- *Resumable by construction.* A token, header or body split across any
+  number of feeds parses identically to one whole buffer. That is what the
+  corpus replay at every chunk size actually tests.
+- *Generated and committed.* =src/generated/httparse-message.sls= is emitted
+  from =src/httparse/grammar.sls= and checked in, so what ships is reviewable
+  as a diff and loadable without running a generator. A reference
+  interpreter runs beside it over every fixture and must agree.
+- *Pure Scheme.* No C, no FFI. The only dependency is the state-machine
+  generator's runtime library.
+
+* Using it
+
+#+begin_src scheme
+(import (generated httparse-message)
+        (byte-machine runtime))
+
+(define parser
+  (make-parser
+   httparse-message-machine
+   (list
+    ;; The one callback that ANSWERS: nothing in the bytes says whether a
+    ;; request or a response is coming, and the embedder always knows.
+    (list 'on-message-type (lambda (p ctx) 'request))
+
+    ;; A span callback gets bounds into YOUR bytevector. Nothing is copied
+    ;; and nothing is retained -- take what you need before returning.
+    (list 'on-method-data
+          (lambda (p ctx bv from to) (remember-method bv from to) callback-continue))
+    (list 'on-header-field-data
+          (lambda (p ctx bv from to) (remember-field bv from to) callback-continue))
+
+    ;; ... the remaining callbacks. Every declared one must be bound: a
+    ;; binding list with a hole is refused when the parser is made, not
+    ;; quietly ignored.
+    )
+   #f))
+
+(let ((r (parser-feed! parser chunk 0 (bytevector-length chunk))))
+  (case (parser-result-status r)
+    ((need-input) 'feed-more)
+    ((error) (parser-error-reason (parser-result-error r)))
+    (else (parser-result-status r))))
+#+end_src
+
+*The complete runnable version of this example is
+[[file:test/common/example-tests.sps][test/common/example-tests.sps]]*, which runs in CI — so it cannot drift from
+what the library actually does. [[file:docs/api.org][docs/api.org]] is the reference.
 
 * Requirements
 
+- Chez Scheme 10.4.1 or newer (=scheme=, =chez= and =chezscheme= are all
+  probed; Petite is rejected)
 - CMake 3.26 or newer (4.3.3 is what has actually been exercised)
-- Chez Scheme 10.4.1 or newer for the Scheme test lanes (=scheme=, =chez=,
-  and =chezscheme= are all probed; Petite is rejected). The CMake-layer
-  specifications run with no Scheme installed via the =no-scheme= preset.
+
+The CMake-layer specifications run with no Scheme installed, via the
+=no-scheme= preset. The optional live-llhttp differential additionally needs
+Node and a C toolchain; it is off unless you ask for it.
 
 * Building and testing
 
@@ -33,13 +94,22 @@ Every target is a thin wrapper over checked-in CMake presets, so
 =cmake --preset dev= and =ctest --preset pr= work identically everywhere,
 including on Windows where =make= is not in the base install.
 
+To run the parser against a live llhttp on generated input, see
+[[file:docs/conformance.org][docs/conformance.org]].
+
 * Documentation
 
-- =.plans/= — the governing architecture document and slice designs
+- [[file:docs/api.org][docs/api.org]] — the public surface
+- [[file:docs/conformance.org][docs/conformance.org]] — what v0.1 parses, and every measured divergence
+- [[file:docs/performance.org][docs/performance.org]] — allocation and throughput, measured
+- =.plans/= — the architecture document and the milestone plan
 - =.plans/decisions/= — decision records
 - =CHANGELOG.md= — release history
 
 * License
 
 © [[https://kiyomicomputation.systems/][Kiyomi Computation Systems LLC]]. Licensed under BSD 3-Clause — see
-[[file:LICENSE][LICENSE]]
+[[file:LICENSE][LICENSE]].
+
+llhttp's conformance corpus is vendored under =test/vendor/llhttp/= as test
+data and is MIT licensed; it is not part of the distributed library.
