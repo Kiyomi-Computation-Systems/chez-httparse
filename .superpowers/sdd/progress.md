@@ -1757,3 +1757,20 @@ Four mutations on the grammar and two on the harness, all caught: inverting
 either skip-body disjunct, letting the skip-body mode print without answering,
 inverting the pause discriminator, folding the two chunk-extension rows, and
 dropping the armed check.
+
+### M9 close-out
+
+Squash-merged as `af37e7b` (PR #16), five commits. Local `main` caught up and
+clean; both branches deleted locally and on the remote, which is back to
+`main` alone — including `docs/retire-stale-milestone-plan-header`, left
+behind by PR #15.
+
+Verified on MERGED main, not on the branch: `make clean` then `make test-all`
+green at **79 of 79** in 40s, and the opt-in differential re-run against the
+live oracle at **agreed=1097 url-machine=45 late-complete=4 unclassified=0**
+— the two classes 0018 names, unchanged. Reconfigured back to the default
+preset afterwards, where the lane is absent rather than skipped.
+
+CI on merged main is run `35035674698`: `linux-amd64 failure steps=0`,
+23:26:36 -> 23:26:39, no logs. The billing refusal 0004 names, not a test
+result — the fourth merge running.
