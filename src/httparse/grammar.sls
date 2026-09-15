@@ -318,6 +318,79 @@
   (define F-SKIP-BODY 64)
   (define F-TRANSFER-ENCODING 512)
 
+  ;; llhttp's LENIENT_FLAGS, its own `i16 lenient_flags` and NOT part of
+  ;; `flags`: the restart between two messages stores zero over `flags`, and a
+  ;; mode the embedder chose must survive that. Upstream keeps them apart for
+  ;; the same reason.
+  ;;
+  ;; EACH IS A SEPARATE QUESTION THE EMBEDDER IS ASKED, because a parser here
+  ;; cannot be started in a mode -- `make-parser` fills every field from the
+  ;; machine's declarations and `parser-field-ref` has no mutating sibling.
+  ;; That gap is this project's fourth upstream brief, which priced the
+  ;; workaround at three nodes for ONE mode. Eleven independent modes is what
+  ;; that price looks like multiplied: eleven optional decision callbacks and
+  ;; twenty-two nodes, where llhttp has one integer an embedder writes.
+  ;;
+  ;; The order is llhttp's bit order, and the list is the single source for
+  ;; the constants, the declarations, the ask chain and the adapter's names --
+  ;; so a flag cannot be declared and then never asked.
+  (define httparse-lenient-flags
+    '((headers                   1)
+      (chunked-length            2)
+      (keep-alive                4)
+      (transfer-encoding         8)
+      (version                  16)
+      (data-after-close         32)
+      (optional-lf-after-cr     64)
+      (optional-crlf-after-chunk 128)
+      (optional-cr-before-lf    256)
+      (spaces-after-chunk-size  512)
+      (header-value-relaxed    1024)))
+
+  (define (lenient-bit name)
+    (let ((row (assq name httparse-lenient-flags)))
+      (unless row (assertion-violation 'lenient-bit "no such lenient flag" name))
+      (cadr row)))
+  (define (lenient-callback-name name)
+    (string->symbol (string-append "on-lenient-" (symbol->string name))))
+  (define (lenient-ask-name name)
+    (string->symbol (string-append "lenient-ask-" (symbol->string name))))
+  (define (lenient-set-name name)
+    (string->symbol (string-append "lenient-set-" (symbol->string name))))
+
+  ;; The chain: ask, maybe set, ask the next, and fall into `start` at the
+  ;; end. It is the machine's ENTRY, so it runs once per parser -- the message
+  ;; loop re-enters at `start`, below the chain, exactly as llhttp's init hook
+  ;; runs once and its restart does not.
+  (define (lenient-entry)
+    (let ((names (map car httparse-lenient-flags)))
+      (let loop ((ns names) (acc '()))
+        (if (null? ns)
+            (reverse acc)
+            (let* ((name (car ns))
+                   (next (if (null? (cdr ns)) 'start (lenient-ask-name (cadr ns)))))
+              (loop (cdr ns)
+                    (cons (make-field-action-node
+                           (lenient-set-name name) 'set-mask
+                           (list 'lenient-flags (lenient-bit name)) next #f #f)
+                          (cons (make-callback-node
+                                 (lenient-ask-name name) (lenient-callback-name name)
+                                 next
+                                 (list (list 'yes (lenient-set-name name))
+                                       (list 'no next))
+                                 next #f)
+                                acc))))))))
+
+  (define (lenient-declarations)
+    (map (lambda (row)
+           ;; OPTIONAL, defaulting to `no`, and that default is llhttp's:
+           ;; every lenient flag starts clear and an embedder turns it on.
+           ;; Optional also means the 216 fixtures that are strict, and every
+           ;; embedder written before this, supply nothing and change nothing.
+           (make-callback-declaration (lenient-callback-name (car row)) 'decision #f
+                                      '(yes no) 'no #f))
+         httparse-lenient-flags))
+
   ;; llhttp's TYPE. It is not derived from the input: the EMBEDDER sets it
   ;; before the first byte, and llhttp's own fixture harness does exactly that
   ;; -- `llhttp__test_init_response` is one line, `s->type = HTTP_RESPONSE`.
@@ -481,31 +554,27 @@
                             (make-edge minor 'advance) #f))
       (make-edge 'version-close-expected-dot 'reexecute) 'e-eof-version #f))
 
-  ;; `ok` is the minor digits this major accepts. Every other DIGIT is a
-  ;; well-formed version llhttp rejects as a pair, and a non-digit is a
-  ;; malformed minor -- and the two land at different offsets, because the pair
-  ;; error fires after its digit is consumed and the malformed one before.
-  ;;
-  ;; THE ACCEPTED DIGITS ARE NOW ONE CASE EACH, not one byte-set case, because
-  ;; each has to store its own value on the way through: `headers complete`
-  ;; prints `v=%d/%d`. The rejected ones stay a single set -- a version that
-  ;; fails never reaches the line that would print it.
-  (define (version-minor-node name ok)
-    (let ((bad (other-digits ok)))
-      (make-byte-dispatch-node name
-        (append
-         (map (lambda (d)
-                (make-byte-case (make-exact-byte-matcher (digit d))
-                                (make-edge (version-minor-store-name d) 'advance) #f))
-              ok)
-         (if (null? bad) '()
-             (list (make-byte-case (make-byte-set-matcher (map digit bad))
-                                   (make-edge 'version-close-bad-version 'advance) #f))))
-        (make-edge 'version-close-bad-minor 'reexecute) 'e-eof-version #f)))
+  ;; STORE FIRST, CHECK AFTER -- which is llhttp's shape and was not this
+  ;; grammar's. Both digits are stored whatever they are, and the PAIR is
+  ;; judged by a separate chain afterwards (`checkVersion`). The older shape
+  ;; fused the two: only a digit belonging to an accepted pair had a store
+  ;; node, and every other digit fell into a subgraph that existed to fail. It
+  ;; produced the same three errors at the same three offsets, and it could
+  ;; not produce `v=5/6` -- so the moment a lenient parse had to PRINT a
+  ;; version it rejects, the fusion had to come apart.
+  (define all-digits '(0 1 2 3 4 5 6 7 8 9))
 
-  ;; The four accepted pairs are 0.9, 1.0, 1.1 and 2.0, so three majors and
-  ;; three minors are storable; the sets are derived from the pairs rather than
-  ;; written out, so adding a pair cannot forget its store node.
+  (define (version-minor-node name)
+    (make-byte-dispatch-node name
+      (map (lambda (d)
+             (make-byte-case (make-exact-byte-matcher (digit d))
+                             (make-edge (version-minor-store-name d) 'advance) #f))
+           all-digits)
+      (make-edge 'version-close-bad-minor 'reexecute) 'e-eof-version #f))
+
+  ;; The four accepted pairs are 0.9, 1.0, 1.1 and 2.0. The CHECK is derived
+  ;; from this list rather than written out, so adding a pair cannot forget to
+  ;; accept it.
   (define httparse-version-pairs '((0 . 9) (1 . 0) (1 . 1) (2 . 0)))
   (define (distinct ns)
     (let loop ((ns ns) (acc '()))
@@ -513,7 +582,6 @@
             ((member (car ns) acc) (loop (cdr ns) acc))
             (else (loop (cdr ns) (cons (car ns) acc))))))
   (define version-majors (distinct (map car httparse-version-pairs)))
-  (define version-minors (distinct (map cdr httparse-version-pairs)))
   (define (version-minors-for major)
     (list-sort < (map cdr (filter (lambda (p) (= (car p) major))
                                   httparse-version-pairs))))
@@ -526,30 +594,81 @@
      (map (lambda (d)
             (make-field-action-node (version-major-store-name d) 'store
                                     (list 'http-major d)
-                                    (version-dot-name d) #f #f))
-          version-majors)
+                                    'version-dot #f #f))
+          all-digits)
      (map (lambda (d)
             (make-field-action-node (version-minor-store-name d) 'store
                                     (list 'http-minor d)
-                                    'version-close #f #f))
-          version-minors)))
-  (define (version-dot-name d)
-    (string->symbol (string-append "version-dot-" (number->string d))))
-  (define (version-minor-name d)
-    (string->symbol (string-append "version-minor-" (number->string d))))
+                                    'version-check #f #f))
+          all-digits)))
 
-  ;; Every node the version pair needs, generated from the pair list: a store
-  ;; per storable digit, a dot node and a minor node per accepted major, and
-  ;; the `other` pair that exists only to fail.
+  ;; The pair check: one branch per accepted MAJOR, and under each, one per
+  ;; minor that major accepts. A major with no row, or a minor its major does
+  ;; not accept, falls through to the span end that reports `Invalid HTTP
+  ;; version` -- which fires having consumed the minor digit, where the
+  ;; malformed-minor error fires before it. That offset difference is the
+  ;; reason the two are separate errors and not one.
+  ;; THE CHAIN'S HEAD IS THE ENTRY, rather than an extra node in front of it:
+  ;; a node that asked the first major's question again would be unreachable
+  ;; the moment the chain asked it too, which is what the verifier said.
+  (define (version-check-major-name d)
+    (if (= d (car version-majors))
+        'version-check-strict
+        (string->symbol (string-append "version-check-major-" (number->string d)))))
+  (define (version-check-minor-name major d)
+    (string->symbol (string-append "version-check-" (number->string major)
+                                   "-" (number->string d))))
+  (define (version-check-nodes)
+    (let* ((majors version-majors)
+           (major-chain
+            (let loop ((ms majors) (acc '()))
+              (if (null? ms)
+                  (reverse acc)
+                  (let* ((d (car ms))
+                         (next (if (null? (cdr ms))
+                                   'version-close-bad-version
+                                   (version-check-major-name (cadr ms)))))
+                    (loop (cdr ms)
+                          (cons (make-field-branch-node
+                                 (version-check-major-name d) 'equal
+                                 (list 'http-major d)
+                                 (version-check-minor-name d (car (version-minors-for d)))
+                                 next #f)
+                                acc))))))
+           (minor-chains
+            (apply append
+                   (map (lambda (major)
+                          (let loop ((ns (version-minors-for major)) (acc '()))
+                            (if (null? ns)
+                                (reverse acc)
+                                (let* ((d (car ns))
+                                       (next (if (null? (cdr ns))
+                                                 'version-close-bad-version
+                                                 (version-check-minor-name
+                                                  major (cadr ns)))))
+                                  (loop (cdr ns)
+                                        (cons (make-field-branch-node
+                                               (version-check-minor-name major d) 'equal
+                                               (list 'http-minor d)
+                                               'version-close next #f)
+                                              acc))))))
+                        majors))))
+      (append major-chain minor-chains)))
+
+  ;; Every node the version pair needs: a store per digit, the one dot node,
+  ;; the one minor node, and the pair check.
   (define (version-nodes)
     (append
      (version-store-nodes)
-     (map (lambda (d) (version-dot-node (version-dot-name d) (version-minor-name d)))
-          version-majors)
-     (map (lambda (d) (version-minor-node (version-minor-name d) (version-minors-for d)))
-          version-majors)
-     (list (version-dot-node 'version-dot-other 'version-minor-other)
-           (version-minor-node 'version-minor-other '()))))
+     (list (version-dot-node 'version-dot 'version-minor)
+           (version-minor-node 'version-minor)
+           ;; `checkVersion` TESTS THE FLAG FIRST and accepts the pair
+           ;; unexamined when it is set -- llhttp's own order, and the reason
+           ;; the digits had to be stored before they were judged.
+           (make-field-branch-node 'version-check 'mask-any
+                                   (list 'lenient-flags (lenient-bit 'version))
+                                   'version-close 'version-check-strict #f))
+     (version-check-nodes)))
 
   ;; llhttp's `llhttp_message_needs_eof`, which is a pure question over the
   ;; parser's state and is asked from TWO places: the body decision, where a
@@ -610,14 +729,15 @@
 
   (define (make-message-machine)
     (make-machine
-     'httparse-message 'start
+     'httparse-message (lenient-ask-name (car (car httparse-lenient-flags)))
      ;; THE STATE `headers complete` PRINTS, plus the one that routes the
      ;; protocol check. llhttp's own callback reads `s->method, s->http_major,
      ;; s->http_minor, s->flags, s->content_length` and prints them, so these
      ;; four are named after its fields and the adapter reads them the same way
      ;; (decision 0014). `flags` needs ten bits -- TRANSFER_ENCODING is 1 << 9
      ;; -- and `content-length` is llhttp's uint64.
-     (list (make-uint-field 'method-protocols 8 0 #f)
+     (list (make-uint-field 'lenient-flags 16 0 #f)
+           (make-uint-field 'method-protocols 8 0 #f)
            (make-uint-field 'method 8 0 #f)
            ;; llhttp's `i8 type`, and its `i16 status_code`. The first is set
            ;; by the embedder through `on-message-type` below; the second is
@@ -647,7 +767,8 @@
            ;; a restart from a first start. It is what makes `reset` fire
            ;; between two messages and not before the first.
            (make-uint-field 'initial-message-completed 8 0 #f))
-     (list (make-callback-declaration 'on-reset 'event #t '() #f #f)
+     (append
+      (list (make-callback-declaration 'on-reset 'event #t '() #f #f)
            (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
            ;; THE ONE CALLBACK THAT ANSWERS RATHER THAN REPORTS, and the only
            ;; DECISION callback in this grammar. llhttp reads a field an
@@ -687,6 +808,7 @@
            (make-callback-declaration 'on-chunk-extension-value-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-chunk-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-message-complete 'event #t '() #f #f))
+      (lenient-declarations))
      (list (make-span-declaration 'method-span 'on-method-data #f #f)
            (make-span-declaration 'url-span 'on-url-data #f #f)
            (make-span-declaration 'protocol-span 'on-protocol-data #f #f)
@@ -877,6 +999,12 @@
            (make-error-declaration 'upgrade-paused 'paused-upgrade
                                    "Pause on CONNECT/Upgrade" #f))
      (append
+      ;; --- the modes, asked once ----------------------------------------------
+      ;; The machine's ENTRY, ahead of `start`, because llhttp's init hook runs
+      ;; before the first byte. The restart between messages re-enters at
+      ;; `start`, below this, so the embedder is asked once per parser and not
+      ;; once per message.
+      (lenient-entry)
       (list
       ;; --- the first byte -----------------------------------------------------
       ;; A dispatch rather than a callback node: the first byte must be
@@ -1135,15 +1263,15 @@
       ;;   HTTP/5.6    span[version]="5.6"   error@14   Invalid HTTP version
       ;;   HTTP/1.x    span[version]="1."               Invalid minor version
       (make-span-start-node 'version-open 'version-span 'version-major #f)
+      ;; EVERY DIGIT IS STORED, including the ones no accepted pair contains:
+      ;; a lenient parse has to PRINT `v=5/6`, and a value never stored cannot
+      ;; be printed. Whether the pair is acceptable is the check's question,
+      ;; not this node's.
       (make-byte-dispatch-node 'version-major
-        (append
-         (map (lambda (d)
-                (make-byte-case (make-exact-byte-matcher (digit d))
-                                (make-edge (version-major-store-name d) 'advance) #f))
-              version-majors)
-         (list (make-byte-case
-                (make-byte-set-matcher (map digit (other-digits version-majors)))
-                (make-edge 'version-dot-other 'advance) #f)))
+        (map (lambda (d)
+               (make-byte-case (make-exact-byte-matcher (digit d))
+                               (make-edge (version-major-store-name d) 'advance) #f))
+             all-digits)
         (make-edge 'version-close-bad-major 'reexecute) 'e-eof-version #f))
       (version-nodes)
       (list

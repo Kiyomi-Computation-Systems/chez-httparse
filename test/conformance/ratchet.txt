@@ -95,7 +95,7 @@ deferred request/lenient-headers.md#1                    lenient
 deferred request/lenient-headers.md#2                    lenient
 passing  request/lenient-headers.md#3
 deferred request/lenient-headers.md#4                    lenient
-deferred request/lenient-version.md#1                    lenient
+passing  request/lenient-version.md#1
 passing  request/method.md#1
 passing  request/method.md#2
 passing  request/method.md#3
@@ -229,7 +229,7 @@ passing  response/invalid.md#16
 deferred response/invalid.md#17                          lenient
 passing  response/invalid.md#18
 deferred response/invalid.md#19                          lenient
-deferred response/lenient-version.md#1                   lenient
+passing  response/lenient-version.md#1
 passing  response/pausing.md#1
 passing  response/pausing.md#2
 passing  response/pausing.md#3

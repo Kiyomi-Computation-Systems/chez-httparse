@@ -18,6 +18,7 @@
   (export ratchet-parse
           ratchet-entry? ratchet-entry-status ratchet-entry-id ratchet-entry-note
           ratchet-fixture-id ratchet-fixture-class
+          ratchet-implemented-lenient
           ratchet-error? ratchet-error-detail)
   (import (rnrs) (httparse test corpus-load))
 
@@ -38,19 +39,20 @@
 
   ;; ratchet-fixture-class : Fixture -> Symbol
   ;; 'deferred when decision 0009 puts the fixture outside v0.1, else 'in-scope.
-  (define (ratchet-fixture-class f)
-    (let ((type (fixture-meta-ref f 'type #f)))
-      (if (or (eq? (fixture-kind f) 'url)
-              (and (string? type) (contains? type "lenient")))
-          'deferred
-          'in-scope)))
+  ;; THE LENIENT FLAGS THIS PARSER IMPLEMENTS. M10 lands them a slice at a
+  ;; time, and a fixture is in scope exactly when the flag its init hook sets
+  ;; is on this list -- so a slice is one name added here and its fixtures
+  ;; re-classed in the same reviewed diff, and no fixture can drift in ahead
+  ;; of the behaviour it needs. `all` is the hook that sets nine at once, so
+  ;; it arrives only when all nine do.
+  (define ratchet-implemented-lenient '(version))
 
-  (define (contains? s sub)
-    (let ((n (string-length s)) (m (string-length sub)))
-      (let loop ((i 0))
-        (cond ((> (+ i m) n) #f)
-              ((string=? (substring s i (+ i m)) sub) #t)
-              (else (loop (+ i 1)))))))
+  (define (ratchet-fixture-class f)
+    (if (or (eq? (fixture-kind f) 'url)
+            (not (for-all (lambda (flag) (memq flag ratchet-implemented-lenient))
+                          (fixture-lenient-flags f))))
+        'deferred
+        'in-scope))
 
   (define (whitespace? c)
     (or (char=? c #\space) (char=? c #\tab) (char=? c #\return) (char=? c #\linefeed)))

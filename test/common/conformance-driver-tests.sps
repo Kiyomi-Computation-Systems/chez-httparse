@@ -134,6 +134,12 @@
 ;; decides what it can bind, so a `url` fixture or one with no type at all is
 ;; a failing fixture there rather than a crash here -- the same rule as every
 ;; other refusal in this lane.
+;; fixture-init : Fixture -> (Pair Symbol (Listof Symbol))
+;; The init hook upstream compiles in, decomposed: its kind and the lenient
+;; flags it sets. One value because it is one function over there.
+(define (fixture-init f)
+  (cons (fixture-message-type f) (fixture-lenient-flags f)))
+
 (define (fixture-message-type f)
   (let ((type (fixture-meta-ref f 'type #f)))
     (if (string? type)
@@ -149,7 +155,7 @@
 (define (run-at machine f bv size)
   (let* ((r (make-trace-recorder))
          (p (make-parser machine
-                         (trace-recorder-bindings r (fixture-message-type f)
+                         (trace-recorder-bindings r (fixture-init f)
                                                   (fixture-harness-mode f))
                          #f))
          (len (bytevector-length bv)))

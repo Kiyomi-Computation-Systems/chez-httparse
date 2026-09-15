@@ -39,7 +39,7 @@
 ;; trace : Symbol HarnessMode String -> (Listof String)
 (define (trace kind mode input)
   (let* ((r (make-trace-recorder))
-         (p (make-parser machine (trace-recorder-bindings r kind mode) #f))
+         (p (make-parser machine (trace-recorder-bindings r (list kind) mode) #f))
          (bv (string->utf8 input))
          (refused
           (call/cc
