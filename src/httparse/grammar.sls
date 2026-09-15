@@ -101,7 +101,8 @@
   (export make-message-machine
           httparse-tchar-bytes httparse-url-bytes httparse-header-bytes
           httparse-method-names httparse-method-numbers
-          httparse-http-methods httparse-rtsp-methods httparse-ice-methods)
+          httparse-http-methods httparse-rtsp-methods httparse-ice-methods
+          method-name->identifier)
   (import (rnrs) (byte-machine graph))
 
   (define (range lo hi)
@@ -146,17 +147,17 @@
   ;; WHY `keyword-table` AND NOT `make-sequence-dispatch-node`. Sequence
   ;; dispatch rejects a case list where one entry is a proper prefix of another
   ;; (`ambiguous-sequence-prefix`), and `GET` is a proper prefix of
-  ;; `GET-PARAMETER` -- the only such pair across the 47, and one is enough.
+  ;; `GET_PARAMETER` -- the only such pair across the 47, and one is enough.
   ;; `keyword-table` tolerates proper prefixes: the longer wins when the input
   ;; reaches it, the shorter when the next byte cannot extend it, and the
   ;; closing byte is reexecuted so the span ends at the keyword's own length.
   ;; That is what makes `MKCOLA` close the span at MKCOL and fail after it.
   (define httparse-method-names
     '("ACL" "ANNOUNCE" "BIND" "CHECKOUT" "CONNECT" "COPY" "DELETE" "DESCRIBE"
-      "FLUSH" "GET" "GET-PARAMETER" "HEAD" "LINK" "LOCK" "M-SEARCH" "MERGE"
+      "FLUSH" "GET" "GET_PARAMETER" "HEAD" "LINK" "LOCK" "M-SEARCH" "MERGE"
       "MKACTIVITY" "MKCALENDAR" "MKCOL" "MOVE" "NOTIFY" "OPTIONS" "PATCH"
       "PAUSE" "PLAY" "POST" "PRI" "PROPFIND" "PROPPATCH" "PURGE" "PUT" "QUERY"
-      "REBIND" "RECORD" "REDIRECT" "REPORT" "SEARCH" "SET-PARAMETER" "SETUP"
+      "REBIND" "RECORD" "REDIRECT" "REPORT" "SEARCH" "SET_PARAMETER" "SETUP"
       "SOURCE" "SUBSCRIBE" "TEARDOWN" "TRACE" "UNBIND" "UNLINK" "UNLOCK"
       "UNSUBSCRIBE"))
 
@@ -173,14 +174,14 @@
   (define httparse-method-numbers
     '(("ACL" . 19) ("ANNOUNCE" . 36) ("BIND" . 16) ("CHECKOUT" . 22)
       ("CONNECT" . 5) ("COPY" . 8) ("DELETE" . 0) ("DESCRIBE" . 35)
-      ("FLUSH" . 45) ("GET" . 1) ("GET-PARAMETER" . 41) ("HEAD" . 2)
+      ("FLUSH" . 45) ("GET" . 1) ("GET_PARAMETER" . 41) ("HEAD" . 2)
       ("LINK" . 31) ("LOCK" . 9) ("M-SEARCH" . 24) ("MERGE" . 23)
       ("MKACTIVITY" . 21) ("MKCALENDAR" . 30) ("MKCOL" . 10) ("MOVE" . 11)
       ("NOTIFY" . 25) ("OPTIONS" . 6) ("PATCH" . 28) ("PAUSE" . 39)
       ("PLAY" . 38) ("POST" . 3) ("PRI" . 34) ("PROPFIND" . 12)
       ("PROPPATCH" . 13) ("PURGE" . 29) ("PUT" . 4) ("QUERY" . 46)
       ("REBIND" . 17) ("RECORD" . 44) ("REDIRECT" . 43) ("REPORT" . 20)
-      ("SEARCH" . 14) ("SET-PARAMETER" . 42) ("SETUP" . 37) ("SOURCE" . 33)
+      ("SEARCH" . 14) ("SET_PARAMETER" . 42) ("SETUP" . 37) ("SOURCE" . 33)
       ("SUBSCRIBE" . 26) ("TEARDOWN" . 40) ("TRACE" . 7) ("UNBIND" . 18)
       ("UNLINK" . 32) ("UNLOCK" . 15) ("UNSUBSCRIBE" . 27)))
 
@@ -206,8 +207,8 @@
       "SOURCE" "SUBSCRIBE" "TRACE" "UNBIND" "UNLINK" "UNLOCK"
       "UNSUBSCRIBE"))
   (define httparse-rtsp-methods
-    '("ANNOUNCE" "DESCRIBE" "FLUSH" "GET" "GET-PARAMETER" "OPTIONS"
-      "PAUSE" "PLAY" "POST" "RECORD" "REDIRECT" "SET-PARAMETER" "SETUP"
+    '("ANNOUNCE" "DESCRIBE" "FLUSH" "GET" "GET_PARAMETER" "OPTIONS"
+      "PAUSE" "PLAY" "POST" "RECORD" "REDIRECT" "SET_PARAMETER" "SETUP"
       "TEARDOWN"))
   (define httparse-ice-methods '("SOURCE"))
 
@@ -250,8 +251,21 @@
   ;; A field-action node is zero-width, so the pair costs no byte.
   ;; Downcased: a node name is `[a-z][a-z0-9-]*` and a method name is not.
   ;; The 47 names stay distinct under downcasing, which the unit lane checks.
+  ;; method-name->identifier : String -> String
+  ;; A generated node name must be [a-z][a-z0-9-]*, and two of llhttp's method
+  ;; names are not: `M-SEARCH` carries a hyphen, which is fine, and
+  ;; `GET_PARAMETER` and `SET_PARAMETER` carry an UNDERSCORE, which the
+  ;; generator refuses as unportable. Both separators fold to `-` here. That
+  ;; is only safe while no two method names differ by nothing else, which is
+  ;; a property of the list rather than of this function -- so the lane
+  ;; checks it against this very procedure rather than against downcasing.
+  (define (method-name->identifier name)
+    (list->string
+     (map (lambda (ch) (if (char=? ch #\_) #\- ch))
+          (string->list (string-downcase name)))))
+
   (define (method-number-name name)
-    (string->symbol (string-append "method-number-" (string-downcase name))))
+    (string->symbol (string-append "method-number-" (method-name->identifier name))))
 
   (define (method-number-nodes)
     (map (lambda (name)
@@ -851,20 +865,25 @@
      (append
       (list
       ;; --- the first byte -----------------------------------------------------
-      ;; A dispatch rather than a callback node: the first method byte must be
-      ;; available but UNCONSUMED when `message begin` fires at offset 0, and
-      ;; this also enforces `method = 1*tchar` -- an empty method is rejected
-      ;; here, before any span opens.
+      ;; A dispatch rather than a callback node: the first byte must be
+      ;; available but UNCONSUMED when `message begin` fires at offset 0.
       ;; A STRAY LINE ENDING BEFORE THE REQUEST LINE IS SKIPPED. llhttp's
       ;; `start` matches CR and LF back to itself, so `\r\nGET /test HTTP/1.1`
       ;; reports `message begin` at 2 -- the skipped bytes are consumed and
       ;; belong to no span.
+      ;;
+      ;; EVERY OTHER BYTE GOES ON, INCLUDING ONE NO METHOD MAY START WITH.
+      ;; Rejecting a non-tchar here looks like the same answer one node
+      ;; earlier -- the method table refuses it either way, at the same offset
+      ;; and with the same reason -- but it is not: it errors BEFORE
+      ;; `message begin`, and llhttp prints that event first. `@ET / HTTP/1.1`
+      ;; records `off=0 message begin` and then `off=0 error code=6`. No
+      ;; fixture in the corpus begins with a non-tchar, so this was measured
+      ;; against a live llhttp rather than read off a recorded trace.
       (make-byte-dispatch-node 'start
         (list (make-byte-case (make-byte-set-matcher (list CR LF))
-                              (make-edge 'start 'advance) #f)
-              (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
-                              (make-edge 'start-check-reset 'reexecute) #f))
-        (make-edge 'e-bad-method 'reexecute) 'clean-eof #f)
+                              (make-edge 'start 'advance) #f))
+        (make-edge 'start-check-reset 'reexecute) 'clean-eof #f)
       (make-finish-node 'clean-eof #f)
 
       ;; THE SKIPPED CRLF COMES FIRST AND `reset` SECOND, which is the order
@@ -939,10 +958,20 @@
       (ev 'method-complete 'on-method-complete 'after-method)
       ;; `MKCOLA`: the table took MKCOL, the span closed and the event fired at
       ;; offset 5, and the byte here is `A` rather than SP.
+      ;; ONE SPACE IS REQUIRED AND THE REST ARE SKIPPED, which is two nodes in
+      ;; llhttp and two here: `req_first_space_before_url` errors without a
+      ;; space, `req_spaces_before_url` matches any further ones back to
+      ;; itself. `PUT   /url HTTP/1.1` records the target at 6, not an empty
+      ;; one at 4. No corpus fixture has a repeated space here, so this was
+      ;; measured against a live llhttp.
       (make-byte-dispatch-node 'after-method
         (list (make-byte-case (make-exact-byte-matcher SP)
-                              (make-edge 'url-open 'advance) #f))
+                              (make-edge 'spaces-before-url 'advance) #f))
         (make-edge 'e-no-space-after-method 'reexecute) 'e-eof-none #f)
+      (make-byte-dispatch-node 'spaces-before-url
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'spaces-before-url 'advance) #f))
+        (make-edge 'url-open 'reexecute) 'e-eof-none #f)
 
       ;; --- request target -----------------------------------------------------
       ;;
@@ -988,7 +1017,18 @@
       (make-span-end-node 'url-close-sp 'url-span 'url-skip-sp #f)
       (make-byte-dispatch-node 'url-skip-sp
         '() (make-edge 'url-complete 'advance) 'e-eof-none #f)
-      (ev 'url-complete 'on-url-complete 'protocol-open)
+      (ev 'url-complete 'on-url-complete 'http-start)
+
+      ;; And again before the protocol: llhttp's `req_http_start` matches a
+      ;; space back to itself and only then opens the protocol span, so
+      ;; `PUT /url   HTTP/1.1` records the protocol at 11. THE RESPONSE PATH
+      ;; DOES NOT COME THROUGH HERE -- `res_after_start` opens the span with
+      ;; no skipping, which is why `type-store-response` still targets
+      ;; `protocol-open` directly.
+      (make-byte-dispatch-node 'http-start
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'http-start 'advance) #f))
+        (make-edge 'protocol-open 'reexecute) 'e-eof-none #f)
 
       ;; HTTP/0.9: no protocol span, no version span, and the version pair set
       ;; from nothing at all. `request/sample.md#10` records `v=0/9` for
@@ -2142,10 +2182,11 @@
         (make-edge 'e-data-after-close 'advance) 'clean-eof #f)
 
       ;; --- errors, one node per span state ------------------------------------
-      (make-error-node 'e-bad-method 'bad-method #f)
-      ;; Reached from the table's no-match, where the method span IS open -- a
-      ;; separate node from `e-bad-method` because the verifier's flat lattice
-      ;; refuses one node reached with two different span states.
+      ;; Reached from the table's no-match, where the method span IS open.
+      ;; The `-open` in the name is the span state, which is what the
+      ;; verifier's flat lattice distinguishes: a node reached with the span
+      ;; both open and closed is refused, so a second reason node would be
+      ;; needed the day one is reached with it closed.
       (make-error-node 'e-bad-method-open 'bad-method #f)
       (make-error-node 'e-no-space-after-method 'no-space-after-method #f)
       ;; Reached with the url span OPEN, which is what keeps a rejected target

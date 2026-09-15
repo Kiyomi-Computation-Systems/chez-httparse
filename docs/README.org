@@ -1,0 +1,14 @@
+#+TITLE: chez-httparse documentation
+
+- [[file:api.org][api.org]] — the public surface: making a parser, feeding it, the callbacks,
+  reading its state.
+- [[file:conformance.org][conformance.org]] — what v0.1 parses, the 84 fixtures it does not, and every
+  measured divergence from llhttp.
+- [[file:performance.org][performance.org]] — allocation and throughput, measured.
+
+Design records live outside this directory, because they are about how the
+project decided rather than about how to use it:
+
+- =../.plans/= — the architecture document and the milestone plan
+- =../.plans/decisions/= — decision records, numbered and dated
+- =../CHANGELOG.md= — release history

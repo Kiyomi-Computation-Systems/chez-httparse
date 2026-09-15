@@ -39,6 +39,7 @@
     adapter-os adapter-architecture adapter-execution-mode
     adapter-environment-variable adapter-exit
     adapter-value->string adapter-describe-condition adapter-file-bytes
+    adapter-run-command adapter-bytes-allocated adapter-real-time
     adapter-flush-output
     adapter-machine-type->os adapter-machine-type->architecture
     ;; arithmetic harness-self-tests.sps and harness-bootstrap.sps call
@@ -50,7 +51,8 @@
     (httparse test fingerprint)
     (only (rnrs r5rs) modulo quotient remainder)
     (only (chezscheme)
-          machine-type scheme-version getenv
+          machine-type scheme-version getenv system
+          statistics sstats-bytes real-time
           with-output-to-string display-condition))
 
   ;; --- runtime identity ----------------------------------------------------
@@ -163,6 +165,36 @@
            (bytes (get-bytevector-all port)))
       (close-port port)
       (if (eof-object? bytes) (make-bytevector 0) bytes)))
+
+  ;; adapter-run-command : String -> Nat
+  ;; Run a command and return its exit status. The ONE lane that needs this is
+  ;; the live-llhttp differential, whose oracle is a separate program; it lives
+  ;; here because this is the only module allowed to name a runtime-specific
+  ;; identifier, not because running commands is an ordinary thing for a lane
+  ;; to do.
+  ;;
+  ;; THE COMMAND GOES THROUGH A SHELL, so a caller may only build one out of
+  ;; paths it controls. Nothing generated is ever interpolated into it: the
+  ;; differential's inputs cross to its runner as hex in a file, for exactly
+  ;; this reason.
+  (define (adapter-run-command command) (system command))
+
+  ;; adapter-bytes-allocated : -> Nat
+  ;; Total bytes this process has allocated so far, CUMULATIVELY. Only a
+  ;; difference across a measured region means anything; the absolute value
+  ;; counts everything since startup, including loading the libraries.
+  ;;
+  ;; NOT THE OBVIOUS PROCEDURE. Chez's `bytes-allocated` reports what is
+  ;; allocated RIGHT NOW, so a collection inside the measured region makes
+  ;; the difference NEGATIVE -- which is how this was found, a region
+  ;; reporting -33122 bytes. The statistics record's byte count is the
+  ;; running total and does not fall when memory is reclaimed.
+  (define (adapter-bytes-allocated) (sstats-bytes (statistics)))
+
+  ;; adapter-real-time : -> Nat
+  ;; Milliseconds on a monotonic clock. Wall time, so a benchmark reading it
+  ;; is reporting what a caller would feel rather than what the CPU did.
+  (define (adapter-real-time) (real-time))
 
   (define (adapter-flush-output) (flush-output-port (current-output-port)))
 

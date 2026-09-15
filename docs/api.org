@@ -1,0 +1,159 @@
+#+TITLE: chez-httparse API reference
+#+OPTIONS: toc:2
+
+The parser is a *state machine plus a binding list*. You hand it bytes; it
+calls you back. It allocates nothing per byte, copies no spans, and keeps no
+buffer of its own — which is why a span callback receives bounds into /your/
+bytevector rather than a string.
+
+* What to import
+
+#+begin_src scheme
+(import (generated httparse-message)   ; httparse-message-machine
+        (byte-machine runtime))        ; make-parser, parser-feed!, ...
+#+end_src
+
+=src/generated/httparse-message.sls= is a derived file, emitted from
+=src/httparse/grammar.sls= and committed so that what ships is reviewable as a
+diff and loadable without running a generator. It depends on
+=(byte-machine runtime)= and nothing else.
+
+* Making a parser
+
+: make-parser : CompiledMachine (Listof (List Symbol Procedure)) Any -> Parser
+
+The third argument is a *user context* handed back to every callback. Use it
+for the connection state you would otherwise close over; =#f= is fine.
+
+*Every declared callback must be bound.* A binding list with a hole is
+refused when the parser is made, not quietly ignored. That is deliberate: a
+parser that silently dropped =on-body-data= would look like a message with no
+body.
+
+* Feeding bytes
+
+: parser-feed! : Parser Bytevector Nat Nat -> ParserResult
+
+=(parser-feed! p bv start end)= consumes the half-open range. Feed as much or
+as little as you have; the parser resumes exactly where it stopped, and a
+token, a header or a body split across any number of feeds produces the same
+result as one whole buffer. (One exception is measured and documented in
+[[file:conformance.org][conformance.org]].)
+
+** Reading the result
+
+| =parser-result-status=        | see below                                    |
+| =parser-result-consumed=      | bytes taken from this feed                   |
+| =parser-result-stream-offset= | bytes taken since the parser was made        |
+| =parser-result-error=         | a =ParserError= when the status is ='error=  |
+| =parser-result-pause=         | the pause reason when the status is ='paused=|
+
+Statuses:
+
+- ='need-input= — the range is consumed; feed more. This is the ordinary
+  outcome, including *after a complete message*: a connection may carry
+  another one.
+- ='error= — the message is malformed. =parser-result-error= carries the
+  detail; the parser will not make further progress.
+- ='paused= — a callback returned =callback-pause=. Resume with
+  =parser-resume!=. (Not exercised by v0.1's corpus coverage — see
+  [[file:conformance.org][conformance.org]].)
+- ='finished= / ='stopped= — the machine reached a terminal state.
+
+** Errors
+
+: parser-error-code   : ParserError -> Symbol   ; e.g. 'invalid-header-token
+: parser-error-reason : ParserError -> String   ; llhttp's own text
+: parser-error-offset : ParserError -> Nat      ; stream offset
+
+The code/reason pair is llhttp's, deliberately: decision 0013 makes an
+error's identity the pair rather than either half, so a caller can switch on
+the symbol and log the text and get the same answer llhttp would give.
+
+* Callbacks
+
+An *event* callback is =(lambda (parser ctx) outcome)=. A *span* callback is
+=(lambda (parser ctx bv from to) outcome)=, where =[from,to)= indexes the
+bytevector /you/ passed to =parser-feed!=. The bytes are not copied and are
+not retained: copy what you need before returning.
+
+An outcome is =callback-continue=, =callback-pause=, or a
+=make-callback-failure=.
+
+** The one callback that answers
+
+=on-message-type= is a *decision*: it returns ='request= or ='response=, and
+it is asked once per message, before the first byte of the start line is
+read.
+
+#+begin_src scheme
+(list 'on-message-type (lambda (p ctx) 'request))
+#+end_src
+
+HTTP does not say which is coming — a request begins with a method and a
+response with =HTTP/= — and the embedder always knows, from which side of the
+connection it is on. llhttp has the caller write a field before parsing;
+there is no field writer here, so the parser asks. Decision 0017 records the
+alternatives and why this one.
+
+Returning neither symbol, or pausing, is an error: pausing is not answering.
+
+** The full list
+
+| Span                             | Event                                |
+|----------------------------------+--------------------------------------|
+| =on-method-data=                 | =on-method-complete=                 |
+| =on-url-data=                    | =on-url-complete=                    |
+| =on-protocol-data=               | =on-protocol-complete=               |
+| =on-version-data=                | =on-version-complete=                |
+| =on-status-data=                 | =on-status-complete=                 |
+| =on-header-field-data=           | =on-header-field-complete=           |
+| =on-header-value-data=           | =on-header-value-complete=           |
+| =on-body-data=                   |                                      |
+| =on-chunk-extension-name-data=   | =on-chunk-extension-name-complete=   |
+| =on-chunk-extension-value-data=  | =on-chunk-extension-value-complete=  |
+
+Events with no span: =on-message-begin=, =on-headers-complete=,
+=on-chunk-header=, =on-chunk-complete=, =on-message-complete=, =on-reset=.
+Plus the decision =on-message-type=.
+
+=on-reset= fires between pipelined messages on one parser, before
+=on-message-begin= of the next.
+
+* Reading parser state
+
+: parser-field-ref : Parser Symbol -> Nat
+
+| ='method=         | llhttp's method number, not an index into any list here |
+| ='status-code=    | a response's three digits                               |
+| ='http-major=     |                                                         |
+| ='http-minor=     |                                                         |
+| ='flags=          | llhttp's flag bits                                      |
+| ='content-length= | *what remains to be read*, not what was declared        |
+
+=content-length= counts *down* as the body arrives, which is llhttp's own
+behaviour. Read it inside =on-headers-complete= if you want the declared
+length; by =on-message-complete= it is zero.
+
+* Lifecycle
+
+: parser-reset!  : Parser -> unspecified
+: parser-resume! : Parser -> Symbol
+: parser-finish! : Parser -> ParserResult
+
+=parser-reset!= returns the parser to its just-constructed state, fields
+included — restored to their *declared initials*, not to zero.
+
+=parser-resume!= changes the lifecycle only: no callback runs, no input is
+read, and it returns an acknowledgement symbol rather than a result. Feed or
+finish again afterwards.
+
+=parser-finish!= says the input has ended and asks whether stopping here is
+legal. It runs the machine with input exhausted, taking each state's
+end-of-input route, and returns ='finished=, ='error= or ='paused=.
+
+*v0.1 does not exercise the last two.* The conformance corpus never calls
+=parser-finish!= — upstream's harness does not either, which took four
+milestones to notice — and pausing is deferred with its 24 fixtures. Both
+work as far as the machinery goes; neither carries this project's
+bit-exact evidence yet. See [[file:conformance.org][conformance.org]].

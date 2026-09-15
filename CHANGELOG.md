@@ -6,6 +6,18 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] - 2026-09-15
+
+**Strict-mode HTTP/1.x request and response parsing**, byte-exact against
+llhttp's own recorded traces for 190 of the 253 HTTP fixtures in its
+conformance corpus, replayed at every chunk size from 1 to the input length.
+The remaining 63 and the 21 URL fixtures are enumerated, vendored and
+ratcheted rather than omitted — see
+[docs/conformance.org](docs/conformance.org) and decision
+[0009](.plans/decisions/0009-v01-is-strict-request-and-response-parsing.md).
+
 Gate 0 and Slice 1: project bootstrap, then the milestone ladder in
 [.plans/2026-09-13-gate0-http-parser-milestone-plan.md](.plans/2026-09-13-gate0-http-parser-milestone-plan.md).
 The governing architecture is
@@ -14,6 +26,40 @@ the bootstrap slice design is
 [.plans/2026-08-28-gate0-slice1-harness-port-design.md](.plans/2026-08-28-gate0-slice1-harness-port-design.md).
 
 ### Added
+
+- **The live llhttp differential**, local and opt-in
+  ([0010](.plans/decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md)):
+  `HTTPARSE_LLHTTP_ROOT` points at a built llhttp checkout and the lane
+  builds its oracle with llhttp's OWN test harness — the program that
+  produced the vendored corpus — rather than a driver of ours printing the
+  same shape. Absent, not failing, when the variable is unset. Generated
+  input comes from a seeded in-tree generator (assembled messages and
+  mutants of corpus fixtures); the oracle's printed lines are read back into
+  events by `(httparse test oracle)`, whose calibration is all 253 recorded
+  blocks round-tripping unchanged and which needs no llhttp.
+- **A divergence is named and witnessed or it fails the lane**
+  ([0018](.plans/decisions/0018-a-divergence-is-named-and-witnessed-or-it-fails-the-lane.md)).
+  Two classes remain for v0.1 and both are published with the reduced input
+  and both traces: the deferred URL sub-parser, and a completion event at
+  the exact end of the input, in both directions.
+- **Property lanes over generated input**, needing no llhttp: no generated
+  input reaches an outcome the adapter cannot name; the committed artifact
+  and the reference interpreter agree where nothing recorded the answer; and
+  fragmentation invariance **for a parse that reaches no error** — the
+  qualifier measured, not assumed.
+- **An allocation audit** asserting a shape rather than a number: a body a
+  thousand times longer costs 6,548 B against 6,496 B, and a feed costs
+  384 B against 398 B whatever came before it.
+- **A throughput baseline**, printed rather than gated, under a new
+  `benchmark` test layer the pull-request preset does not select.
+- **The reference documentation set**: [docs/api.org](docs/api.org),
+  [docs/conformance.org](docs/conformance.org),
+  [docs/performance.org](docs/performance.org), and a rewritten README. The
+  README's example is an `example` lane that runs in CI, so it cannot drift.
+- The fifth upstream brief, for a keyword table that waits one byte past a
+  decided match
+  ([.plans/2026-09-15-upstream-keyword-terminal-brief.md](.plans/2026-09-15-upstream-keyword-terminal-brief.md)).
+
 
 - Gate 0 decision records: project naming and the mechanical rename map
   ([0001](.plans/decisions/0001-project-name-and-rename-map.md)), how
@@ -342,3 +388,18 @@ the bootstrap slice design is
 ### Removed
 
 ### Fixed
+
+- **`message begin` was withheld when the first byte was one no method may
+  start with.** The start node validated before the event fired; llhttp
+  validates after. `@ET / HTTP/1.1` printed the error alone.
+- **Repeated spaces between the method and the target produced an empty
+  target span.** llhttp requires one space and skips the rest, in two nodes;
+  so does the grammar now, before the target and again before the protocol.
+  `PUT   /url HTTP/1.1` records the target at 6.
+- **The two RTSP methods were misspelled.** llhttp's map keys them
+  `GET_PARAMETER` and `SET_PARAMETER`, with underscores, as RFC 2326 spells
+  them; only `'M-SEARCH'` is quoted and hyphenated. The table carried hyphens
+  for six milestones, and no fixture in the corpus uses either method.
+
+All three were found by the live differential and none is visible to the
+253-fixture corpus. Each is now pinned by an offline check.

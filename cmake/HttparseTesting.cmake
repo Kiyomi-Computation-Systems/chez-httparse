@@ -37,6 +37,7 @@ set(HTTPARSE_TEST_LAYERS
   conformance   # this project's own: the vendored llhttp corpus, bit-exact
   portability   # values crossing library boundaries; runtime identity
   example       # the documented end-to-end examples
+  benchmark     # measured rates, reported rather than asserted
   expected-red) # tests that must fail, proving the harness can fail
 
 set(HTTPARSE_TEST_BACKENDS chez cmake)
