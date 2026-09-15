@@ -4,18 +4,34 @@
 ;;; by a running parser. A generated parser depends on (byte-machine runtime)
 ;;; and nothing else.
 ;;;
-;;; The request line -- `method SP request-target SP HTTP-version CRLF`, with
-;;; the method and the protocol matched against llhttp's constant tables -- the
-;;; header section, strictly, and the framing that section decides: a field
-;;; NAME selects a value machine, `Content-Length` measures a body, and
+;;; Both start lines -- a request's `method SP request-target SP HTTP-version
+;;; CRLF` and a response's `HTTP-version SP status-code [SP reason] CRLF`,
+;;; with the method and the protocol matched against llhttp's constant tables
+;;; -- the header section, strictly, and the framing that section decides: a
+;;; field NAME selects a value machine, `Content-Length` measures a body, and
 ;;; `Transfer-Encoding`, `Connection` and `Upgrade` set the FLAGS bits that
 ;;; `headers complete` prints -- the chunked body those bits can ask for,
-;;; extensions and trailers included -- and the loop back to the next message
-;;; on the same connection.
+;;; extensions and trailers included, and the body a response can have that
+;;; ends with the connection instead -- and the loop back to the next message.
 ;;;
-;;; THIS IS EVERY STRICT REQUEST llhttp'S CORPUS RECORDS. What is still to
-;;; come is responses, the url sub-parser's structure, pausing and the lenient
-;;; modes.
+;;; THIS IS EVERY STRICT FIXTURE llhttp'S CORPUS RECORDS, request and response
+;;; alike. What is still to come is the url sub-parser's structure, pausing,
+;;; skip-body and the lenient modes.
+;;;
+;;; THE TWO KINDS SHARE EVERYTHING BUT THEIR FIRST LINE, and rather more of
+;;; that than llhttp does. Its `req_after_http_start` and `res_after_start`
+;;; are the same three constants and the same span; its two version blocks are
+;;; the same four accepted pairs and the same three malformations. Each is ONE
+;;; definition here with a zero-width branch on `type` where llhttp forks, so
+;;; a response cannot drift from a request over what `HTTP` is or which
+;;; versions are legal. Everything from `headers-start` on was already shared.
+;;;
+;;; WHICH KIND IT IS, IS ANSWERED AND NOT READ. llhttp loads a field its
+;;; embedder wrote; byte-machine's runtime has no field writer, so the same
+;;; configuration arrives as a DECISION callback and its branches store
+;;; llhttp's own number -- decision 0017. Everything downstream reads the
+;;; field, including the `headers complete` line, which llhttp's own callback
+;;; renders from `s->type` too.
 ;;;
 ;;; THE HEADER SECTION IS PARSED TWICE, by the same states. A chunked
 ;;; message's trailers re-enter `header-field-start`, and the flag the zero
@@ -26,6 +42,13 @@
 ;;; the flags and returns to `start`, where a second one begins -- and the
 ;;; only thing separating a restart from a first start is a field, which is
 ;;; what makes `reset` fire between two messages and not before the first.
+;;;
+;;; A RESPONSE NEED NOT SAY HOW LONG ITS BODY IS, and that is the one shape a
+;;; request cannot have. `message_needs_eof` decides, and its answer decides
+;;; twice: whether there is a body to read at all, and whether there is a next
+;;; message. A body it sends to `body-eof` opens a span that never closes and
+;;; fires no `message complete` -- what ends such a message is the connection,
+;;; which is a fact the parser is told rather than one it reads.
 ;;;
 ;;; THE EVENT OFFSETS ARE ASYMMETRIC, AND THAT IS NOT A MISTAKE. Read off
 ;;; `request/sample.md`, for `OPTIONS /url HTTP/1.1`:
@@ -46,11 +69,14 @@
 ;;;
 ;;; ERROR NODES ARE PER SPAN STATE, NOT PER CODE. A node reached with two
 ;;; different span states is rejected by the verifier's flat lattice, so end of
-;;; input inside each span needs its own node even though all five name one
-;;; `unexpected-eof` declaration. The error codes and reasons are llhttp's own,
-;;; per decision 0013 -- identity is the (code, reason) pair, because eight of
-;;; its codes carry more than one reason. `bad-url` is the one reason still
-;;; standing in for a decision the url sub-parser has not made.
+;;; input inside each span needs its own node even though they all name one
+;;; `unexpected-eof` declaration -- and so does a refusal two productions can
+;;; reach with different spans open. The error codes and reasons are llhttp's
+;;; own, per decision 0013 -- identity is the (code, reason) pair, because
+;;; eight of its codes carry more than one reason. Two declarations here have
+;;; no llhttp NUMBER at all, and that is also deliberate: `unexpected-eof`,
+;;; because llhttp prints nothing when input runs out mid-token, and
+;;; `unexpected-message-type`, because llhttp cannot reach that state.
 ;;;
 ;;; TRANSLATING AN llhttp ARM: `.match` CONSUMES; `.peek` AND `.otherwise` DO
 ;;; NOT. An error reached through a match therefore lands one byte LATER than
@@ -67,7 +93,10 @@
 ;;;
 ;;; The last two are the same production and differ in BOTH offset and reason
 ;;; -- "Invalid header value char" against "Unexpected whitespace after header
-;;; value" -- which is why 0013 makes the pair the identity.
+;;; value" -- which is why 0013 makes the pair the identity. The status line
+;;; has the same pair a fourth time, `res_status_code_otherwise`'s matched LF
+;;; against its `.otherwise`, and there NO FIXTURE LOOKS: both carry
+;;; "Invalid response status", which the corpus never records.
 (library (httparse grammar)
   (export make-request-line-machine
           httparse-tchar-bytes httparse-url-bytes httparse-header-bytes
@@ -268,10 +297,26 @@
   (define F-TRAILING 128)
   (define F-TRANSFER-ENCODING 512)
 
+  ;; llhttp's TYPE. It is not derived from the input: the EMBEDDER sets it
+  ;; before the first byte, and llhttp's own fixture harness does exactly that
+  ;; -- `llhttp__test_init_response` is one line, `s->type = HTTP_RESPONSE`.
+  ;; BOTH is llhttp's default and is NOT v0.1's: its `start_req_or_res` opens a
+  ;; METHOD span on `H` and matches `HTTP/` inside it, so a response parsed
+  ;; that way records `span[method]="HTTP/"` where every response fixture in
+  ;; the corpus records `span[protocol]="HTTP"`. The value is here because the
+  ;; `headers complete` line is rendered from it, exactly as llhttp's own
+  ;; callback branches on `s->type` -- not because any byte sets it.
+  (define TYPE-BOTH 0)
+  (define TYPE-REQUEST 1)
+  (define TYPE-RESPONSE 2)
+
   ;; llhttp's FINISH, printed verbatim by the fixture harness as
-  ;; `off=NULL finish=N`. SAFE-WITH-CB is a RESPONSE's, set where a body runs
-  ;; to end of input, so nothing in this grammar reaches it yet.
+  ;; `off=NULL finish=N`. SAFE-WITH-CB is a RESPONSE's: a body that runs to
+  ;; end of input is COMPLETE when the input stops, but only if someone tells
+  ;; the parser the input stopped -- which is the whole difference between it
+  ;; and SAFE. `response/finish.md#1` is the fixture that prints it.
   (define FINISH-SAFE 0)
+  (define FINISH-SAFE-WITH-CB 1)
   (define FINISH-UNSAFE 2)
 
   ;; llhttp's HEX_MAP as a byte set: both cases, which `request/transfer-
@@ -485,6 +530,56 @@
      (list (version-dot-node 'version-dot-other 'version-minor-other)
            (version-minor-node 'version-minor-other '()))))
 
+  ;; llhttp's `llhttp_message_needs_eof`, which is a pure question over the
+  ;; parser's state and is asked from TWO places: the body decision, where a
+  ;; response with no framing headers reads to end of input, and
+  ;; `should_keep_alive`, whose last line is `!message_needs_eof(parser)`.
+  ;;
+  ;; TWO COPIES, AND NOT BY CHOICE -- the same reason `setHeaderFlags` has
+  ;; three. A subgraph's exits are node names, so one shared copy could not
+  ;; answer two callers; generating it from a prefix is what keeps the RULE
+  ;; single even though the nodes are not.
+  ;;
+  ;; THE FIRST LINE IS THE ONE THAT IS MEASURED HARDEST. `if (type ==
+  ;; HTTP_REQUEST) return 0` is why every pipelined request in the corpus
+  ;; restarts: without it a request with no Content-Length would fall to the
+  ;; final `return 1`, `should_keep_alive` would answer 0, and
+  ;; `request/pipelining.md#1` would stop after its first message.
+  (define (needs-eof-nodes prefix yes no)
+    (define (nm suffix) (string->symbol (string-append prefix "-" suffix)))
+    (list
+     (make-field-branch-node (nm "request") 'equal (list 'type TYPE-REQUEST)
+                             no (nm "informational") #f)
+     ;; llhttp's `status_code / 100 == 1`, which is 100 through 199 and is
+     ;; wider than the four exact codes the body decision tests.
+     (make-field-branch-node (nm "informational") 'range (list 'status-code 100 199)
+                             no (nm "no-content") #f)
+     (make-field-branch-node (nm "no-content") 'equal (list 'status-code 204)
+                             no (nm "not-modified") #f)
+     (make-field-branch-node (nm "not-modified") 'equal (list 'status-code 304)
+                             no (nm "coding") #f)
+     ;; RFC 7230 3.3.3 again: a response that named a transfer coding NOT
+     ;; ending in `chunked` has no length but the connection's.
+     ;; NO PATH IN v0.1 REACHES THIS PAIR WITH ANYTHING TO DECIDE, and the
+     ;; mutation that inverts the second survives every lane. The body
+     ;; decision tests TRANSFER_ENCODING itself and routes both answers away
+     ;; before it would ask, so the copy it owns always finds the bit clear;
+     ;; and the copy `should_keep_alive` owns is only consulted about a
+     ;; message that already COMPLETED, which one needing eof never does
+     ;; without a `parser-finish!` the corpus never calls (decision 0016). It
+     ;; is llhttp's rule and it stays whole: the milestone that adds a finish
+     ;; makes it observable and owes it a test.
+     (make-field-branch-node (nm "coding") 'mask-any (list 'flags F-TRANSFER-ENCODING)
+                             (nm "coding-chunked") (nm "framed") #f)
+     (make-field-branch-node (nm "coding-chunked") 'mask-any (list 'flags F-CHUNKED)
+                             (nm "framed") yes #f)
+     (make-field-branch-node (nm "framed") 'mask-any
+                             (list 'flags (+ F-CHUNKED F-CONTENT-LENGTH))
+                             no yes #f)))
+
+  (define (needs-eof-entry prefix)
+    (string->symbol (string-append prefix "-request")))
+
   ;; An event invocation. `pause-continuation` is mandatory -- every callback
   ;; declares where to resume if it pauses -- and for an event that is the same
   ;; place `continue` goes, so a paused-then-resumed run re-enters the graph
@@ -503,6 +598,13 @@
      ;; -- and `content-length` is llhttp's uint64.
      (list (make-uint-field 'method-protocols 8 0 #f)
            (make-uint-field 'method 8 0 #f)
+           ;; llhttp's `i8 type`, and its `i16 status_code`. The first is set
+           ;; by the embedder through `on-message-type` below; the second is
+           ;; accumulated from the three digits of the status line. Both are
+           ;; printed: `headers complete` carries one OR the other, chosen by
+           ;; `type`, which is what llhttp's own callback does.
+           (make-uint-field 'type 8 TYPE-BOTH #f)
+           (make-uint-field 'status-code 16 0 #f)
            (make-uint-field 'http-major 8 0 #f)
            (make-uint-field 'http-minor 8 0 #f)
            (make-uint-field 'flags 16 0 #f)
@@ -526,6 +628,14 @@
            (make-uint-field 'initial-message-completed 8 0 #f))
      (list (make-callback-declaration 'on-reset 'event #t '() #f #f)
            (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
+           ;; THE ONE CALLBACK THAT ANSWERS RATHER THAN REPORTS, and the only
+           ;; DECISION callback in this grammar. llhttp reads a field an
+           ;; embedder wrote before the parse; byte-machine's runtime exposes
+           ;; no field writer, so the same configuration arrives as a branch
+           ;; key. `required?` is the whole point -- a parser that was never
+           ;; told what it is parsing refuses to start rather than guessing.
+           (make-callback-declaration 'on-message-type 'decision #t
+                                      '(request response) #f #f)
            (make-callback-declaration 'on-method-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-method-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-url-data 'span-data #t '() #f #f)
@@ -534,6 +644,8 @@
            (make-callback-declaration 'on-protocol-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-version-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-version-complete 'event #t '() #f #f)
+           (make-callback-declaration 'on-status-data 'span-data #t '() #f #f)
+           (make-callback-declaration 'on-status-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-header-field-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-header-field-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-header-value-data 'span-data #t '() #f #f)
@@ -551,6 +663,7 @@
            (make-span-declaration 'url-span 'on-url-data #f #f)
            (make-span-declaration 'protocol-span 'on-protocol-data #f #f)
            (make-span-declaration 'version-span 'on-version-data #f #f)
+           (make-span-declaration 'status-span 'on-status-data #f #f)
            (make-span-declaration 'header-field-span 'on-header-field-data #f #f)
            (make-span-declaration 'header-value-span 'on-header-value-data #f #f)
            (make-span-declaration 'body-span 'on-body-data #f #f)
@@ -569,6 +682,14 @@
      ;; `bad-url` is the one placeholder left: llhttp's url reasons belong to
      ;; the URL sub-parser, deferred by decision 0009.
      (list (make-error-declaration 'eof 'unexpected-eof "unexpected end of input" #f)
+           ;; NO llhttp NUMBER, FOR THE SAME REASON `eof` HAS NONE: llhttp
+           ;; cannot reach this state at all, because its type is a field an
+           ;; embedder wrote rather than an answer one gives. A binding that
+           ;; returns neither branch key lands here, the adapter has no row to
+           ;; rename it with, and the fixture fails rather than the lane
+           ;; guessing a message kind.
+           (make-error-declaration 'no-message-type 'unexpected-message-type
+                                   "the embedder did not say whether this is a request or a response" #f)
            (make-error-declaration 'bad-method 'invalid-method
                                    "Invalid method encountered" #f)
            (make-error-declaration 'no-space-after-method 'invalid-method
@@ -601,6 +722,21 @@
                                    "Expected CRLF after version" #f)
            (make-error-declaration 'lf-after-cr 'strict
                                    "Expected CRLF after version" #f)
+           ;; --- the status line --------------------------------------------
+           ;; A response's version is followed by a SPACE where a request's is
+           ;; followed by CRLF, so the reason after it is a different one --
+           ;; under the same code 9.
+           (make-error-declaration 'no-space-after-version 'invalid-version
+                                   "Expected space after version" #f)
+           ;; Two reasons under code 13. Only the first is recorded anywhere
+           ;; in the corpus; `corpus-load-tests.sps` pins that, and the second
+           ;; is reached by three arms whose llparse idiom is named at each.
+           (make-error-declaration 'bad-status-code 'invalid-status
+                                   "Invalid status code" #f)
+           (make-error-declaration 'bad-response-status 'invalid-status
+                                   "Invalid response status" #f)
+           (make-error-declaration 'cr-after-status 'cr-expected
+                                   "Missing expected CR after response line" #f)
            ;; --- the header section -----------------------------------------
            ;; Four llhttp reasons share code 10 here and are four declarations,
            ;; per decision 0013.
@@ -614,7 +750,12 @@
                                    "Invalid header value char" #f)
            (make-error-declaration 'ws-after-value 'invalid-header-token
                                    "Unexpected whitespace after header value" #f)
-           (make-error-declaration 'lf-after-cr-in-value 'strict
+           ;; ONE DECLARATION, TWO PRODUCTIONS: the bare CR inside a header
+           ;; value and the bare CR after a response's status line carry the
+           ;; same (code, reason), so decision 0013's uniqueness makes them
+           ;; one declaration and two error NODES -- which is also why this
+           ;; is not named after either of them.
+           (make-error-declaration 'lf-after-cr-strict 'strict
                                    "Expected LF after CR" #f)
            (make-error-declaration 'cr-after-value 'cr-expected
                                    "Missing expected CR after header value" #f)
@@ -738,7 +879,43 @@
       ;; From here to the end of this message, stopping would lose data.
       (make-field-action-node 'after-start 'store (list 'finish FINISH-UNSAFE)
                               'message-begin #f #f)
-      (ev 'message-begin 'on-message-begin 'method-open)
+      (ev 'message-begin 'on-message-begin 'switch-type)
+
+      ;; --- request or response? ------------------------------------------------
+      ;;
+      ;; llhttp's `switchType`, placed exactly where llhttp places it: AFTER
+      ;; `message begin` and before the first byte of either start line, so
+      ;; the event fires at the same offset for both kinds.
+      ;;
+      ;; llhttp reads a FIELD here -- `load('type', {REQUEST: start_req,
+      ;; RESPONSE: start_res}, start_req_or_res)` -- which its embedder wrote
+      ;; before the parse. byte-machine's runtime exposes `parser-field-ref`
+      ;; and no writer, and a field's initial value belongs to the MACHINE, so
+      ;; a per-parser mode cannot arrive that way without emitting the same
+      ;; graph twice. It arrives as a DECISION callback instead: the embedder
+      ;; answers `request` or `response` once per message, and the branch
+      ;; stores llhttp's own number so everything downstream -- including the
+      ;; `headers complete` line -- reads the field llhttp reads.
+      ;;
+      ;; THE FALL-THROUGH IS AN ERROR, NOT A DEFAULT. `continue` from a
+      ;; decision callback means "no branch", and there is no safe kind to
+      ;; assume; llhttp's third arm is `start_req_or_res`, which v0.1 does not
+      ;; have (see TYPE-BOTH above).
+      ;;
+      ;; PAUSING IS NOT ANSWERING, so the pause continuation is the refusal
+      ;; too. Every other callback here resumes where an un-paused run would
+      ;; have gone, but there is no such place for a question: re-entering
+      ;; this node would ask again and a run that answered `pause` twice would
+      ;; never advance, which is exactly what the verifier's
+      ;; `zero-progress-cycle` refuses.
+      (make-callback-node 'switch-type 'on-message-type 'e-no-message-type
+                          (list (list 'request 'type-store-request)
+                                (list 'response 'type-store-response))
+                          'e-no-message-type #f)
+      (make-field-action-node 'type-store-request 'store (list 'type TYPE-REQUEST)
+                              'method-open #f #f)
+      (make-field-action-node 'type-store-response 'store (list 'type TYPE-RESPONSE)
+                              'protocol-open #f #f)
 
       ;; --- method -------------------------------------------------------------
       (make-span-start-node 'method-open 'method-span 'method-table #f)
@@ -855,16 +1032,31 @@
       ;; compatibility branch, all at the protocol's own offset and before the
       ;; version is read. `ANNOUNCE /music/sweet/music HTTP/1.0` records
       ;; `off=32 protocol complete` and `off=32 error code=8`.
+      ;;
+      ;; ONE TABLE FOR BOTH START LINES. llhttp writes the constant twice --
+      ;; `req_after_http_start` with `checkMethod` and `res_after_start` with
+      ;; `endResponseProtocol` -- and the two differ in nothing but what
+      ;; follows the event. Here they are one keyword table and one span, with
+      ;; a zero-width branch where llhttp forks, so `HTTP`, `RTSP` and `ICE`
+      ;; have a single definition and the response cannot drift from the
+      ;; request. THE METHOD CHECK IS THE FORK: a response has no method, and
+      ;; its `method-protocols` is 0, which no protocol would accept.
       (make-span-end-node 'protocol-close-http 'protocol-span 'protocol-complete-http #f)
-      (ev 'protocol-complete-http 'on-protocol-complete 'check-http)
+      (ev 'protocol-complete-http 'on-protocol-complete 'protocol-after-http)
+      (make-field-branch-node 'protocol-after-http 'equal (list 'type TYPE-RESPONSE)
+                              'after-protocol 'check-http #f)
       (make-field-branch-node 'check-http 'mask-any (list 'method-protocols HTTP-BIT)
                               'after-protocol 'e-method-not-http #f)
       (make-span-end-node 'protocol-close-rtsp 'protocol-span 'protocol-complete-rtsp #f)
-      (ev 'protocol-complete-rtsp 'on-protocol-complete 'check-rtsp)
+      (ev 'protocol-complete-rtsp 'on-protocol-complete 'protocol-after-rtsp)
+      (make-field-branch-node 'protocol-after-rtsp 'equal (list 'type TYPE-RESPONSE)
+                              'after-protocol 'check-rtsp #f)
       (make-field-branch-node 'check-rtsp 'mask-any (list 'method-protocols RTSP-BIT)
                               'after-protocol 'e-method-not-rtsp #f)
       (make-span-end-node 'protocol-close-ice 'protocol-span 'protocol-complete-ice #f)
-      (ev 'protocol-complete-ice 'on-protocol-complete 'check-ice)
+      (ev 'protocol-complete-ice 'on-protocol-complete 'protocol-after-ice)
+      (make-field-branch-node 'protocol-after-ice 'equal (list 'type TYPE-RESPONSE)
+                              'after-protocol 'check-ice #f)
       (make-field-branch-node 'check-ice 'mask-any (list 'method-protocols ICE-BIT)
                               'after-protocol 'e-method-not-ice #f)
 
@@ -906,9 +1098,17 @@
       (make-span-end-node 'version-close-expected-dot 'version-span 'e-expected-dot #f)
       (make-span-end-node 'version-close-bad-minor 'version-span 'e-bad-minor #f)
       (make-span-end-node 'version-close-bad-version 'version-span 'e-bad-version #f)
+      ;; ONE VERSION SUBGRAPH FOR BOTH START LINES, for the same reason the
+      ;; protocol has one table: llhttp's `req_http_major/dot/minor/end` and
+      ;; its `res_http_major/dot/minor/end` are the same nodes with the same
+      ;; `checkVersion` and differ only in what follows the event. So the four
+      ;; accepted pairs, and the three ways a version can be malformed, have
+      ;; one definition here and the fork is one zero-width branch.
+      (make-field-branch-node 'version-after 'equal (list 'type TYPE-RESPONSE)
+                              'res-after-version 'after-version #f)
       ;; llhttp loads the method right after `version complete`: PRI takes the
       ;; HTTP/2 preface path and everything else the CRLF.
-      (ev 'version-complete 'on-version-complete 'after-version)
+      (ev 'version-complete 'on-version-complete 'version-after)
       (make-field-branch-node 'after-version 'equal
                               (list 'method (method-number "PRI"))
                               'pri-preface 'expect-cr #f)
@@ -940,6 +1140,93 @@
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'headers-start 'advance) #f))
         (make-edge 'e-lf-after-cr 'reexecute) 'e-eof-none #f)
+
+      ;; --- the status line ----------------------------------------------------
+      ;;
+      ;; `SP 3DIGIT [ SP reason-phrase ] CRLF`, and the reason phrase is
+      ;; OPTIONAL -- `HTTP/1.1 200\r\n` closes the line at the CR with no
+      ;; `span[status]` at all, because llhttp opens that span only on the
+      ;; space arm.
+      ;;
+      ;; EXACTLY THREE DIGITS, not a loop. llhttp writes `res_status_code_
+      ;; digit_1/2/3` as three `select(NUM_MAP, mulAdd)` steps, and the count
+      ;; is observable: `HTTP/1.1 2 OK` errors at 10, one past its only digit,
+      ;; where a loop would take the space as a terminator and carry on.
+      (make-byte-dispatch-node 'res-after-version
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'res-status-code-zero 'advance) #f))
+        (make-edge 'e-no-space-after-version 'reexecute) 'e-eof-none #f)
+      (make-field-action-node 'res-status-code-zero 'store (list 'status-code 0)
+                              'res-status-digit-1 #f #f)
+      ;; THE OVERFLOW ARM CANNOT FIRE, and that is arithmetic rather than
+      ;; optimism: three base-ten digits reach 999 and the field is llhttp's
+      ;; own `i16`. So the one-dispatch shim the chunk size needs -- our
+      ;; accumulator REEXECUTES the digit that overflowed where llhttp's
+      ;; `select` had already consumed it -- is not needed here, and the arm
+      ;; names llhttp's error for the same reason llhttp writes one.
+      (make-integer-accumulate-node 'res-status-digit-1 'status-code 10
+                                    'res-status-digit-2
+                                    (make-edge 'e-bad-status-code 'reexecute)
+                                    'e-bad-status-code 'e-eof-none #f)
+      (make-integer-accumulate-node 'res-status-digit-2 'status-code 10
+                                    'res-status-digit-3
+                                    (make-edge 'e-bad-status-code 'reexecute)
+                                    'e-bad-status-code 'e-eof-none #f)
+      (make-integer-accumulate-node 'res-status-digit-3 'status-code 10
+                                    'res-status-after
+                                    (make-edge 'e-bad-status-code 'reexecute)
+                                    'e-bad-status-code 'e-eof-none #f)
+
+      ;; THE BARE LF IS CONSUMED BEFORE IT FAILS and the foreign byte is not:
+      ;; llhttp `.match`es the LF into a lenient test strict mode refuses, and
+      ;; `.otherwise` does not consume. The same trap as the bare LF after a
+      ;; request's version, and the same two offsets one apart. NO FIXTURE
+      ;; RECORDS EITHER -- the reason "Invalid response status" appears
+      ;; nowhere in the 274, which `corpus-load-tests.sps` pins; what is
+      ;; measured is the IDIOM, by `request/invalid.md#21` for the consumed
+      ;; bare LF and by `response/invalid.md` for `.otherwise` at the byte.
+      (make-byte-dispatch-node 'res-status-after
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'res-status-open 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'res-line-almost-done 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'e-bad-response-status 'advance) #f))
+        (make-edge 'e-bad-response-status 'reexecute) 'e-eof-none #f)
+
+      ;; THE REASON PHRASE TAKES ANY BYTE BUT ITS LINE ENDING. llhttp's
+      ;; `res_status` is `.peek('\r', ...).peek('\n', ...).skipTo(res_status)`
+      ;; -- a bare `skipTo` with no matcher, so NUL and DEL are status text.
+      ;; `HTTP/1.1 200  OK` records `span[status]=" OK"`, which is the check
+      ;; that the span starts one past the space llhttp consumed and takes the
+      ;; second one whole.
+      (make-span-start-node 'res-status-open 'status-span 'res-status #f)
+      (make-byte-dispatch-node 'res-status
+        (list (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'res-status-close-cr 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'res-status-close-lf 'reexecute) #f))
+        (make-edge 'res-status 'advance) 'e-eof-status #f)
+      ;; `span.status.end().skipTo(...)` is a PEEK that ends the span and THEN
+      ;; consumes, so each of these is a span end followed by a one-byte
+      ;; dispatch: the span closes AT the line ending and the next state
+      ;; starts past it.
+      (make-span-end-node 'res-status-close-cr 'status-span 'res-status-skip-cr #f)
+      (make-byte-dispatch-node 'res-status-skip-cr
+        '() (make-edge 'res-line-almost-done 'advance) 'e-eof-none #f)
+      (make-span-end-node 'res-status-close-lf 'status-span 'res-status-skip-lf #f)
+      (make-byte-dispatch-node 'res-status-skip-lf
+        '() (make-edge 'e-cr-after-status 'advance) 'e-eof-none #f)
+
+      ;; `status complete` fires PAST the LF, which is why the CR arm above
+      ;; carries no event of its own: a status line that never reaches its LF
+      ;; records the span and then an error, never a completion.
+      (make-byte-dispatch-node 'res-line-almost-done
+        (list (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'status-complete 'advance) #f))
+        (make-edge 'e-lf-after-cr-strict 'reexecute) 'e-eof-none #f)
+      (ev 'status-complete 'on-status-complete 'headers-start)
+
       ;; --- the header section -------------------------------------------------
       ;;
       ;; Strict throughout. Every lenient arm of llhttp's header machine is an
@@ -1074,7 +1361,7 @@
       (make-byte-dispatch-node 'value-discard-ws-cr
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'value-discard-lws 'advance) #f))
-        (make-edge 'e-lf-after-cr-in-value 'reexecute) 'e-eof-none #f)
+        (make-edge 'e-lf-after-cr-strict 'reexecute) 'e-eof-none #f)
 
       ;; Obs-fold, first site: a continuation line after an EMPTY value. The
       ;; whitespace is CONSUMED before it fails (llhttp `.match`es it), unlike
@@ -1128,25 +1415,40 @@
       ;;
       ;; ONCE CHUNKED IS CHOSEN NO OTHER CODING IS ALLOWED IN A REQUEST, and
       ;; llhttp enforces that at the START of the next value and at the comma
-      ;; inside one. Strict mode takes the refusing arm both times, so the
-      ;; span is ended -- EMPTY at the value start -- and one byte is skipped
-      ;; before the error, because `skipTo` consumes.
+      ;; inside one. IN A REQUEST -- the whole condition is llhttp's
+      ;; `forbidAfterChunkedInRequest`, and RFC 7230 3.3.3 gives a response
+      ;; the opposite treatment: a coding after `chunked` is allowed there and
+      ;; simply un-chunks the message, so the body runs to end of connection
+      ;; instead. `response/transfer-encoding.md#3` records the comma case and
+      ;; `#4` the second-header case, both `flags=200` with no CHUNKED bit.
+      ;;
+      ;; Strict requests take the refusing arm both times, so the span is
+      ;; ended -- EMPTY at the value start -- and one byte is skipped before
+      ;; the error, because `skipTo` consumes. One refusal serves both sites:
+      ;; the value span is open at each.
       (make-field-branch-node 'te-check-chunked 'mask-any (list 'flags F-CHUNKED)
+                              'te-restart-type 'te-set-flag #f)
+      (make-field-branch-node 'te-restart-type 'equal (list 'type TYPE-REQUEST)
                               'te-after-chunked 'te-set-flag #f)
       (make-span-end-node 'te-after-chunked 'header-value-span 'te-eat-one #f)
       (make-byte-dispatch-node 'te-eat-one
         '() (make-edge 'e-bad-te-value 'advance) 'e-eof-none #f)
+      (make-field-branch-node 'te-comma-type 'equal (list 'type TYPE-REQUEST)
+                              'te-after-chunked 'te-chunked #f)
 
       ;; The CHUNKED bit is CLEARED on the way in and set again only by
       ;; `setHeaderFlags` at the end of a value that really was `chunked`, so a
       ;; later coding un-chunks the message rather than adding to it.
       (make-field-action-node 'te-set-flag 'set-mask (list 'flags F-TRANSFER-ENCODING)
                               'te-unset-chunked #f #f)
-      ;; ALSO UNCHECKED, AND ALSO DELIBERATE. In a strict request the branch
-      ;; above refuses any coding that follows `chunked`, so this clear only
-      ;; ever runs with the bit already clear -- measured, not argued: the
-      ;; mutation that removes it survives both lanes. Lenient transfer
-      ;; encoding and responses both reach it with the bit set.
+      ;; AND THAT CLEAR IS NOW MEASURED. Through M6 it only ever ran with the
+      ;; bit already clear, because the branch above refused every request
+      ;; that could have set it -- the mutation that removed it survived both
+      ;; lanes. `response/transfer-encoding.md#4` is the fixture that reaches
+      ;; it with the bit SET: `Transfer-Encoding: chunked` then
+      ;; `Transfer-Encoding: identity`, and the second header un-chunks the
+      ;; first. The slice that makes an unchecked line observable owes it a
+      ;; test, and this is that slice.
       (make-field-action-node 'te-unset-chunked 'clear-mask (list 'flags F-CHUNKED)
                               'te-chunked #f #f)
       (make-keyword-table-node 'te-chunked
@@ -1162,7 +1464,7 @@
               (make-byte-case (make-byte-set-matcher (list CR LF))
                               (make-edge 'te-mark-chunked 'reexecute) #f)
               (make-byte-case (make-exact-byte-matcher COMMA)
-                              (make-edge 'te-after-chunked 'reexecute) #f))
+                              (make-edge 'te-comma-type 'reexecute) #f))
         (make-edge 'te-token 'reexecute) 'e-eof-header-value #f)
       (make-field-action-node 'te-mark-chunked 'store
                               (list 'header-state HS-TRANSFER-ENCODING-CHUNKED)
@@ -1314,11 +1616,31 @@
       (ev 'trailer-chunk-complete 'on-chunk-complete 'message-complete)
 
       ;; llhttp's `before_headers_complete`, which runs so the callback can see
-      ;; the answer: a request upgrades when it carries BOTH upgrade bits, or
-      ;; when its method is CONNECT.
+      ;; the answer: a message upgrades when it carries BOTH upgrade bits AND
+      ;; is entitled to, or when its method is CONNECT.
+      ;;
+      ;; ENTITLEMENT IS WHERE A RESPONSE DIFFERS. For a request the two bits
+      ;; are enough; for a response `Connection: upgrade` and `Upgrade: foo`
+      ;; are only an ANNOUNCEMENT unless the status is 101, which is llhttp's
+      ;; own comment and is measured twice: `response/connection.md#13` and
+      ;; `#14` carry both bits under a 200 and record no pause at all, where
+      ;; the same headers under a 101 record one.
       (make-field-branch-node 'before-headers-complete 'mask-all
                               (list 'flags (+ F-UPGRADE F-CONNECTION-UPGRADE))
-                              'bhc-upgrade-yes 'bhc-check-connect #f)
+                              'bhc-upgrade-request 'bhc-check-connect #f)
+      (make-field-branch-node 'bhc-upgrade-request 'equal (list 'type TYPE-REQUEST)
+                              'bhc-upgrade-yes 'bhc-switching #f)
+      ;; AND THIS ONE SETS A FIELD THE 101 PATH NEVER READS, so the mutation
+      ;; that moves it to 100 survives every lane. `upgrade` is consulted by
+      ;; the body decision and by the end of a body; a 101 takes neither,
+      ;; because `ahc-switching` pauses it by a second and independent route.
+      ;; The value still matters -- llhttp's `parser->upgrade` is what an
+      ;; embedder reads after a paused-upgrade result, which is a surface no
+      ;; trace can show -- so it is llhttp's and it stays.
+      (make-field-branch-node 'bhc-switching 'equal (list 'status-code 101)
+                              'bhc-upgrade-yes 'bhc-upgrade-no #f)
+      ;; The `else` arm, and it needs no type test of its own: a response's
+      ;; `method` is the field's initial 0, which is DELETE and not CONNECT.
       (make-field-branch-node 'bhc-check-connect 'equal
                               (list 'method (method-number "CONNECT"))
                               'bhc-upgrade-yes 'bhc-upgrade-no #f)
@@ -1332,21 +1654,65 @@
       ;; THE UPGRADE ARM COMES FIRST, and it is why `CONNECT` with a
       ;; Content-Length of 10 reads no body at all:
       ;;
-      ;;   upgrade && (method == CONNECT || !hasBody)   ->  complete, then PAUSE
+      ;;   ( upgrade && (method == CONNECT || !hasBody) )
+      ;;     || (type == RESPONSE && status_code == 101)   ->  complete, PAUSE
       ;;
-      ;; with `hasBody` being chunked-or-a-nonzero-length. Skip-body is a
-      ;; response's, so the request condition is these two.
+      ;; with `hasBody` being chunked-or-a-nonzero-length. Skip-body is the
+      ;; third disjunct and is deferred with its two fixtures: nothing here
+      ;; can set the flag, and an arm no path reaches is refused rather than
+      ;; stubbed. The milestone that adds it owes this condition a branch.
       (make-field-branch-node 'after-headers 'nonzero (list 'upgrade)
-                              'after-headers-connect 'after-headers-chunked #f)
+                              'after-headers-connect 'ahc-switching-type #f)
       (make-field-branch-node 'after-headers-connect 'equal
                               (list 'method (method-number "CONNECT"))
-                              'message-complete 'after-headers-has-chunked #f)
+                              'message-complete-pause 'after-headers-has-chunked #f)
       (make-field-branch-node 'after-headers-has-chunked 'mask-any
                               (list 'flags F-CHUNKED)
-                              'after-headers-chunked 'after-headers-has-length #f)
+                              'ahc-switching-type 'after-headers-has-length #f)
       (make-field-branch-node 'after-headers-has-length 'nonzero
                               (list 'content-length)
-                              'after-headers-chunked 'message-complete #f)
+                              'ahc-switching-type 'message-complete-pause #f)
+
+      ;; --- the five status codes that decide a response's body ----------------
+      ;;
+      ;; 101 exits to another protocol; 100, 102, 103, 204 and 304 have no
+      ;; body at all. llhttp writes each as `type == HTTP_RESPONSE && status_
+      ;; code == N`, and the type half of every one of those conjunctions is
+      ;; REDUNDANT HERE AND KEPT ANYWAY: `status-code` is written only on the
+      ;; response path and re-zeroed at every status line, so a request can
+      ;; never carry one of these numbers. It is llhttp's structure, it costs
+      ;; one zero-width branch, and it is what BOTH mode would need. A
+      ;; mutation that inverts `ahc-switching-type` therefore survives both
+      ;; lanes, and that is this paragraph rather than a missing test.
+      (make-field-branch-node 'ahc-switching-type 'equal (list 'type TYPE-RESPONSE)
+                              'ahc-switching 'after-headers-chunked #f)
+      ;; 101 RETURNS 1 AND SO PAUSES WHATEVER `upgrade` SAYS, which is why it
+      ;; joins the arm above rather than the no-body one below. Every 101 in
+      ;; the corpus also carries the two upgrade bits, so the two routes agree
+      ;; there; a 101 without them is where they would not, and llhttp's is
+      ;; the one reproduced.
+      (make-field-branch-node 'ahc-switching 'equal (list 'status-code 101)
+                              'message-complete-pause 'ahc-continue #f)
+      ;; FOUR OF THESE FIVE OVERLAP `message_needs_eof`, WHICH IS WHY ONE OF
+      ;; THEM CANNOT BE MEASURED. On a response with no framing header the
+      ;; two questions agree -- this arm answers "no body" and the needs-eof
+      ;; test below answers "no eof", and either alone produces the right
+      ;; trace. They part only when such a status arrives WITH a
+      ;; `Content-Length` or a `Transfer-Encoding`, and the corpus records
+      ;; that for 304 alone (`response/connection.md#15` and `#16`). So the
+      ;; 304 mutation is caught and the 204 one survives every lane;
+      ;; `corpus-load-tests.sps` pins which of the five the oracle separates,
+      ;; and a refresh that adds one turns that check red.
+      (make-field-branch-node 'ahc-continue 'equal (list 'status-code 100)
+                              'message-complete-done 'ahc-processing #f)
+      (make-field-branch-node 'ahc-processing 'equal (list 'status-code 102)
+                              'message-complete-done 'ahc-early-hints #f)
+      (make-field-branch-node 'ahc-early-hints 'equal (list 'status-code 103)
+                              'message-complete-done 'ahc-no-content #f)
+      (make-field-branch-node 'ahc-no-content 'equal (list 'status-code 204)
+                              'message-complete-done 'ahc-not-modified #f)
+      (make-field-branch-node 'ahc-not-modified 'equal (list 'status-code 304)
+                              'message-complete-done 'after-headers-chunked #f)
 
       ;; THE PAUSE CARRIES ITS REASON, which llhttp's harness prints as an
       ;; error line and which this parser can therefore render. It is still a
@@ -1377,15 +1743,25 @@
       ;; CHUNKED FIRST -- it overrides a Content-Length that is also present.
       (make-field-branch-node 'after-headers-chunked 'mask-any (list 'flags F-CHUNKED)
                               'chunk-size-start 'after-headers-te #f)
-      ;; A request that named a transfer coding and did not end with `chunked`
-      ;; has no reliable body length: llhttp's `after_headers_complete`
-      ;; returns 5, AFTER the line that printed the flag.
+      ;; A message that named a transfer coding and did not end with `chunked`
+      ;; has no reliable body length, and RFC 7230 3.3.3 gives the two kinds
+      ;; opposite remedies: a REQUEST is refused (llhttp returns 5, after the
+      ;; line that printed the flag) and a RESPONSE is read until the
+      ;; connection closes (returns 4). `response/transfer-encoding.md#5`
+      ;; records the second.
       (make-field-branch-node 'after-headers-te 'mask-any (list 'flags F-TRANSFER-ENCODING)
-                              'e-request-invalid-te 'after-headers-cl #f)
+                              'ahc-coding-type 'after-headers-cl #f)
+      (make-field-branch-node 'ahc-coding-type 'equal (list 'type TYPE-REQUEST)
+                              'e-request-invalid-te 'body-eof #f)
       (make-field-branch-node 'after-headers-cl 'mask-any (list 'flags F-CONTENT-LENGTH)
-                              'body-length-check 'message-complete #f)
+                              'body-length-check (needs-eof-entry "ahc-eof") #f)
       (make-field-branch-node 'body-length-check 'nonzero (list 'content-length)
-                              'body-open 'message-complete #f)
+                              'body-open 'message-complete-done #f))
+      ;; NO FRAMING HEADER AT ALL, which is the one place the body decision
+      ;; asks llhttp's other function: a request ends here (`needs_eof` is 0
+      ;; for one) and a response reads until the connection closes.
+      (needs-eof-nodes "ahc-eof" 'body-eof 'message-complete-done)
+      (list
 
       ;; The counted consume DECREMENTS `content-length` as it goes, which is
       ;; llhttp's own `p.consume('content_length')`; the number the trace
@@ -1393,6 +1769,28 @@
       (make-span-start-node 'body-open 'body-span 'body-consume #f)
       (make-counted-consume-node 'body-consume 'content-length 'body-close 'e-eof-body #f)
       (make-span-end-node 'body-close 'body-span 'message-complete #f)
+
+      ;; --- a body the connection ends -----------------------------------------
+      ;;
+      ;; llhttp's `body_identity_eof`: raise `finish` to SAFE_WITH_CB, open
+      ;; the body span, and consume everything for ever. THE SPAN NEVER
+      ;; CLOSES and there is no `message complete` -- `response/sample.md#19`
+      ;; records `span[body]="hello world"` as its last line, and
+      ;; `response/sample.md#5` records nothing after `headers complete` at
+      ;; all. What ends the message is the CONNECTION, which is a fact the
+      ;; parser is told rather than one it reads, and `finish` is where it is
+      ;; told what that would mean: SAFE_WITH_CB says "complete, but only
+      ;; once someone says the input stopped".
+      (make-field-action-node 'body-eof 'store (list 'finish FINISH-SAFE-WITH-CB)
+                              'body-eof-open #f #f)
+      (make-span-start-node 'body-eof-open 'body-span 'body-eof-consume #f)
+      (make-byte-dispatch-node 'body-eof-consume
+        '() (make-edge 'body-eof-consume 'advance) 'body-eof-end #f)
+      ;; Reached only if an embedder calls `parser-finish!`, which the corpus
+      ;; driver never does (decision 0016): llhttp's own harness prints the
+      ;; `finish` FIELD and does not end the parse.
+      (make-span-end-node 'body-eof-end 'body-span 'body-eof-stop #f)
+      (make-finish-node 'body-eof-stop #f)
 
       ;; --- chunked bodies ------------------------------------------------------
       ;;
@@ -1639,14 +2037,25 @@
       (make-byte-dispatch-node 'chunk-ext-qp-bad-eat
         '() (make-edge 'e-bad-chunk-ext-qp 'advance) 'e-eof-none #f)
 
-      ;; ONE `message complete`, THEN THE UPGRADE TEST. llhttp invokes the
-      ;; callback at two sites -- the no-body decision and the end of a body --
-      ;; and both follow it with the same question, so the two collapse into
-      ;; one node here. A message that upgraded pauses; every other one carries
-      ;; on. THIS IS WHY A BODY IS STILL READ FOR AN UPGRADE THAT HAS ONE:
+      ;; THREE `message complete` SITES, WHICH IS llhttp's OWN COUNT, and they
+      ;; differ in what follows rather than in what they report:
+      ;;
+      ;;   return 1   complete, then PAUSE -- whatever `upgrade` says
+      ;;   return 0   complete, then carry on -- ditto
+      ;;   a body end complete, then pause ONLY if this message upgraded
+      ;;
+      ;; Collapsing them would be safe for every fixture in the corpus, since
+      ;; return 1 implies `upgrade` everywhere but a 101 with no upgrade
+      ;; header and return 0 excludes it everywhere. It is not safe for real
+      ;; input, and the whole point of this parser is the bytes nobody
+      ;; recorded, so llhttp's three stay three.
+      ;;
+      ;; THE THIRD IS WHY A BODY IS STILL READ FOR AN UPGRADE THAT HAS ONE:
       ;; `Connection: upgrade` with `Content-Length: 4` has a body, so the
       ;; decision does NOT take the early exit -- it reads the four bytes and
       ;; pauses afterwards.
+      (ev 'message-complete-pause 'on-message-complete 'upgrade-pause)
+      (ev 'message-complete-done 'on-message-complete 'after-message)
       (ev 'message-complete 'on-message-complete 'after-message-upgrade)
       (make-field-branch-node 'after-message-upgrade 'nonzero (list 'upgrade)
                               'upgrade-pause 'after-message #f)
@@ -1665,9 +2074,27 @@
       ;;   major > 0 && minor > 0   ->   keep alive unless CONNECTION_CLOSE
       ;;   otherwise (1.0 or 0.9)   ->   keep alive only if CONNECTION_KEEP_ALIVE
       ;;
-      ;; because `message_needs_eof` is unconditionally 0 for a request, so
-      ;; the `!needs_eof` that ends llhttp's function is always 1 here. The
-      ;; response arms of that function are M7's.
+      ;; and THEN `return !llhttp_message_needs_eof(parser)`, which is the
+      ;; line M6 could leave out: `message_needs_eof` is unconditionally 0 for
+      ;; a request, so its negation was always 1. For a response it is the
+      ;; whole difference between a connection that restarts and one that
+      ;; does not -- `response/connection.md#1` keeps alive on a 204 and
+      ;; `#12` does not on a 200 with no framing header, under the same
+      ;; version and the same absent `Connection`.
+      ;;
+      ;; THE ORDER IS LOAD-BEARING TWICE OVER. llhttp reads the answer before
+      ;; it clears the flags, and `message_needs_eof` reads those same flags
+      ;; -- so the question is asked here, between the version test and the
+      ;; resetting, and not inside either arm.
+      ;;
+      ;; ITS ANSWER IS CONSTANT ON EVERY PATH THAT REACHES IT, and that is a
+      ;; property of the graph rather than of the corpus: a message that
+      ;; needs eof is one the body decision sent to `body-eof`, which never
+      ;; completes, so nothing needing eof arrives here at all. Inverting the
+      ;; answer is caught at once -- every keep-alive would close -- and
+      ;; SKIPPING the question is not caught by anything. The milestone that
+      ;; adds `parser-finish!` to the driver is the one that can tell the
+      ;; difference.
       ;;
       ;; ONE ARM HAS NO STRICT FIXTURE: HTTP/1.0 WITH `Connection: keep-alive`
       ;; restarting. `request/connection.md#4` records it and is lenient, so
@@ -1679,9 +2106,11 @@
       (make-field-branch-node 'amc-check-minor 'nonzero (list 'http-minor)
                               'amc-modern 'amc-old #f)
       (make-field-branch-node 'amc-modern 'mask-any (list 'flags F-CONNECTION-CLOSE)
-                              'amc-close 'amc-keep-alive #f)
+                              'amc-close (needs-eof-entry "amc-eof") #f)
       (make-field-branch-node 'amc-old 'mask-any (list 'flags F-CONNECTION-KEEP-ALIVE)
-                              'amc-keep-alive 'amc-close #f)
+                              (needs-eof-entry "amc-eof") 'amc-close #f))
+      (needs-eof-nodes "amc-eof" 'amc-close 'amc-keep-alive)
+      (list
 
       ;; THE FLAGS RESET IS WHAT MAKES A SECOND MESSAGE PARSEABLE AT ALL, and
       ;; `request/pipelining.md#1` is the only fixture that measures it: each
@@ -1738,6 +2167,12 @@
       (make-error-node 'e-eof-url 'eof #f)
       (make-error-node 'e-eof-protocol 'eof #f)
       (make-error-node 'e-eof-version 'eof #f)
+      (make-error-node 'e-no-space-after-version 'no-space-after-version #f)
+      (make-error-node 'e-bad-status-code 'bad-status-code #f)
+      (make-error-node 'e-bad-response-status 'bad-response-status #f)
+      (make-error-node 'e-cr-after-status 'cr-after-status #f)
+      (make-error-node 'e-eof-status 'eof #f)
+      (make-error-node 'e-no-message-type 'no-message-type #f)
       (make-error-node 'e-unexpected-space 'unexpected-space #f)
       (make-error-node 'e-bad-header-field-char 'bad-header-field-char #f)
       (make-error-node 'e-bad-header-token 'bad-header-token #f)
@@ -1748,7 +2183,7 @@
       (make-error-node 'e-bad-header-token-open 'bad-header-token #f)
       (make-error-node 'e-bad-header-value-char 'bad-header-value-char #f)
       (make-error-node 'e-ws-after-value 'ws-after-value #f)
-      (make-error-node 'e-lf-after-cr-in-value 'lf-after-cr-in-value #f)
+      (make-error-node 'e-lf-after-cr-strict 'lf-after-cr-strict #f)
       (make-error-node 'e-cr-after-value 'cr-after-value #f)
       (make-error-node 'e-lf-after-value 'lf-after-value #f)
       (make-error-node 'e-lf-after-headers 'lf-after-headers #f)

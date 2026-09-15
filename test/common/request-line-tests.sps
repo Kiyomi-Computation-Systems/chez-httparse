@@ -43,6 +43,10 @@
     (let* ((p (make-parser compiled
                            (list (list 'on-reset (ev 'reset))
                                  (list 'on-message-begin (ev 'message-begin))
+                                 ;; The one binding that ANSWERS. Every case
+                                 ;; in this lane is a request, and a parser
+                                 ;; that is not told so refuses to start.
+                                 (list 'on-message-type (lambda (p ctx) 'request))
                                  (list 'on-method-data (span 'method))
                                  (list 'on-method-complete (ev 'method-complete))
                                  (list 'on-url-data (span 'url))
@@ -51,6 +55,8 @@
                                  (list 'on-protocol-complete (ev 'protocol-complete))
                                  (list 'on-version-data (span 'version))
                                  (list 'on-version-complete (ev 'version-complete))
+                                 (list 'on-status-data (span 'status))
+                                 (list 'on-status-complete (ev 'status-complete))
                                  (list 'on-header-field-data (span 'header-field))
                                  (list 'on-header-field-complete (ev 'header-field-complete))
                                  (list 'on-header-value-data (span 'header-value))
@@ -99,6 +105,7 @@
   (define (ignore-span p ctx bv from to) callback-continue)
   (list (list 'on-reset ignore-event)
         (list 'on-message-begin ignore-event)
+        (list 'on-message-type (lambda (p ctx) 'request))
         (list 'on-method-data ignore-span)
         (list 'on-method-complete ignore-event)
         (list 'on-url-data ignore-span)
@@ -107,6 +114,8 @@
         (list 'on-protocol-complete ignore-event)
         (list 'on-version-data ignore-span)
         (list 'on-version-complete ignore-event)
+        (list 'on-status-data ignore-span)
+        (list 'on-status-complete ignore-event)
         (list 'on-header-field-data ignore-span)
         (list 'on-header-field-complete ignore-event)
         (list 'on-header-value-data ignore-span)
@@ -348,6 +357,7 @@
                  (p (make-parser compiled
                                  (list (list 'on-reset (ev 'reset))
                                        (list 'on-message-begin (ev 'message-begin))
+                                       (list 'on-message-type (lambda (p ctx) 'request))
                                        (list 'on-method-data (span 'method))
                                        (list 'on-method-complete (ev 'method-complete))
                                        (list 'on-url-data (span 'url))
@@ -356,6 +366,8 @@
                                        (list 'on-protocol-complete (ev 'protocol-complete))
                                        (list 'on-version-data (span 'version))
                                        (list 'on-version-complete (ev 'version-complete))
+                                       (list 'on-status-data (span 'status))
+                                       (list 'on-status-complete (ev 'status-complete))
                                        (list 'on-header-field-data (span 'header-field))
                                        (list 'on-header-field-complete (ev 'header-field-complete))
                                        (list 'on-header-value-data (span 'header-value))

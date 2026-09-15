@@ -34,7 +34,7 @@
 ;; trace : String -> (Listof String)
 (define (trace input)
   (let* ((r (make-trace-recorder))
-         (p (make-parser machine (trace-recorder-bindings r) #f))
+         (p (make-parser machine (trace-recorder-bindings r 'request) #f))
          (bv (string->utf8 input))
          (refused
           (call/cc

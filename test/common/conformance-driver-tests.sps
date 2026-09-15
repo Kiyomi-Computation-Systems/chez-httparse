@@ -101,11 +101,32 @@
 
 (define (no-scan? f) (eq? #t (fixture-meta-ref f 'noScan #f)))
 
+;; THE PARSER'S KIND IS THE FIXTURE'S OWN META, RENAMED AND NOT INTERPRETED.
+;; llhttp's harness turns the meta type into `-DLLPARSE__TEST_INIT=
+;; llhttp__test_init_<type>`, and each of those hooks sets `s->type` from the
+;; type's FIRST WORD -- `llhttp__test_init_response_lenient_all` opens by
+;; calling `llhttp__test_init_response`. So the first word is the kind, and
+;; that is all this reads.
+;;
+;; A type this driver cannot spell is handed on as it stands: the ADAPTER
+;; decides what it can bind, so a `url` fixture or one with no type at all is
+;; a failing fixture there rather than a crash here -- the same rule as every
+;; other refusal in this lane.
+(define (fixture-message-type f)
+  (let ((type (fixture-meta-ref f 'type #f)))
+    (if (string? type)
+        (string->symbol
+         (let loop ((i 0))
+           (cond ((= i (string-length type)) type)
+                 ((char=? (string-ref type i) #\-) (substring type 0 i))
+                 (else (loop (+ i 1))))))
+        'none)))
+
 ;; run-at : Machine Fixture Bytevector Nat -> (Listof Bytevector)
 ;; The trace one executor produces for one chunk size.
 (define (run-at machine f bv size)
   (let* ((r (make-trace-recorder))
-         (p (make-parser machine (trace-recorder-bindings r) #f))
+         (p (make-parser machine (trace-recorder-bindings r (fixture-message-type f)) #f))
          (len (bytevector-length bv)))
     (let loop ((bounds (corpus-chunk-bounds len size)) (result #f))
       (cond

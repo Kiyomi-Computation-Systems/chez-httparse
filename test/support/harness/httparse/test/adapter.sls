@@ -20,6 +20,7 @@
 (library (httparse test adapter)
   (export adapter-trace-names adapter-error-codes adapter-state-fields
           adapter-count-field adapter-finish-states adapter-finish-statuses
+          adapter-message-type-callback adapter-message-types
           adapter-event-for adapter-error-event adapter-finish-event
           make-trace-recorder trace-recorder-bindings trace-recorder-events
           trace-recorder-note-error! trace-recorder-note-paused!
@@ -50,6 +51,12 @@
       (on-protocol-complete event "protocol complete")
       (on-version-data      span  "version")
       (on-version-complete  event "version complete")
+      ;; A RESPONSE'S ONLY SPAN OF ITS OWN, and llhttp prints it under the
+      ;; name of the field rather than of the production: `span[status]` is
+      ;; the reason phrase, not the three digits, which are printed as part of
+      ;; the `headers complete` line instead.
+      (on-status-data       span  "status")
+      (on-status-complete   event "status complete")
       (on-header-field-data      span  "header_field")
       (on-header-field-complete  event "header_field complete")
       (on-header-value-data      span  "header_value")
@@ -74,9 +81,20 @@
       (on-chunk-complete         event      "chunk complete")
       (on-message-complete       event      "message complete")))
 
-  ;; The fields a state line reads, in llhttp's print order. Exported so the
-  ;; set is assertable without a parser.
-  (define adapter-state-fields '(method http-major http-minor flags content-length))
+  ;; The fields a state line reads. llhttp's own callback reads SIX and
+  ;; prints five of them: `s->type` chooses the line, and then either
+  ;; `s->method` or `s->status_code` joins the three both kinds share. So all
+  ;; six are read and the unused one is dropped by the renderer, which is what
+  ;; keeps this a rename -- the alternative is to decide here which field
+  ;; matters, and deciding is what decision 0014 forbids.
+  (define adapter-state-fields
+    '(type method status-code http-major http-minor flags content-length))
+
+  ;; The two answers `on-message-type` may give. llhttp's harness sets
+  ;; `s->type` in an init hook that prints NOTHING; this is that hook, and it
+  ;; is the one binding with no trace row for exactly that reason.
+  (define adapter-message-type-callback 'on-message-type)
+  (define adapter-message-types '(request response))
 
   ;; The single field a count line reads. llhttp's chunk reader accumulates
   ;; the chunk size into the SAME field a Content-Length body uses, and its
@@ -99,6 +117,7 @@
       (invalid-header-token      . 10)
       (invalid-content-length    . 11)
       (invalid-chunk-size        . 12)
+      (invalid-status            . 13)
       (invalid-transfer-encoding . 15)
       ;; PRI's h2 preface is an ERROR in llhttp, not a pause -- `p.error(
       ;; ERROR.PAUSED_H2_UPGRADE, ...)` -- so unlike code 22 it has a code and
@@ -119,18 +138,31 @@
                          " for a state line")))
       (cdr row)))
 
-  ;; llhttp's own format string, from its `llhttp__on_headers_complete`:
+  ;; llhttp's own format strings, from its `llhttp__on_headers_complete`:
   ;;   "headers complete method=%d v=%d/%d flags=%x content_length=%llu"
-  ;; `%x` IS LOWERCASE and Chez's `number->string` radix 16 is not, which the
-  ;; corpus catches at `flags=20a`.
+  ;;   "headers complete status=%d v=%d/%d flags=%x content_length=%llu"
+  ;; chosen by `s->type`, and identical after their first field. `%x` IS
+  ;; LOWERCASE and Chez's `number->string` radix 16 is not, which the corpus
+  ;; catches at `flags=20a`.
+  ;;
+  ;; llhttp HAS A THIRD ARM and it is refused here rather than rendered.
+  ;; `invalid headers complete` is what its callback prints when the type is
+  ;; neither -- reachable in llhttp because BOTH is its default, unreachable
+  ;; here because the type arrives as a branch key and the branches are the
+  ;; only writers of the field. No fixture records that line, so rendering it
+  ;; would be an untested arm; refusing makes it an assertion instead.
   (define (state-line-text name fields)
-    (string-append
-     name
-     " method=" (number->string (field-value fields 'method))
-     " v=" (number->string (field-value fields 'http-major))
-     "/" (number->string (field-value fields 'http-minor))
-     " flags=" (string-downcase (number->string (field-value fields 'flags) 16))
-     " content_length=" (number->string (field-value fields 'content-length))))
+    (let ((type (field-value fields 'type)))
+      (string-append
+       name
+       (cond ((= type 1) (string-append " method=" (number->string (field-value fields 'method))))
+             ((= type 2) (string-append " status=" (number->string (field-value fields 'status-code))))
+             (else (adapter-refuse 'adapter-event-for
+                     "the parser reached headers complete without a message type")))
+       " v=" (number->string (field-value fields 'http-major))
+       "/" (number->string (field-value fields 'http-minor))
+       " flags=" (string-downcase (number->string (field-value fields 'flags) 16))
+       " content_length=" (number->string (field-value fields 'content-length)))))
 
   ;; llhttp's own `llhttp__on_chunk_header`:
   ;;   "chunk header len=%d", (int) s->content_length
@@ -224,8 +256,17 @@
   ;; A span fragment's ABSOLUTE start is the stream offset minus its length: the
   ;; callback fires having already advanced past the bytes it is handed, so
   ;; `from` is the absolute offset only when the feed started at zero.
-  (define (trace-recorder-bindings r)
-    (map (lambda (row)
+  ;; trace-recorder-bindings : Recorder Symbol -> (Listof (List Symbol Procedure))
+  ;; THE TYPE IS A REQUIRED ARGUMENT, and that is the point: llhttp's harness
+  ;; cannot build a parser without saying what it is parsing either. A default
+  ;; here would silently make every response a request.
+  (define (trace-recorder-bindings r type)
+    (unless (memq type adapter-message-types)
+      (adapter-refuse 'trace-recorder-bindings
+        "a recorder was asked to bind a parser that is neither a request nor a response"))
+    (cons
+     (list adapter-message-type-callback (lambda (p ctx) type))
+     (map (lambda (row)
            (let ((callback (car row)) (kind (cadr row)))
              (list callback
                    (case kind
@@ -267,7 +308,7 @@
                         callback-continue))
                      (else (adapter-refuse 'trace-recorder-bindings
                                            "unknown callback kind"))))))
-         adapter-trace-names))
+          adapter-trace-names)))
 
   ;; trace-recorder-note-paused! : Recorder (Option ParserError) -> Void
   ;; A RENAME LIKE EVERY OTHER ROW. llhttp prints a
