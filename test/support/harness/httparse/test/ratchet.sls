@@ -7,9 +7,9 @@
 ;;; entry that passes is an error.
 ;;;
 ;;; THE STATUS CLASS IS DERIVED, NOT WRITTEN DOWN TWICE. Decision 0009 puts
-;;; lenient modes, skipBody and the URL sub-parser outside v0.1 -- pausing was
-;;; there too until M9 brought it in, which is a line removed from the
-;;; predicate below and 24 rows re-classed in one reviewed diff. Rather
+;;; lenient modes and the URL sub-parser outside v0.1 -- pausing and skipBody
+;;; were there too until M9 brought them in, which is two lines removed from
+;;; the predicate below and 26 rows re-classed in one reviewed diff. Rather
 ;;; than trusting the manifest to say so, the class is computed from each
 ;;; fixture's own meta and the manifest must agree. A refresh that adds a
 ;;; lenient fixture therefore cannot be silently marked `not-yet` and counted
@@ -41,7 +41,6 @@
   (define (ratchet-fixture-class f)
     (let ((type (fixture-meta-ref f 'type #f)))
       (if (or (eq? (fixture-kind f) 'url)
-              (eq? (fixture-meta-ref f 'skipBody #f) #t)
               (and (string? type) (contains? type "lenient")))
           'deferred
           'in-scope)))

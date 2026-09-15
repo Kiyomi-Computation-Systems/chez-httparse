@@ -111,9 +111,17 @@
 ;; A mode this driver cannot spell is handed on as it stands: the ADAPTER
 ;; refuses a pause point upstream has no macro for, so a meta naming one is a
 ;; failing fixture there rather than a crash here.
+;;
+;; THE TWO ARE EXCLUSIVE and upstream's `#elif` is why, so a fixture carrying
+;; both is handed on as `(pause ...)` for the adapter to accept -- which is
+;; what the C would do, since its `#ifdef` wins over its `#elif`. No vendored
+;; fixture carries both, and a refresh that added one would be renaming an
+;; oracle build that cannot exist.
 (define (fixture-harness-mode f)
   (let ((pause (fixture-meta-ref f 'pause 'absent)))
-    (if (eq? pause 'absent) #f (list 'pause pause))))
+    (cond ((not (eq? pause 'absent)) (list 'pause pause))
+          ((eq? #t (fixture-meta-ref f 'skipBody #f)) (list 'skip-body))
+          (else #f))))
 
 ;; THE PARSER'S KIND IS THE FIXTURE'S OWN META, RENAMED AND NOT INTERPRETED.
 ;; llhttp's harness turns the meta type into `-DLLPARSE__TEST_INIT=

@@ -56,7 +56,7 @@ passing  request/content-length.md#12
 passing  request/content-length.md#13
 passing  request/content-length.md#14
 passing  request/content-length.md#15
-deferred request/content-length.md#16                    skip-body
+passing  request/content-length.md#16
 passing  request/content-length.md#17
 deferred request/content-length.md#18                    lenient
 passing  request/finish.md#1
@@ -207,7 +207,7 @@ passing  response/connection.md#17
 passing  response/connection.md#18
 passing  response/content-length.md#1
 passing  response/content-length.md#2
-deferred response/content-length.md#3                    skip-body
+passing  response/content-length.md#3
 passing  response/content-length.md#4
 passing  response/finish.md#1
 passing  response/invalid.md#1

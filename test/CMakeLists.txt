@@ -1215,6 +1215,27 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- Skip body (M9) ---------------------------------------------------------
+#
+# The one callback whose return value upstream reads. Needs HTTPARSE_DRIVE for
+# the same reason the pausing lane does.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.skip-body.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/skip-body-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_CONFORMANCE}
+            ${HTTPARSE_ADAPTER}
+            ${HTTPARSE_DRIVE}
+            "${CMAKE_CURRENT_LIST_DIR}/common/skip-body-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- The documented example -------------------------------------------------
 #
 # README.org shows this code. It runs here so the README cannot drift: a

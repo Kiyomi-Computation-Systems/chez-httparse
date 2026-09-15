@@ -292,11 +292,22 @@
       ("on_chunk_complete"         . on-chunk-complete)
       ("on_message_complete"       . on-message-complete)))
 
+  ;; The callback whose RETURN VALUE upstream reads, and the only one: the
+  ;; `skip body` line and the 1 that follows it are both inside
+  ;; `llhttp__on_headers_complete`.
+  (define adapter-skip-body-callback 'on-headers-complete)
+
   ;; checked-mode : Any -> HarnessMode
-  ;; `#f` is the plain harness; `(pause <llhttp name>)` arms one callback.
-  ;; Anything else is refused rather than read as the plain harness, because a
-  ;; mode that quietly armed nothing would give a fixture that must pause a
-  ;; clean unpaused trace and a diff that names the wrong thing.
+  ;; `#f` is the plain harness; `(pause <llhttp name>)` arms one callback;
+  ;; `(skip-body)` makes the headers-complete callback answer 1. Anything else
+  ;; is refused rather than read as the plain harness, because a mode that
+  ;; quietly armed nothing would give a fixture that must pause a clean
+  ;; unpaused trace and a diff that names the wrong thing.
+  ;;
+  ;; THE TWO ARE EXCLUSIVE BY CONSTRUCTION, which is upstream's own shape:
+  ;; `extra.c` guards `on_headers_complete` with
+  ;; `#ifdef ..._PAUSE_ON_HEADERS_COMPLETE / #elif defined(..._SKIP_BODY)`, so
+  ;; a build is never both and neither is a mode here.
   (define (checked-mode mode)
     (cond
      ((eq? mode #f) #f)
@@ -307,12 +318,18 @@
         (adapter-refuse 'trace-recorder-bindings
           (string-append "llhttp declares no pause macro for " (cadr mode))))
       mode)
+     ((and (pair? mode) (eq? (car mode) 'skip-body) (null? (cdr mode))) mode)
      (else (adapter-refuse 'trace-recorder-bindings
-             "a harness mode is #f or (pause <llhttp callback name>)"))))
+             "a harness mode is #f, (pause <llhttp callback name>) or (skip-body)"))))
 
   ;; mode-pause-callback : HarnessMode -> (Option Symbol)
   (define (mode-pause-callback mode)
-    (and (pair? mode) (cdr (assoc (cadr mode) adapter-pause-points))))
+    (and (pair? mode) (eq? (car mode) 'pause)
+         (cdr (assoc (cadr mode) adapter-pause-points))))
+
+  ;; mode-skip-body? : HarnessMode -> Boolean
+  (define (mode-skip-body? mode)
+    (and (pair? mode) (eq? (car mode) 'skip-body)))
 
   ;; push-event! : Recorder Symbol Symbol Parser -> Void
   ;; The event one of the three NON-SPAN kinds records. A pausing callback
@@ -366,7 +383,9 @@
                   (adapter-refuse 'trace-recorder-bindings "unknown callback kind")))
               adapter-trace-names)
     (recorder-armed-set! r (checked-mode mode))
-    (let ((pause-at (mode-pause-callback (recorder-armed r))))
+    (let ((pause-at (mode-pause-callback (recorder-armed r)))
+          (skip-at (and (mode-skip-body? (recorder-armed r))
+                        adapter-skip-body-callback)))
       (cons
        (list adapter-message-type-callback (lambda (p ctx) type))
        (map (lambda (row)
@@ -381,11 +400,21 @@
                                r (adapter-event-for callback
                                                     (- (parser-stream-offset p) len) b #f)))
                             callback-continue)
-                          (let ((answer (if (eq? callback pause-at)
-                                            callback-pause
-                                            callback-continue)))
+                          ;; THREE ARMS THAT DIFFER ONLY IN THE ANSWER, and
+                          ;; one that prints a second line before giving it.
+                          ;; Upstream's skip-body callback calls
+                          ;; `llparse__print(p, endp, "skip body")` and THEN
+                          ;; returns 1, so `skip body` is the callback's own
+                          ;; output and lands at the offset its event did --
+                          ;; unlike `pause`, which the driver prints.
+                          (let ((answer (cond ((eq? callback pause-at) callback-pause)
+                                              ((eq? callback skip-at) 'skip-body)
+                                              (else callback-continue))))
                             (lambda (p ctx)
                               (push-event! r callback kind p)
+                              (when (eq? callback skip-at)
+                                (recorder-push!
+                                 r (make-trace-mark (parser-stream-offset p) "skip body")))
                               answer))))))
             adapter-trace-names))))
 

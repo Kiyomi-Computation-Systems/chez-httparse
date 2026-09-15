@@ -309,6 +309,13 @@
   ;; header block fires `chunk complete` when it is set and `headers complete`
   ;; when it is not.
   (define F-TRAILING 128)
+  ;; Set by the EMBEDDER'S ANSWER and by nothing in the input: llhttp's
+  ;; `on_headers_complete` returning 1 means "this message has no body after
+  ;; all", which `http.ts` lowers as `setFlag(FLAGS.SKIPBODY)` before
+  ;; rejoining the body decision. A flag and not a jump, because
+  ;; `llhttp__after_headers_complete` reads it in TWO places and a jump could
+  ;; only serve one of them.
+  (define F-SKIP-BODY 64)
   (define F-TRANSFER-ENCODING 512)
 
   ;; llhttp's TYPE. It is not derived from the input: the EMBEDDER sets it
@@ -664,7 +671,14 @@
            (make-callback-declaration 'on-header-field-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-header-value-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-header-value-complete 'event #t '() #f #f)
-           (make-callback-declaration 'on-headers-complete 'event #t '() #f #f)
+           ;; THE SECOND DECISION CALLBACK, and the only one whose question
+           ;; is optional to answer: `callback-continue` means "carry on" and
+           ;; the one branch means "no body". llhttp reads the same answer as
+           ;; a C return value -- 0, 1 or 2 -- and this grammar has no use for
+           ;; its 2, which sets `upgrade` from the embedder rather than from
+           ;; the headers and which no vendored fixture exercises.
+           (make-callback-declaration 'on-headers-complete 'decision #t
+                                      '(skip-body) #f #f)
            (make-callback-declaration 'on-body-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-chunk-header 'event #t '() #f #f)
            (make-callback-declaration 'on-chunk-extension-name-data 'span-data #t '() #f #f)
@@ -1689,7 +1703,15 @@
       (make-field-action-node 'bhc-upgrade-no 'store (list 'upgrade 0)
                               'headers-complete #f #f)
 
-      (ev 'headers-complete 'on-headers-complete 'after-headers)
+      ;; `ev` cannot express this one: it is the callback with a branch.
+      ;; The pause continuation is still `after-headers`, the place an
+      ;; unanswered run goes, because pausing here IS answerable -- upstream
+      ;; resumes into its own `headers_done`.
+      (make-callback-node 'headers-complete 'on-headers-complete 'after-headers
+                          (list (list 'skip-body 'headers-complete-skip-body))
+                          'after-headers #f)
+      (make-field-action-node 'headers-complete-skip-body 'set-mask
+                              (list 'flags F-SKIP-BODY) 'after-headers #f #f)
 
       ;; THE UPGRADE ARM COMES FIRST, and it is why `CONNECT` with a
       ;; Content-Length of 10 reads no body at all:
@@ -1697,14 +1719,22 @@
       ;;   ( upgrade && (method == CONNECT || !hasBody) )
       ;;     || (type == RESPONSE && status_code == 101)   ->  complete, PAUSE
       ;;
-      ;; with `hasBody` being chunked-or-a-nonzero-length. Skip-body is the
-      ;; third disjunct and is deferred with its two fixtures: nothing here
-      ;; can set the flag, and an arm no path reaches is refused rather than
-      ;; stubbed. The milestone that adds it owes this condition a branch.
+      ;; with `hasBody` being chunked-or-a-nonzero-length, and skip-body the
+      ;; second disjunct -- `ahc-upgrade-skip-body` below. M9 added it when
+      ;; the embedder gained a way to say so.
       (make-field-branch-node 'after-headers 'nonzero (list 'upgrade)
                               'after-headers-connect 'ahc-switching-type #f)
       (make-field-branch-node 'after-headers-connect 'equal
                               (list 'method (method-number "CONNECT"))
+                              'message-complete-pause 'ahc-upgrade-skip-body #f)
+      ;; THE SECOND DISJUNCT OF THE UPGRADE TEST:
+      ;;   upgrade && (CONNECT || SKIPBODY || !hasBody)
+      ;; An upgrade whose embedder said "no body" exits here rather than
+      ;; reading the length it declared. NO VENDORED FIXTURE ARMS SKIP-BODY ON
+      ;; AN UPGRADE, so this arm is transcribed from `src/native/http.c` and
+      ;; checked by a unit case that says so; the corpus cannot vouch for it.
+      (make-field-branch-node 'ahc-upgrade-skip-body 'mask-any
+                              (list 'flags F-SKIP-BODY)
                               'message-complete-pause 'after-headers-has-chunked #f)
       (make-field-branch-node 'after-headers-has-chunked 'mask-any
                               (list 'flags F-CHUNKED)
@@ -1725,7 +1755,7 @@
       ;; mutation that inverts `ahc-switching-type` therefore survives both
       ;; lanes, and that is this paragraph rather than a missing test.
       (make-field-branch-node 'ahc-switching-type 'equal (list 'type TYPE-RESPONSE)
-                              'ahc-switching 'after-headers-chunked #f)
+                              'ahc-switching 'ahc-skip-body #f)
       ;; 101 RETURNS 1 AND SO PAUSES WHATEVER `upgrade` SAYS, which is why it
       ;; joins the arm above rather than the no-body one below. Every 101 in
       ;; the corpus also carries the two upgrade bits, so the two routes agree
@@ -1752,6 +1782,16 @@
       (make-field-branch-node 'ahc-no-content 'equal (list 'status-code 204)
                               'message-complete-done 'ahc-not-modified #f)
       (make-field-branch-node 'ahc-not-modified 'equal (list 'status-code 304)
+                              'message-complete-done 'ahc-skip-body #f)
+      ;; THE OTHER PLACE THE FLAG IS READ:
+      ;;   SKIPBODY || (response && (102 || 103 || 204 || 304))  ->  no body
+      ;; llhttp writes it as one disjunction and puts SKIPBODY first; here it
+      ;; sits where the two TYPES CONVERGE instead, which is the same answer
+      ;; for every input and one node rather than two. A request reaches it
+      ;; from the type test above, a response from the last status test, and
+      ;; the four statuses that precede it already answer `no body` on their
+      ;; own -- so testing the flag before or after them cannot differ.
+      (make-field-branch-node 'ahc-skip-body 'mask-any (list 'flags F-SKIP-BODY)
                               'message-complete-done 'after-headers-chunked #f)
 
       ;; THE PAUSE CARRIES ITS REASON, which llhttp's harness prints as an
@@ -1765,8 +1805,8 @@
       ;;
       ;; llhttp asks a C callback, `llhttp__after_headers_complete`, and for a
       ;; REQUEST its answer collapses to a short tree: `message_needs_eof` is
-      ;; unconditionally 0 for requests, and upgrade and skip-body are a later
-      ;; milestone's. What is left is
+      ;; unconditionally 0 for requests, and upgrade and skip-body are decided
+      ;; above. What is left is
       ;;
       ;;   CHUNKED                      -> read chunks
       ;;   TRANSFER_ENCODING, not chunked -> error, a request may not say that
