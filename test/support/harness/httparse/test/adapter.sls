@@ -19,6 +19,7 @@
 ;;; instrument cannot measure a parser (decision 0008 item 4).
 (library (httparse test adapter)
   (export adapter-trace-names adapter-error-codes adapter-state-fields
+          adapter-count-field
           adapter-event-for adapter-error-event
           make-trace-recorder trace-recorder-bindings trace-recorder-events
           trace-recorder-note-error! trace-recorder-note-paused!
@@ -58,11 +59,22 @@
       ;; from the headers that produced them (decision 0014).
       (on-headers-complete       state-line "headers complete")
       (on-body-data              span       "body")
+      ;; A COUNT LINE: the second kind of callback whose text carries a parser
+      ;; field. llhttp's `on_chunk_header` prints `s->content_length` and
+      ;; nothing else, so this reads that one field off the parser the way a
+      ;; state line reads its five (decision 0014).
+      (on-chunk-header           count-line "chunk header")
+      (on-chunk-complete         event      "chunk complete")
       (on-message-complete       event      "message complete")))
 
   ;; The fields a state line reads, in llhttp's print order. Exported so the
   ;; set is assertable without a parser.
   (define adapter-state-fields '(method http-major http-minor flags content-length))
+
+  ;; The single field a count line reads. llhttp's chunk reader accumulates
+  ;; the chunk size into the SAME field a Content-Length body uses, and its
+  ;; callback prints that field, so there is one name here and it is that one.
+  (define adapter-count-field 'content-length)
 
   ;; Our error code symbols to llhttp's ERROR numbers, one to one. A symbol
   ;; spanning two numbers, or absent here, is what decision 0013 forbids.
@@ -78,6 +90,7 @@
       (invalid-version           . 9)
       (invalid-header-token      . 10)
       (invalid-content-length    . 11)
+      (invalid-chunk-size        . 12)
       (invalid-transfer-encoding . 15)
       ;; PRI's h2 preface is an ERROR in llhttp, not a pause -- `p.error(
       ;; ERROR.PAUSED_H2_UPGRADE, ...)` -- so unlike code 22 it has a code and
@@ -111,6 +124,16 @@
      " flags=" (string-downcase (number->string (field-value fields 'flags) 16))
      " content_length=" (number->string (field-value fields 'content-length))))
 
+  ;; llhttp's own `llhttp__on_chunk_header`:
+  ;;   "chunk header len=%d", (int) s->content_length
+  ;; `%d` ON AN `(int)` CAST, not the `%llu` the state line uses. No fixture in
+  ;; the corpus carries a chunk larger than 51, so nothing records what llhttp
+  ;; prints for a size above INT_MAX and there is nothing here to reproduce --
+  ;; this renders the field, which is what the corpus can judge.
+  (define (count-line-text name fields)
+    (string-append name " len="
+                   (number->string (field-value fields adapter-count-field))))
+
   ;; adapter-event-for : Symbol Nat (Option Bytevector)
   ;;                     (Option (Listof (Pair Symbol ExactInteger))) -> Event
   ;; `bytes` is the fragment for a span callback and #f otherwise; `fields` is
@@ -142,6 +165,12 @@
                (string-append "state-line callback " (symbol->string callback)
                               " was given span bytes")))
            (make-trace-mark offset (state-line-text name fields)))
+          ((count-line)
+           (when bytes
+             (adapter-refuse 'adapter-event-for
+               (string-append "count-line callback " (symbol->string callback)
+                              " was given span bytes")))
+           (make-trace-mark offset (count-line-text name fields)))
           (else (adapter-refuse 'adapter-event-for "unknown callback kind"))))))
 
   ;; adapter-error-event : Symbol String Nat -> Event
@@ -193,6 +222,15 @@
                             callback (parser-stream-offset p) #f
                             (map (lambda (f) (cons f (parser-field-ref p f)))
                                  adapter-state-fields)))
+                        callback-continue))
+                     ;; The same read as the state-line arm, over one name.
+                     ((count-line)
+                      (lambda (p ctx)
+                        (recorder-push!
+                         r (adapter-event-for
+                            callback (parser-stream-offset p) #f
+                            (list (cons adapter-count-field
+                                        (parser-field-ref p adapter-count-field)))))
                         callback-continue))
                      ((span)
                       (lambda (p ctx bv from to)
