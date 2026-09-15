@@ -1082,3 +1082,53 @@ NEXT: M5, chunked bodies. 17 fixtures measured as waiting on it. The dispatch
 M4 Slice ② parked the CHUNKED arm on is where `chunk_size_start` goes, and
 `content_length` is already the accumulator llhttp reuses for a chunk size --
 at base 16 rather than 10.
+
+M4 CLOSED (2026-09-15). Squash-merged as 50d3b3f (#8), main caught up, branch
+deleted locally and on the remote, main re-verified green: test-all 56/56.
+
+CI was the billing refusal a fourth time -- run 34847574174, linux-amd64,
+0 steps, no logs, 3s. Decision 0004: not a test result.
+
+REFLECTION. Two standards added to AGENTS.md, one existing standard extended,
+and one stale header refreshed.
+
+  1. "Mutate by inverting a branch, not by collapsing one." In a graph where
+     each error node is reached by exactly ONE path, deleting that path cannot
+     be a test witness -- the node goes unreachable and the verifier refuses
+     the machine before an assertion runs. Six of M4's first attempts were
+     exactly that, after three in M2 and two in M3. Pointing the branch the
+     WRONG WAY keeps the machine well-formed and the behaviour wrong, and all
+     six were caught once rewritten. The entry also carries the survivor
+     discipline: a survivor is either a missing test or a statement about
+     scope, and which one is a MEASUREMENT -- re-run against both lanes, then
+     recorded at the code with the slice that owes it a test.
+  2. "A blocked fixture stops gating everything else it covered." The
+     CONNECT-with-body bug -- ten bytes read where llhttp reads none -- was
+     invisible because the fixture recording it is one of the nine the pause
+     gap blocks. A deferred fixture is not just a deferred pass; it is a hole
+     in the gate. Ask what else its trace was pinning and put that in a unit
+     case from the fixture's own numbers.
+  3. "Reading a red lane" extended: after asking WHY a lane went red, ask
+     whether that check could have gone red for an unrelated reason. Three M4
+     mutations were caught by the executor differential, which fires for ANY
+     grammar edit -- it looks like evidence and is only evidence that the two
+     executors noticed each other. A check that catches everything catches
+     nothing in particular.
+  4. `src/httparse/grammar.sls`'s header still said field names were opaque
+     and the framing belonged to a later slice, one milestone after that slice
+     ran. Rewritten, with what is still missing named explicitly -- including
+     that the CHUNKED arm parks rather than pretending.
+
+M4 SHIPPED: `headers complete` with its four numbers read off the parser
+(decision 0014), the special-header name table, Content-Length with a checked
+uint64 and the fixed-length body, the FLAGS bitfield from Transfer-Encoding /
+Connection / Upgrade, llhttp's body decision including the upgrade arm, the
+HTTP/2 preface, and a leading CRLF before the request line. Ratchet 29 -> 87.
+Artifact 73,605 -> 144,172 bytes, 122 -> 294 states. One new decision record
+(0014) and one new upstream brief (the pause reason).
+
+NEXT: the pin bump. byte-machine v0.4.0 landed Milestone 12, "a pause carries a
+reason", from this project's third brief -- so the gap is closed upstream and
+nine fixtures are waiting on the pin. Decision 0005 item 3 makes a bump its own
+pull request, and this one is of a PUBLISHED pin, so unlike M2's two it does
+not ride a milestone branch. M5 (chunked bodies, 17 fixtures) follows.

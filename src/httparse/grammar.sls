@@ -5,11 +5,17 @@
 ;;; and nothing else.
 ;;;
 ;;; The request line -- `method SP request-target SP HTTP-version CRLF`, with
-;;; the method and the protocol matched against llhttp's constant tables -- and
-;;; the header section, strictly: field, colon, OWS, value, line ending, and the
-;;; empty line that ends them. Field names are OPAQUE here; llhttp's
-;;; special-header table, and the message framing behind it, belong to a later
-;;; slice, as does the body.
+;;; the method and the protocol matched against llhttp's constant tables -- the
+;;; header section, strictly, and the framing that section decides: a field
+;;; NAME selects a value machine, `Content-Length` measures a body, and
+;;; `Transfer-Encoding`, `Connection` and `Upgrade` set the FLAGS bits that
+;;; `headers complete` prints.
+;;;
+;;; Still to come: chunked bodies, the message loop (pipelining, reset,
+;;; keep-alive), responses, and the url sub-parser. The CHUNKED arm of the body
+;;; decision parks on `after-message` until there is a chunk reader, so a
+;;; chunked request's trace STOPS after `headers complete` rather than
+;;; continuing with a line llhttp never wrote.
 ;;;
 ;;; THE EVENT OFFSETS ARE ASYMMETRIC, AND THAT IS NOT A MISTAKE. Read off
 ;;; `request/sample.md`, for `OPTIONS /url HTTP/1.1`:

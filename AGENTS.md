@@ -66,6 +66,17 @@ still have not.
 This is `assert the edit landed before believing the result` taken one step
 further: assert **why** it went red.
 
+**And then ask whether that check could have gone red for an unrelated
+reason.** M4 ran three mutations against the conformance lane without
+re-deriving the shipped artifact, and all three were caught by the *executor
+differential* — the check that the committed parser and the interpreter agree.
+It fires for **any** grammar edit at all, so it says nothing whatever about
+whether a fixture's trace would change. Reported as CAUGHT it looks like
+evidence; it is only evidence that the two executors noticed each other. A
+check that catches everything catches nothing in particular. Re-run against
+the check that would actually have to notice — for those three, the ratchet's
+own regression check, once the artifact was re-emitted.
+
 ## Numbers in a test come from the oracle, never from the code under test
 
 An expectation you read off your own parser is not an expectation. It is a
@@ -145,6 +156,53 @@ what made M3's ceiling measurable at all.
 This is the runtime half of *numbers in a test come from the oracle*. That
 standard governs which inputs you may assert on; this one governs what the
 instrument does when the oracle records something you cannot yet produce.
+
+## Mutate by inverting a branch, not by collapsing one
+
+In a graph where each error node is reached by exactly one path, **deleting
+that path cannot be a test witness**, because the node then becomes unreachable
+and the verifier refuses the machine before a single assertion runs. It is a
+guaranteed structural refusal, every time.
+
+Six of M4's first-attempt mutations were exactly this — a `field-branch` whose
+two targets were collapsed onto one, so the error behind the other went
+unreachable. Two more in M3, three in M2. The habit is natural (removing a
+check is the obvious way to break it) and it is wasted every time.
+
+**Point the branch the wrong way instead.** Swap the true and false targets, or
+send the arm to the node its neighbour uses. The machine stays well-formed, the
+behaviour becomes wrong, and a test gets the chance to say so. All six of M4's
+were caught the moment they were rewritten this way.
+
+The same applies to a mutation that is itself ill-formed for some other reason:
+one of M4's put a terminal somewhere the verifier refuses, so it never reached
+the comparison it was written to exercise. Before believing a mutation's
+result, check that the mutant is a machine that could have run.
+
+**A survivor is either a missing test or a statement about scope, and which
+one is a measurement.** M4 had two mutations survive both lanes. Neither was
+argued from the graph: each was re-run against the unit lane *and* the
+conformance lane, and only then recorded as unobservable under this
+milestone's scope — with a comment at the code naming the slice that owes it a
+test. Four other survivors turned out to be real gaps and became checks.
+
+## A blocked fixture stops gating everything else it covered
+
+A fixture deferred or blocked for one reason was probably holding down several.
+When it stops running, it stops holding **all** of them.
+
+M4's parser read ten bytes of body for `CONNECT foo.bar.com:443` with a
+`Content-Length: 10`. llhttp reads none. The fixture that records this is one
+of nine the upstream pause gap blocks, so the conformance lane was never going
+to notice — and the bug was found only because the milestone went on to build
+the decision that produces it. Nothing in the tree would have caught it
+otherwise, and it would have shipped.
+
+So when a fixture is blocked, do not just record *why* it is blocked. Ask what
+else its trace was pinning, and put that in a unit case built from the
+fixture's own numbers. M4 did this for the two upgrade arms — an upgrade with a
+body reads it, one without does not — and the mutation that collapses them
+survives without that case. It was written because the survivor pointed at it.
 
 ## Traps this repo has already hit
 
