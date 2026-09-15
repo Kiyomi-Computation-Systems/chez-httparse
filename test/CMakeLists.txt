@@ -988,6 +988,46 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- The response start line (M7) -------------------------------------------
+#
+# The two things a response does not share with a request: where the protocol
+# span opens, and the status. The last group is the shared half -- one keyword
+# table serving both start lines, parting at the method check.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.status-line.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/status-line-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/status-line-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
+# --- What a response's framing decides (M7) ---------------------------------
+#
+# `message_needs_eof` and the five status codes, which is the whole of what a
+# response's body decision has that a request's does not -- including the one
+# body that ends with the connection rather than with a count.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.response-framing.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/response-framing-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/response-framing-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- The checked-in generated parser (M2 Slice 4) ---------------------------
 #
 # A derived artifact, committed so that what this project ships is reviewable as

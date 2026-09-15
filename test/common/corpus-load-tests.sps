@@ -298,6 +298,26 @@
                      (filter (lambda (reason) (corpus-records-reason? reason))
                              chunk-extension-reasons)
                      '("Invalid character in chunk extensions"
-                       "Invalid character in chunk extensions quoted value"))))))
+                       "Invalid character in chunk extensions quoted value"))))
+    (harness-case "only one of the status line's two reasons is recorded"
+      (lambda ()
+        ;; THE SAME FINDING ONE PRODUCTION ALONG. llhttp's status line emits
+        ;; two reasons under code 13: `Invalid status code` when one of the
+        ;; three digits is not a digit, and `Invalid response status` when
+        ;; what follows them is neither a space nor a line ending. No fixture
+        ;; carries the second, so nothing in the corpus can judge the three
+        ;; arms that produce it -- including the bare-LF one, which is the
+        ;; `.match`-consumes trap this repo has now been wrong about four
+        ;; times, each time exactly where no fixture looked.
+        ;;
+        ;; The grammar names the llparse idiom behind each of those arms and
+        ;; where that idiom IS measured. This is the other half: a refresh
+        ;; that adds a fixture for the second turns this red, and the right
+        ;; response is to check the arms against the new trace rather than to
+        ;; update the list.
+        (check-equal "recorded"
+                     (filter (lambda (reason) (corpus-records-reason? reason))
+                             '("Invalid status code" "Invalid response status"))
+                     '("Invalid status code"))))))
 
 (harness-finish)
