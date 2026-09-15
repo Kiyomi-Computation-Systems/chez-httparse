@@ -95,14 +95,31 @@ two shapes are the only evidence there is.
 
 ## Consequences
 
-**The upgrade disjunct is transcribed, not measured.**
-`upgrade && (CONNECT || SKIPBODY || !hasBody)` is in `src/native/http.c` and
-is now in the grammar, but no vendored fixture arms skip-body on an upgrade.
-Its unit case asserts the consequence the C states — the declared body is not
-read — and names itself as source-derived. The recorded half sits beside it so
-the pair says which arm the flag changed. The live differential
-([0010](0010-the-live-llhttp-oracle-is-local-and-opt-in.md)) is where this
-becomes measurable, and it should be run against this arm when next built.
+**The upgrade disjunct has no fixture, so it was measured against a live
+llhttp instead.** `upgrade && (CONNECT || SKIPBODY || !hasBody)` is in
+`src/native/http.c`, and no vendored fixture arms skip-body on an upgrade —
+which is exactly the gap decision
+[0010](0010-the-live-llhttp-oracle-is-local-and-opt-in.md) exists to close.
+A skip-body-mode binary was built from upstream's own
+`test/fixtures/index.ts` with the define its `md-test.ts` adds, at the commit
+the corpus was vendored from:
+
+```js
+await build(p, entry, `skipbody-${ty}`, {
+  extra: ['-DLLHTTP__TEST_HTTP', path.join(root, 'src', 'native', 'http.c'),
+          '-DLLHTTP__TEST_SKIP_BODY=1'],
+}, ty);
+```
+
+and run as `skipbody-request-c 82:83 <input>` — the scan range is HALF-OPEN,
+so `82:82` runs nothing and prints nothing. Its 25 lines are the unit case's
+expectation, copied. This parser matches them exactly.
+
+**What is still not automated.** The committed oracle builder makes the two
+plain-mode binaries, because that is what the differential lane drives. The
+skip-body pair was built by hand from the recipe above. A lane that swept the
+modes would be its own piece of work; until then this arm is re-checkable
+from this record rather than by a build.
 
 **No parser change was needed for pausing.** Every event node already declared
 its pause continuation as the place an unpaused run would have gone, so all 24

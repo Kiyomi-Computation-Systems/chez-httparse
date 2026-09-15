@@ -13,11 +13,11 @@
 ;;;   upgrade && (CONNECT || SKIPBODY || !hasBody)      -> 1, complete + pause
 ;;;   SKIPBODY || (response && 102|103|204|304)         -> 0, complete
 ;;;
-;;; The second is what the two vendored fixtures record. THE FIRST IS READ OFF
-;;; UPSTREAM'S SOURCE AND NOT OFF A TRACE: no fixture arms skip-body on an
-;;; upgrade, so its case below asserts the consequence the C states -- the
-;;; declared body is not read -- and says so rather than pretending to a
-;;; recorded number.
+;;; The second is what the two vendored fixtures record. NO FIXTURE ARMS
+;;; SKIP-BODY ON AN UPGRADE, so the first is measured instead: its block was
+;;; copied from a live llhttp built in skip-body mode from the same commit the
+;;; corpus came from. Where a block here did not come from the corpus, the
+;;; case says where it did come from.
 ;;;
 ;;; THE `skip body` LINE IS THE CALLBACK'S, NOT THE DRIVER'S, which is what
 ;;; makes it different from `pause`: upstream prints it inside the callback,
@@ -182,34 +182,57 @@
                                      (trace 'request '(skip-body) two-requests)))
                      2)))))
 
-(harness-group "the upgrade disjunct, read off upstream's C"
+(harness-group "the upgrade disjunct, measured against a live llhttp"
   (lambda ()
     (harness-case "an upgrade with skip-body armed does not read its body"
       (lambda ()
         ;; `upgrade && (CONNECT || SKIPBODY || !hasBody)` -- src/native/http.c.
-        ;; NO VENDORED FIXTURE ARMS SKIP-BODY ON AN UPGRADE, so what is
-        ;; asserted here is the consequence the C states and not a recorded
-        ;; trace: the four declared bytes are not read, where the same bytes
-        ;; WITHOUT the mode read them (header-section-tests pins that half
-        ;; against `request/connection.md`).
-        (let ((ls (trace 'request '(skip-body)
-                         (string-append "PUT /url HTTP/1.1\r\n"
-                                        "Connection: upgrade\r\nContent-Length: 4\r\n"
-                                        "Upgrade: ws\r\n\r\nabcdefgh"))))
-          (check-equal "no body span"
-                       (filter (lambda (l) (string=? l "off=74 len=4 span[body]=\"abcd\"")) ls)
-                       '())
-          (check-equal "complete, then the upgrade pause"
-                       (list-tail ls (- (length ls) 3))
-                       '("off=74 skip body"
-                         "off=74 message complete"
-                         "off=74 error code=22 reason=\"Pause on CONNECT/Upgrade\"")))))
+        ;; NO VENDORED FIXTURE ARMS SKIP-BODY ON AN UPGRADE, so this block was
+        ;; not copied from the corpus. It is copied from a live llhttp built
+        ;; at `v9.4.3-1-gee51043` from the same checkout the corpus came from,
+        ;; in skip-body mode -- upstream's own `test/fixtures/index.ts` with
+        ;; the `-DLLHTTP__TEST_SKIP_BODY=1` its `md-test.ts` adds -- run at
+        ;; scan size 82, the whole buffer.
+        ;;
+        ;; The four declared bytes are NOT read. The same bytes without the
+        ;; mode read them, which the case below keeps beside this one so the
+        ;; pair says which arm the flag changed.
+        (check-equal "the oracle's own trace"
+                     (trace 'request '(skip-body)
+                            (string-append "PUT /url HTTP/1.1\r\n"
+                                           "Connection: upgrade\r\nContent-Length: 4\r\n"
+                                           "Upgrade: ws\r\n\r\nabcdefgh"))
+                     '("off=0 message begin"
+                       "off=0 len=3 span[method]=\"PUT\""
+                       "off=3 method complete"
+                       "off=4 len=4 span[url]=\"/url\""
+                       "off=9 url complete"
+                       "off=9 len=4 span[protocol]=\"HTTP\""
+                       "off=13 protocol complete"
+                       "off=14 len=3 span[version]=\"1.1\""
+                       "off=17 version complete"
+                       "off=19 len=10 span[header_field]=\"Connection\""
+                       "off=30 header_field complete"
+                       "off=31 len=7 span[header_value]=\"upgrade\""
+                       "off=40 header_value complete"
+                       "off=40 len=14 span[header_field]=\"Content-Length\""
+                       "off=55 header_field complete"
+                       "off=56 len=1 span[header_value]=\"4\""
+                       "off=59 header_value complete"
+                       "off=59 len=7 span[header_field]=\"Upgrade\""
+                       "off=67 header_field complete"
+                       "off=68 len=2 span[header_value]=\"ws\""
+                       "off=72 header_value complete"
+                       "off=74 headers complete method=4 v=1/1 flags=34 content_length=4"
+                       "off=74 skip body"
+                       "off=74 message complete"
+                       "off=74 error code=22 reason=\"Pause on CONNECT/Upgrade\""))))
     (harness-case "without the mode the same bytes DO read it"
       (lambda ()
-        ;; The half that is recorded, kept beside the half that is not, so the
-        ;; pair says which arm the flag changed.
+        ;; The recorded half -- `request/connection.md`, "Emitting part of
+        ;; body and pausing", which header-section-tests pins entire.
         (check-equal "the body is read"
-                     (filter (lambda (l) (string=? l "off=74 len=4 span[body]=\"abcd\""))
+                     (filter (lambda (l) (contains? l "span[body]"))
                              (trace 'request #f
                                     (string-append "PUT /url HTTP/1.1\r\n"
                                                    "Connection: upgrade\r\nContent-Length: 4\r\n"

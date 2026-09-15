@@ -1733,13 +1733,25 @@ value 1. No field writer was needed, and none exists: `parser-field-ref` is
 read-only by upstream's design, and a branch key is the same expressive power
 for an embedder's answer (as 0017 already found for the message kind).
 
-**One arm is transcribed and not measured.** `upgrade && (CONNECT ||
-SKIPBODY || !hasBody)` is in llhttp's C, and no vendored fixture arms
-skip-body on an upgrade. The arm is implemented and its unit case asserts what
-the C states — the declared body is not read — beside the recorded half that
-reads it, and the case names itself as source-derived. The live differential
-is where this becomes measurable; llhttp's `node_modules` is currently absent,
-so it was not run.
+**One arm had no fixture, so the oracle answered for it.** `upgrade &&
+(CONNECT || SKIPBODY || !hasBody)` is in llhttp's C, and nothing in the corpus
+arms skip-body on an upgrade — which is the gap decision 0010 exists to close.
+A skip-body-mode binary was built from upstream's own `test/fixtures/index.ts`
+with the define its `md-test.ts` adds, at the corpus's commit; its 25 lines
+are the unit case's expectation, copied, and this parser matches them exactly.
+
+TWO THINGS COST TIME THERE AND ARE WORTH KEEPING. The fixture driver's scan
+range is HALF-OPEN — `82:82` runs nothing and prints nothing, which looks
+exactly like a binary that failed to parse; `82:83` is the whole-buffer run.
+And the committed oracle builder makes only the two plain-mode binaries,
+because that is what the differential lane drives, so the skip-body pair was
+a hand build from a recipe now in decision 0019. A lane that swept the modes
+would be its own piece of work.
+
+**The live differential ran clean over the M9 changes**: 1097 agreed, 45
+url-machine, 4 late-complete, 0 unclassified — the two named classes and
+nothing new. `drive-feed!` sits in the path of every parse, so this is the
+check that it changed nothing for the un-paused ones.
 
 Four mutations on the grammar and two on the harness, all caught: inverting
 either skip-body disjunct, letting the skip-body mode print without answering,

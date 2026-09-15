@@ -430,9 +430,15 @@ someone else's source" discipline paying for itself a second time.
 **`skipBody` is a flag, not a jump**, because `llhttp__after_headers_complete`
 reads it twice: once inside the upgrade disjunct and once as the no-body test.
 `on-headers-complete` becomes the second decision callback and its branch sets
-the flag, which is exactly what `http.ts` does with the C return value 1. The
-upgrade disjunct is TRANSCRIBED AND NOT MEASURED — no fixture arms skip-body
-on an upgrade — and its unit case says so of itself.
+the flag, which is exactly what `http.ts` does with the C return value 1.
+
+**The upgrade disjunct has no fixture at all**, so it was measured against a
+LIVE llhttp built in skip-body mode from the corpus's own commit — upstream's
+`test/fixtures/index.ts` plus the one define its `md-test.ts` adds. Its 25
+lines are copied from that run and this parser matches them exactly. Decision
+[0010](decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md)'s
+argument, cashed a second time: the corpus is a set of cases someone chose,
+and the oracle answers about the ones they did not.
 
 ### Deferred, in order
 

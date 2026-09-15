@@ -31,8 +31,9 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   the grammar's second decision callback; its `skip-body` branch sets
   `F_SKIPBODY` and rejoins the body decision, because that decision reads the
   flag in two places and a jump could only serve one. The second of the two —
-  an upgrade whose embedder said "no body" — is transcribed from llhttp's C
-  and has no fixture to vouch for it, which the unit case says of itself.
+  an upgrade whose embedder said "no body" — has no fixture to vouch for it,
+  so it is pinned against a LIVE llhttp built in skip-body mode from the
+  commit the corpus came from.
 
 ### Changed
 
