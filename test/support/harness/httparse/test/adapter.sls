@@ -82,6 +82,7 @@
       ;; PRI's h2 preface is an ERROR in llhttp, not a pause -- `p.error(
       ;; ERROR.PAUSED_H2_UPGRADE, ...)` -- so unlike code 22 it has a code and
       ;; a reason to rename, and a row here.
+      (paused-upgrade            . 22)
       (paused-h2-upgrade         . 23)
       (cr-expected               . 25)
       (unexpected-space          . 30)))
@@ -206,18 +207,22 @@
                                            "unknown callback kind"))))))
          adapter-trace-names))
 
-  ;; trace-recorder-note-paused! : Recorder Nat -> Void
-  ;; ALWAYS REFUSES, and that is the whole of it. llhttp renders a pause as an
-  ;; error line -- `off=75 error code=22 reason="Pause on CONNECT/Upgrade"` --
-  ;; because its pause carries a code and a message. A pause here carries
-  ;; neither: a paused result reports no error at all, measured rather than
-  ;; assumed. Renaming a code we do not have means inventing one, and the
-  ;; invented line would be indistinguishable from a real one. Same discipline
-  ;; as `unexpected-eof` having no row.
-  (define (trace-recorder-note-paused! r offset)
-    (adapter-refuse 'trace-recorder-note-paused!
-      (string-append "the parser paused at offset " (number->string offset)
-                     " and a pause carries no code or reason to rename")))
+  ;; trace-recorder-note-paused! : Recorder (Option ParserError) -> Void
+  ;; A RENAME LIKE EVERY OTHER ROW. llhttp prints a
+  ;; pause the way it prints an error, and a pause now carries the same
+  ;; (code, reason) an error does -- so this reads them off the parser's own
+  ;; value and renames the code, exactly as `trace-recorder-note-error!` does.
+  ;;
+  ;; A pause with NO declared reason is still a refusal, not a guess: the
+  ;; reason is optional upstream, and a parser that pauses without saying why
+  ;; has produced something this vocabulary cannot spell.
+  (define (trace-recorder-note-paused! r pause)
+    (unless (parser-error? pause)
+      (adapter-refuse 'trace-recorder-note-paused!
+        "the parser paused without a declared reason, so there is nothing to rename"))
+    (recorder-push! r (adapter-error-event (parser-error-code pause)
+                                           (parser-error-reason pause)
+                                           (parser-error-offset pause))))
 
   ;; trace-recorder-note-error! : Recorder ParserError -> Void
   (define (trace-recorder-note-error! r e)

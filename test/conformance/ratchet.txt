@@ -33,14 +33,14 @@ not-yet  request/connection.md#10
 deferred request/connection.md#11                        lenient
 passing  request/connection.md#12
 deferred request/connection.md#13                        lenient
-not-yet  request/connection.md#14
+passing  request/connection.md#14
 deferred request/connection.md#15                        lenient
 passing  request/connection.md#16
 deferred request/connection.md#17                        lenient
-not-yet  request/connection.md#18
-not-yet  request/connection.md#19
-not-yet  request/connection.md#20
-not-yet  request/connection.md#21
+passing  request/connection.md#18
+passing  request/connection.md#19
+passing  request/connection.md#20
+passing  request/connection.md#21
 passing  request/content-length.md#1
 passing  request/content-length.md#2
 passing  request/content-length.md#3
@@ -97,9 +97,9 @@ passing  request/lenient-headers.md#3
 deferred request/lenient-headers.md#4                    lenient
 deferred request/lenient-version.md#1                    lenient
 passing  request/method.md#1
-not-yet  request/method.md#2
-not-yet  request/method.md#3
-not-yet  request/method.md#4
+passing  request/method.md#2
+passing  request/method.md#3
+passing  request/method.md#4
 passing  request/method.md#5
 passing  request/method.md#6
 passing  request/method.md#7
@@ -184,7 +184,7 @@ passing  request/uri.md#5
 passing  request/uri.md#6
 not-yet  request/uri.md#7
 passing  request/uri.md#8
-not-yet  request/uri.md#9
+passing  request/uri.md#9
 passing  request/uri.md#10
 passing  request/uri.md#11
 not-yet  response/connection.md#1

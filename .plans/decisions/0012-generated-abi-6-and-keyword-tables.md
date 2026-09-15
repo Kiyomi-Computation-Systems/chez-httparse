@@ -2,6 +2,7 @@
 
 Date: 2026-09-13
 Status: accepted
+Amended by: [0015](0015-generated-abi-7-and-a-pause-carries-its-reason.md), item 1
 Amends: [0005](0005-byte-machine-pinned-by-gitlink-generated-abi-5.md), decision item 2
 Milestone: M2 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md)
 

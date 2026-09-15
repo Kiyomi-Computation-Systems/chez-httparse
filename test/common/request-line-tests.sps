@@ -542,6 +542,38 @@
         (check-equal "error" (error-of "GET / HTTP/1.1.1\r\n")
                      '(invalid-version "Expected CRLF after version" 14))))))
 
+(harness-group "an upgrade pause is a pause, which no trace can show"
+  (lambda ()
+    ;; THE TRACE IS IDENTICAL EITHER WAY. llhttp prints a pause as an error
+    ;; line, so a parser that ERRORED where llhttp pauses would match every
+    ;; fixture in the corpus byte for byte -- and would be unresumable, which
+    ;; is the whole point of the node. The conformance lane cannot tell the
+    ;; two apart, so this asks the parser directly.
+    (harness-case "the status is paused and the error slot is empty"
+      (lambda ()
+        (let-values (((r e) (run "CONNECT h:443 HTTP/1.0\r\n\r\n")))
+          (check-equal "status" (parser-result-status r) 'paused)
+          ;; The half that matters: a consumer that reads only the error slot
+          ;; must not see a failure here.
+          (check-equal "error slot" (parser-result-error r) #f))))
+    (harness-case "the reason is carried, and it is llhttp's pair"
+      (lambda ()
+        (let-values (((r e) (run "CONNECT h:443 HTTP/1.0\r\n\r\n")))
+          (let ((p (parser-result-pause r)))
+            (check "a reason is present" (parser-error? p))
+            (check-equal "code" (parser-error-code p) 'paused-upgrade)
+            (check-equal "reason" (parser-error-reason p) "Pause on CONNECT/Upgrade")))))
+    (harness-case "an ordinary request carries no pause at all"
+      (lambda ()
+        ;; Without this the pause slot could be filled for everything and both
+        ;; cases above would still pass.
+        ;; `need-input` and not `stopped`: a complete message parks at the
+        ;; dispatch that decides between the next message and a clean end, and
+        ;; that dispatch wants a byte.
+        (let-values (((r e) (run "PUT /url HTTP/1.1\r\n\r\n")))
+          (check-equal "status" (parser-result-status r) 'need-input)
+          (check-equal "pause slot" (parser-result-pause r) #f))))))
+
 (harness-group "the method table"
   (lambda ()
     (harness-case "every method in the table parses as itself"
