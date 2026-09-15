@@ -1,6 +1,6 @@
 # Gate 0: the HTTP parser milestone plan
 
-Status: Gate 0 design. Decisions [0005](decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)–[0010](decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md) fix what this document plans.
+Status: delivered. Gate 0's milestone ladder is complete and v0.1.0 is tagged. Decisions [0005](decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)–[0018](decisions/0018-a-divergence-is-named-and-witnessed-or-it-fails-the-lane.md) fix what this document planned and what building it corrected.
 
 ## Goal
 
@@ -9,8 +9,11 @@ generated from it, behaviourally compatible with llhttp and measured against
 llhttp's own recorded test corpus. v0.1 is strict-mode request and response
 parsing: 190 of the 253 upstream HTTP fixtures ([0009](decisions/0009-v01-is-strict-request-and-response-parsing.md)).
 
-Slice 1 ported the harness and build layer. `src/` is still empty. This plan
-covers everything from there to the release.
+Slice 1 ported the harness and build layer, and this plan covered everything
+from there to the release. `src/` now holds the grammar,
+`httparse/grammar.sls`, and the parser emitted from it,
+`generated/httparse-message.sls`. M9, M10 and M11 are the work it scoped and
+deferred rather than delivered.
 
 ## The shape of the work
 
@@ -20,7 +23,7 @@ Design Principles 2–6):
 ```
   build time                          run time
   ----------                          --------
-  (httparse grammar)                  (generated httparse-request)
+  (httparse grammar)                  (generated httparse-message)
     builds the source IR    --emit-->   depends on (byte-machine runtime) ALONE
     via (byte-machine graph)                    |
                                                 v
