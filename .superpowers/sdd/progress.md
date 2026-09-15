@@ -1518,3 +1518,33 @@ earns its place is the one that removes it.
 
 Artifact 217,945 -> 234,216 bytes. ABI unchanged at 7. Lanes 62 -> 66: two new
 unit lanes, unit.status-line and unit.response-framing, in source and aot.
+
+CLOSING RITUAL COMPLETE (2026-09-15). PR #12 squash-merged as af570b4
+"feat(grammar): M7 — responses, and the v0.1 bar at 190 of 190 (#12)". Local
+main fast-forwarded, branch deleted locally (after an empty diff against
+main) and on the remote. Merged main re-verified from a CLEAN build: make
+test-all 66/66, ratchet 190 / 0 / 84, and the conformance lane green under
+the full scan as well as the pr preset. CI on the PR head was the billing
+refusal, not a test result -- linux-amd64 failure steps=0, no logs, 4s
+(decision 0004).
+https://github.com/Kiyomi-Computation-Systems/chez-httparse/pull/12
+
+REFLECTION. Nothing new to route: M7's three standards and its trap went in
+with the milestone's own close-out (156fba7) -- a caught inversion tests the
+wire and not the question; what the oracle is missing may be an input shape
+that separates two conditions rather than a reason; the collapse tally is six
+milestones; and `verify-machine` RETURNS a verdict rather than raising one,
+so a script that does not read the answer has checked nothing.
+
+The one thing the ritual itself turned up is operational and is in memory
+rather than here: SSH to GitHub stopped authenticating partway through, with
+keys still loaded in the agent, and both remaining steps went through gh's
+HTTPS path instead -- `git fetch https://...` for the catch-up and
+`gh api -X DELETE .../git/refs/heads/<branch>` for the remote branch.
+
+NEXT: M8, the release. The live llhttp differential as a local opt-in lane
+(decision 0010), property and fuzz work over generated and fragmented input,
+an allocation audit, a benchmark baseline, the reference documentation set,
+and v0.1. Note that the parser is still named `request-line` everywhere and
+now reads responses too; that rename wants to land before the release names
+it in public.
