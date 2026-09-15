@@ -806,6 +806,12 @@ httparse_add_scheme_lane(
 
 set(HTTPARSE_CONFORMANCE
     "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/conformance.sls")
+# Defined here rather than beside the generated-input lanes that also use it,
+# because the conformance driver below needs it and a variable read before its
+# `set` expands to NOTHING with no warning -- the lane still runs, still
+# passes, and has silently dropped the dependency.
+set(HTTPARSE_DRIVE
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/drive.sls")
 
 httparse_add_scheme_lane(
   NAME httparse.unit.conformance.chez.source
@@ -1096,6 +1102,7 @@ set(HTTPARSE_CONFORMANCE_SOURCES
     ${HTTPARSE_CONFORMANCE}
     ${HTTPARSE_RATCHET_LIB}
     ${HTTPARSE_ADAPTER}
+    ${HTTPARSE_DRIVE}
     "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps")
 
 httparse_add_scheme_lane(
@@ -1129,8 +1136,6 @@ httparse_add_scheme_lane(
 
 set(HTTPARSE_GENERATE
     "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/generate.sls")
-set(HTTPARSE_DRIVE
-    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/drive.sls")
 set(HTTPARSE_ORACLE
     "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/oracle.sls")
 set(HTTPARSE_PRNG
@@ -1186,6 +1191,29 @@ httparse_add_scheme_lane(
   ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
   TIMEOUT 600
   LABELS property)
+
+# --- Pausing (M9) -----------------------------------------------------------
+#
+# Registered here rather than beside the other unit lanes because it needs
+# HTTPARSE_DRIVE, and a CMake variable read before its `set` expands to
+# nothing with no warning -- a lane whose SOURCES silently lost a dependency
+# still runs and still passes.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.pausing.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/pausing-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_CONFORMANCE}
+            ${HTTPARSE_ADAPTER}
+            ${HTTPARSE_DRIVE}
+            "${CMAKE_CURRENT_LIST_DIR}/common/pausing-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
 
 # --- The documented example -------------------------------------------------
 #

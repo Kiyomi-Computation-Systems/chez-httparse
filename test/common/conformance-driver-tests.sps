@@ -34,6 +34,7 @@
         (httparse test conformance)
         (httparse test ratchet)
         (httparse test adapter)
+        (httparse test drive)
         (httparse grammar)
         (generated httparse-message)
         (byte-machine verify)
@@ -101,6 +102,19 @@
 
 (define (no-scan? f) (eq? #t (fixture-meta-ref f 'noScan #f)))
 
+;; THE HARNESS MODE IS THE FIXTURE'S OWN META, RENAMED AND NOT INTERPRETED.
+;; `test/md-test.ts` turns `pause` into `-DLLHTTP__TEST_PAUSE_<NAME>=1` and
+;; caches one compiled binary per mode, so over there the mode is a property
+;; of the BINARY a fixture runs against. Here it is an argument, and it is
+;; read off the meta the same way the type is.
+;;
+;; A mode this driver cannot spell is handed on as it stands: the ADAPTER
+;; refuses a pause point upstream has no macro for, so a meta naming one is a
+;; failing fixture there rather than a crash here.
+(define (fixture-harness-mode f)
+  (let ((pause (fixture-meta-ref f 'pause 'absent)))
+    (if (eq? pause 'absent) #f (list 'pause pause))))
+
 ;; THE PARSER'S KIND IS THE FIXTURE'S OWN META, RENAMED AND NOT INTERPRETED.
 ;; llhttp's harness turns the meta type into `-DLLPARSE__TEST_INIT=
 ;; llhttp__test_init_<type>`, and each of those hooks sets `s->type` from the
@@ -126,7 +140,10 @@
 ;; The trace one executor produces for one chunk size.
 (define (run-at machine f bv size)
   (let* ((r (make-trace-recorder))
-         (p (make-parser machine (trace-recorder-bindings r (fixture-message-type f)) #f))
+         (p (make-parser machine
+                         (trace-recorder-bindings r (fixture-message-type f)
+                                                  (fixture-harness-mode f))
+                         #f))
          (len (bytevector-length bv)))
     (let loop ((bounds (corpus-chunk-bounds len size)) (result #f))
       (cond
@@ -148,7 +165,11 @@
              r p (and final (parser-result-status final))))
           (trace-format (trace-recorder-events r))))
        (else
-        (let ((res (parser-feed! p bv (caar bounds) (cdar bounds))))
+        ;; `drive-feed!` records and resumes a pause THIS HARNESS ASKED FOR
+        ;; and hands back every other outcome, so a paused fixture's trace is
+        ;; a complete parse with extra lines in it -- which is what upstream's
+        ;; driver produces and what the fixture records.
+        (let ((res (drive-feed! r p bv (caar bounds) (cdar bounds))))
           (if (eq? (parser-result-status res) 'need-input)
               (loop (cdr bounds) res)
               (loop '() res))))))))
