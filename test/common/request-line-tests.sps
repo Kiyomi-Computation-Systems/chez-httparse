@@ -54,7 +54,9 @@
                                  (list 'on-header-field-complete (ev 'header-field-complete))
                                  (list 'on-header-value-data (span 'header-value))
                                  (list 'on-header-value-complete (ev 'header-value-complete))
-                                 (list 'on-headers-complete (ev 'headers-complete)))
+                                 (list 'on-headers-complete (ev 'headers-complete))
+                                 (list 'on-body-data (span 'body))
+                                 (list 'on-message-complete (ev 'message-complete)))
                            #f))
            (bv (string->utf8 input))
            (r (feed! p bv)))
@@ -101,7 +103,9 @@
         (list 'on-header-field-complete ignore-event)
         (list 'on-header-value-data ignore-span)
         (list 'on-header-value-complete ignore-event)
-        (list 'on-headers-complete ignore-event)))
+        (list 'on-headers-complete ignore-event)
+        (list 'on-body-data ignore-span)
+        (list 'on-message-complete ignore-event)))
 ;; Since M3 the request line no longer terminates the parse -- it runs on into
 ;; the header section -- so a well-formed line leaves the parser wanting more
 ;; input rather than stopped. What these cases claim is that the line was
@@ -341,7 +345,9 @@
                                        (list 'on-header-field-complete (ev 'header-field-complete))
                                        (list 'on-header-value-data (span 'header-value))
                                        (list 'on-header-value-complete (ev 'header-value-complete))
-                                       (list 'on-headers-complete (ev 'headers-complete)))
+                                       (list 'on-headers-complete (ev 'headers-complete))
+                                       (list 'on-body-data (span 'body))
+                                       (list 'on-message-complete (ev 'message-complete)))
                                  #f)))
             (let loop ((i 0))
               (when (< i (bytevector-length bv))
@@ -554,6 +560,41 @@
     (harness-case "the table is the one llhttp knows"
       (lambda ()
         (check-equal "count" (length httparse-method-names) 47)))
+    (harness-case "every name has llhttp's number, and the numbers are 0..46"
+      (lambda ()
+        ;; `headers complete` prints `method=%d` and the number is the method's
+        ;; value in llhttp's `METHODS` map, NOT its position in our
+        ;; alphabetical list. The map is assembled from eight sub-maps and one
+        ;; alias, so it was extracted by script -- and per AGENTS.md an
+        ;; extraction gets an invariant it can violate. Two here; the corpus
+        ;; itself is the third, since sixteen fixtures print a method span and
+        ;; a `method=` on the same trace.
+        (check-equal "names with no number"
+                     (filter (lambda (n) (not (assoc n httparse-method-numbers)))
+                             httparse-method-names)
+                     '())
+        (check-equal "numbers with no name"
+                     (filter (lambda (row) (not (member (car row) httparse-method-names)))
+                             httparse-method-numbers)
+                     '())
+        ;; A dense 0..46 with no gap and no repeat. A dropped sub-map would
+        ;; leave a hole here even if every remaining pair were right.
+        (check-equal "the values are exactly 0..46"
+                     (list-sort < (map cdr httparse-method-numbers))
+                     (let loop ((i 46) (acc '()))
+                       (if (< i 0) acc (loop (- i 1) (cons i acc)))))))
+    (harness-case "the node names stay distinct once downcased"
+      (lambda ()
+        ;; A generated node name is [a-z][a-z0-9-]*, so the 47 names are
+        ;; downcased to make one node each. Two names colliding under
+        ;; downcasing would silently merge two methods into one number.
+        (check-equal "distinct downcased names"
+                     (length (let loop ((ns (map string-downcase httparse-method-names))
+                                        (acc '()))
+                               (cond ((null? ns) acc)
+                                     ((member (car ns) acc) (loop (cdr ns) acc))
+                                     (else (loop (cdr ns) (cons (car ns) acc))))))
+                     47)))
     (harness-case "MKCOLA matches MKCOL and then rejects the A"
       (lambda ()
         ;; request/invalid.md: `off=0 len=5 span[method]="MKCOL"`,

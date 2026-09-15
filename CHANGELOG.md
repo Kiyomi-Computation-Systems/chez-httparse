@@ -198,6 +198,40 @@ the bootstrap slice design is
   two numbers M4 owns, so the adapter refuses rather than writing a line llhttp
   never emits, and a fixture reaching it fails honestly.
 
+- **Message framing, and the body** (M4, four slices), taking the ratchet from
+  **29 to 87 passing** (103 not-yet, 84 deferred).
+
+  `headers complete` now renders. Its four numbers are read off the parser's
+  own fields, the way llhttp's callback reads its own struct
+  ([0014](.plans/decisions/0014-the-adapter-may-read-parser-fields.md)) — the
+  adapter may READ parser state and still may not DERIVE it, and a field it was
+  not given is a refusal rather than a zero.
+
+  `Content-Length` accumulates into a checked uint64 and measures a body that
+  arrives as `span[body]`; `Transfer-Encoding`, `Connection` and `Upgrade` set
+  llhttp's FLAGS bits; and `after_headers_complete` is reproduced as a decision
+  over those flags, the method and the length. A field NAME now selects which
+  value machine runs, through a **case-folded keyword table** — the second of
+  the two reasons this project asked for that primitive upstream.
+
+  Several behaviours are exact in ways that are easy to get wrong, and each is
+  a check: the overflowing digit of a `Content-Length` is **consumed** before
+  the overflow is reported, so 22 digits give a span of 21; a space before the
+  colon is a different error on a special name than on a general one, one byte
+  apart and with a different reason; `close` is not `closed` and
+  `chunkedchunked` is not `chunked`; a `Content-Length` of zero has **no body
+  at all**, unlike an empty header value, which is an empty span; and `CONNECT`
+  does not read the body its own `Content-Length` declares.
+
+  **A pause cannot be rendered yet.** llhttp pauses with a code and a message
+  and prints it as `error code=22 reason="Pause on CONNECT/Upgrade"`; a
+  byte-machine pause carries neither, so the adapter refuses and nine fixtures
+  wait. Recorded as
+  [the third upstream brief](.plans/2026-09-14-upstream-pause-reason-brief.md)
+  under [0006](.plans/decisions/0006-upstream-first-for-general-gaps.md). An
+  error node would give a bit-identical trace and would be wrong — a paused
+  parser is resumable — and no test in the corpus could tell.
+
 ### Removed
 
 ### Fixed

@@ -2,6 +2,7 @@
 
 Date: 2026-09-13
 Status: accepted
+Refined by: [0013](0013-error-identity-is-llhttps-code-and-reason-pair.md), items 2 and 3 · [0014](0014-the-adapter-may-read-parser-fields.md), item 2
 Milestone: Gate 0 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md)
 
 ## Context

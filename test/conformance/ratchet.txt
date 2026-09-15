@@ -20,41 +20,41 @@
 # Regenerate the skeleton (statuses are NOT preserved) only when the corpus is
 # refreshed, and review the diff fixture by fixture.
 #
-not-yet  request/connection.md#1
+passing  request/connection.md#1
 not-yet  request/connection.md#2
 not-yet  request/connection.md#3
 deferred request/connection.md#4                         lenient
 not-yet  request/connection.md#5
 passing  request/connection.md#6
-not-yet  request/connection.md#7
-not-yet  request/connection.md#8
+passing  request/connection.md#7
+passing  request/connection.md#8
 not-yet  request/connection.md#9
 not-yet  request/connection.md#10
 deferred request/connection.md#11                        lenient
-not-yet  request/connection.md#12
+passing  request/connection.md#12
 deferred request/connection.md#13                        lenient
 not-yet  request/connection.md#14
 deferred request/connection.md#15                        lenient
-not-yet  request/connection.md#16
+passing  request/connection.md#16
 deferred request/connection.md#17                        lenient
 not-yet  request/connection.md#18
 not-yet  request/connection.md#19
 not-yet  request/connection.md#20
 not-yet  request/connection.md#21
-not-yet  request/content-length.md#1
-not-yet  request/content-length.md#2
-not-yet  request/content-length.md#3
-not-yet  request/content-length.md#4
-not-yet  request/content-length.md#5
-not-yet  request/content-length.md#6
+passing  request/content-length.md#1
+passing  request/content-length.md#2
+passing  request/content-length.md#3
+passing  request/content-length.md#4
+passing  request/content-length.md#5
+passing  request/content-length.md#6
 deferred request/content-length.md#7                     lenient
 deferred request/content-length.md#8                     lenient
-not-yet  request/content-length.md#9
-not-yet  request/content-length.md#10
-not-yet  request/content-length.md#11
-not-yet  request/content-length.md#12
-not-yet  request/content-length.md#13
-not-yet  request/content-length.md#14
+passing  request/content-length.md#9
+passing  request/content-length.md#10
+passing  request/content-length.md#11
+passing  request/content-length.md#12
+passing  request/content-length.md#13
+passing  request/content-length.md#14
 passing  request/content-length.md#15
 deferred request/content-length.md#16                    skip-body
 passing  request/content-length.md#17
@@ -96,22 +96,22 @@ deferred request/lenient-headers.md#2                    lenient
 passing  request/lenient-headers.md#3
 deferred request/lenient-headers.md#4                    lenient
 deferred request/lenient-version.md#1                    lenient
-not-yet  request/method.md#1
+passing  request/method.md#1
 not-yet  request/method.md#2
 not-yet  request/method.md#3
 not-yet  request/method.md#4
-not-yet  request/method.md#5
-not-yet  request/method.md#6
-not-yet  request/method.md#7
-not-yet  request/method.md#8
-not-yet  request/method.md#9
-not-yet  request/method.md#10
-not-yet  request/method.md#11
-not-yet  request/method.md#12
-not-yet  request/method.md#13
-not-yet  request/method.md#14
-not-yet  request/method.md#15
-not-yet  request/method.md#16
+passing  request/method.md#5
+passing  request/method.md#6
+passing  request/method.md#7
+passing  request/method.md#8
+passing  request/method.md#9
+passing  request/method.md#10
+passing  request/method.md#11
+passing  request/method.md#12
+passing  request/method.md#13
+passing  request/method.md#14
+passing  request/method.md#15
+passing  request/method.md#16
 deferred request/pausing.md#1                            pausing
 deferred request/pausing.md#2                            pausing
 deferred request/pausing.md#3                            pausing
@@ -126,26 +126,26 @@ deferred request/pausing.md#11                           pausing
 deferred request/pausing.md#12                           pausing
 deferred request/pausing.md#13                           pausing
 not-yet  request/pipelining.md#1
-not-yet  request/sample.md#1
-not-yet  request/sample.md#2
-not-yet  request/sample.md#3
-not-yet  request/sample.md#4
-not-yet  request/sample.md#5
-not-yet  request/sample.md#6
-not-yet  request/sample.md#7
-not-yet  request/sample.md#8
-not-yet  request/sample.md#9
+passing  request/sample.md#1
+passing  request/sample.md#2
+passing  request/sample.md#3
+passing  request/sample.md#4
+passing  request/sample.md#5
+passing  request/sample.md#6
+passing  request/sample.md#7
+passing  request/sample.md#8
+passing  request/sample.md#9
 not-yet  request/sample.md#10
 deferred request/sample.md#11                            lenient
 passing  request/sample.md#12
 passing  request/sample.md#13
 deferred request/sample.md#14                            lenient
-not-yet  request/sample.md#15
-not-yet  request/sample.md#16
-not-yet  request/sample.md#17
+passing  request/sample.md#15
+passing  request/sample.md#16
+passing  request/sample.md#17
 deferred request/sample.md#18                            lenient
-not-yet  request/transfer-encoding.md#1
-not-yet  request/transfer-encoding.md#2
+passing  request/transfer-encoding.md#1
+passing  request/transfer-encoding.md#2
 not-yet  request/transfer-encoding.md#3
 not-yet  request/transfer-encoding.md#4
 not-yet  request/transfer-encoding.md#5
@@ -156,17 +156,17 @@ not-yet  request/transfer-encoding.md#9
 not-yet  request/transfer-encoding.md#10
 not-yet  request/transfer-encoding.md#11
 not-yet  request/transfer-encoding.md#12
-not-yet  request/transfer-encoding.md#13
-not-yet  request/transfer-encoding.md#14
+passing  request/transfer-encoding.md#13
+passing  request/transfer-encoding.md#14
 deferred request/transfer-encoding.md#15                 lenient
-not-yet  request/transfer-encoding.md#16
-not-yet  request/transfer-encoding.md#17
-not-yet  request/transfer-encoding.md#18
+passing  request/transfer-encoding.md#16
+passing  request/transfer-encoding.md#17
+passing  request/transfer-encoding.md#18
 deferred request/transfer-encoding.md#19                 lenient
 deferred request/transfer-encoding.md#20                 lenient
 not-yet  request/transfer-encoding.md#21
 not-yet  request/transfer-encoding.md#22
-not-yet  request/transfer-encoding.md#23
+passing  request/transfer-encoding.md#23
 not-yet  request/transfer-encoding.md#24
 not-yet  request/transfer-encoding.md#25
 deferred request/transfer-encoding.md#26                 lenient
@@ -176,16 +176,16 @@ not-yet  request/transfer-encoding.md#29
 deferred request/transfer-encoding.md#30                 lenient
 not-yet  request/transfer-encoding.md#31
 deferred request/transfer-encoding.md#32                 lenient
-not-yet  request/uri.md#1
-not-yet  request/uri.md#2
-not-yet  request/uri.md#3
-not-yet  request/uri.md#4
-not-yet  request/uri.md#5
-not-yet  request/uri.md#6
+passing  request/uri.md#1
+passing  request/uri.md#2
+passing  request/uri.md#3
+passing  request/uri.md#4
+passing  request/uri.md#5
+passing  request/uri.md#6
 not-yet  request/uri.md#7
-not-yet  request/uri.md#8
+passing  request/uri.md#8
 not-yet  request/uri.md#9
-not-yet  request/uri.md#10
+passing  request/uri.md#10
 passing  request/uri.md#11
 not-yet  response/connection.md#1
 not-yet  response/connection.md#2

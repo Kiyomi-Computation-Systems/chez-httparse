@@ -55,7 +55,7 @@
 (library (httparse grammar)
   (export make-request-line-machine
           httparse-tchar-bytes httparse-url-bytes httparse-header-bytes
-          httparse-method-names
+          httparse-method-names httparse-method-numbers
           httparse-http-methods httparse-rtsp-methods httparse-ice-methods)
   (import (rnrs) (byte-machine graph))
 
@@ -79,6 +79,7 @@
   (define httparse-header-bytes
     (append '(9 32) (range 33 126) (range 128 255)))
 
+  (define COMMA 44)
   (define SP 32)
   (define CR 13)
   (define LF 10)
@@ -113,6 +114,36 @@
       "REBIND" "RECORD" "REDIRECT" "REPORT" "SEARCH" "SET-PARAMETER" "SETUP"
       "SOURCE" "SUBSCRIBE" "TEARDOWN" "TRACE" "UNBIND" "UNLINK" "UNLOCK"
       "UNSUBSCRIBE"))
+
+  ;; THE NUMBER llhttp PRINTS. `headers complete` carries `method=%d`, and the
+  ;; number is the method's value in llhttp's own `METHODS` map -- NOT its
+  ;; position in the list above, which is alphabetical. The map is assembled
+  ;; from eight sub-maps with explicit values and one alias, so the pairs are
+  ;; extracted by script and given two invariants to violate: the key set must
+  ;; equal `httparse-method-names` (checked in the unit lane) and the values
+  ;; must be exactly 0..46 with no gap or repeat. The corpus is the third
+  ;; check, and the strongest -- sixteen fixtures print a method span and a
+  ;; `method=` on the same trace, so the conformance lane compares the pairs
+  ;; against the oracle directly.
+  (define httparse-method-numbers
+    '(("ACL" . 19) ("ANNOUNCE" . 36) ("BIND" . 16) ("CHECKOUT" . 22)
+      ("CONNECT" . 5) ("COPY" . 8) ("DELETE" . 0) ("DESCRIBE" . 35)
+      ("FLUSH" . 45) ("GET" . 1) ("GET-PARAMETER" . 41) ("HEAD" . 2)
+      ("LINK" . 31) ("LOCK" . 9) ("M-SEARCH" . 24) ("MERGE" . 23)
+      ("MKACTIVITY" . 21) ("MKCALENDAR" . 30) ("MKCOL" . 10) ("MOVE" . 11)
+      ("NOTIFY" . 25) ("OPTIONS" . 6) ("PATCH" . 28) ("PAUSE" . 39)
+      ("PLAY" . 38) ("POST" . 3) ("PRI" . 34) ("PROPFIND" . 12)
+      ("PROPPATCH" . 13) ("PURGE" . 29) ("PUT" . 4) ("QUERY" . 46)
+      ("REBIND" . 17) ("RECORD" . 44) ("REDIRECT" . 43) ("REPORT" . 20)
+      ("SEARCH" . 14) ("SET-PARAMETER" . 42) ("SETUP" . 37) ("SOURCE" . 33)
+      ("SUBSCRIBE" . 26) ("TEARDOWN" . 40) ("TRACE" . 7) ("UNBIND" . 18)
+      ("UNLINK" . 32) ("UNLOCK" . 15) ("UNSUBSCRIBE" . 27)))
+
+  (define (method-number name)
+    (let ((row (assoc name httparse-method-numbers)))
+      (unless row
+        (assertion-violation 'httparse-grammar "method has no llhttp number" name))
+      (cdr row)))
 
   ;; --- which protocol accepts which method ---------------------------------
   ;;
@@ -167,12 +198,158 @@
   ;; llhttp stores the method and THEN ends the span (`select(METHODS,
   ;; store('method', span.method.end(...)))`), so the store sits between the
   ;; table and the span end here too.
+  ;;
+  ;; TWO FIELDS, TWO HOPS. The number is per NAME and the protocol mask is per
+  ;; CLASS, so a table entry lands on its own number node and every number node
+  ;; falls through to one of the four mask nodes -- 47 + 4 rather than 47 x 4.
+  ;; A field-action node is zero-width, so the pair costs no byte.
+  ;; Downcased: a node name is `[a-z][a-z0-9-]*` and a method name is not.
+  ;; The 47 names stay distinct under downcasing, which the unit lane checks.
+  (define (method-number-name name)
+    (string->symbol (string-append "method-number-" (string-downcase name))))
+
+  (define (method-number-nodes)
+    (map (lambda (name)
+           (make-field-action-node (method-number-name name) 'store
+                                   (list 'method (method-number name))
+                                   (method-store-name (method-mask name)) #f #f))
+         httparse-method-names))
+
   (define (method-store-nodes)
     (map (lambda (m)
            (make-field-action-node (method-store-name m) 'store
                                    (list 'method-protocols m)
                                    'method-close #f #f))
          method-masks))
+
+  ;; --- llhttp's HEADER_STATE and FLAGS -------------------------------------
+  ;;
+  ;; Both are llhttp's own numbering, not ours, because both are OBSERVABLE:
+  ;; `flags=%x` is printed verbatim on the `headers complete` line, and
+  ;; `header_state` decides which value machine a field name selects. Renaming
+  ;; either would mean the adapter had to translate a number back, which is a
+  ;; computation it may not do (decision 0014).
+  (define HS-GENERAL 0)
+  (define HS-CONNECTION 1)
+  (define HS-CONTENT-LENGTH 2)
+  (define HS-TRANSFER-ENCODING 3)
+  (define HS-UPGRADE 4)
+  (define HS-CONNECTION-KEEP-ALIVE 5)
+  (define HS-CONNECTION-CLOSE 6)
+  (define HS-CONNECTION-UPGRADE 7)
+  (define HS-TRANSFER-ENCODING-CHUNKED 8)
+
+  (define F-CONNECTION-KEEP-ALIVE 1)
+  (define F-CONNECTION-CLOSE 2)
+  (define F-CONNECTION-UPGRADE 4)
+  (define F-CHUNKED 8)
+  (define F-UPGRADE 16)
+  (define F-CONTENT-LENGTH 32)
+  (define F-TRANSFER-ENCODING 512)
+
+  ;; llhttp's SPECIAL_HEADERS: the five field names that select a value machine
+  ;; rather than being copied through. `proxy-connection` shares CONNECTION's
+  ;; state, so five names collapse to four store nodes.
+  ;;
+  ;; THE TABLE IS CASE-FOLDED, which is the second of the two reasons this
+  ;; project asked for a keyword-table primitive upstream: llhttp lowercases
+  ;; the field name before matching it, and `make-sequence-case` takes exact
+  ;; bytes. The SPAN still carries the bytes as they arrived.
+  (define httparse-special-headers
+    (list (cons "connection" HS-CONNECTION)
+          (cons "content-length" HS-CONTENT-LENGTH)
+          (cons "proxy-connection" HS-CONNECTION)
+          (cons "transfer-encoding" HS-TRANSFER-ENCODING)
+          (cons "upgrade" HS-UPGRADE)))
+
+  ;; llhttp's CONNECTION_TOKEN_CHARS: the header bytes minus the one that
+  ;; separates the tokens. Derived rather than transcribed, so the two sets
+  ;; cannot drift apart.
+  (define httparse-connection-token-bytes
+    (filter (lambda (b) (not (= b COMMA))) httparse-header-bytes))
+
+  (define (header-state-store-name v)
+    (string->symbol (string-append "header-state-store-" (number->string v))))
+
+  (define header-state-values
+    (let loop ((rows httparse-special-headers) (acc '()))
+      (cond ((null? rows) (list-sort < acc))
+            ((member (cdar rows) acc) (loop (cdr rows) acc))
+            (else (loop (cdr rows) (cons (cdar rows) acc))))))
+
+  ;; llhttp's `select(SPECIAL_HEADERS, store('header_state', 'header_field_colon'))`
+  (define (header-state-store-nodes)
+    (map (lambda (v)
+           (make-field-action-node (header-state-store-name v) 'store
+                                   (list 'header-state v)
+                                   'header-field-colon #f #f))
+         header-state-values))
+
+  ;; The three Connection keywords store their sub-state and continue at the
+  ;; token separator rather than at the colon, so they need their own store
+  ;; nodes rather than the field table's.
+  (define (conn-state-store-name v)
+    (string->symbol (string-append "conn-state-store-" (number->string v))))
+  (define connection-keyword-states
+    (list (cons "close" HS-CONNECTION-CLOSE)
+          (cons "upgrade" HS-CONNECTION-UPGRADE)
+          (cons "keep-alive" HS-CONNECTION-KEEP-ALIVE)))
+  (define (conn-state-store-nodes)
+    (map (lambda (row)
+           (make-field-action-node (conn-state-store-name (cdr row)) 'store
+                                   (list 'header-state (cdr row)) 'conn-ws #f #f))
+         connection-keyword-states))
+
+  ;; llhttp's `setHeaderFlags`: a connection sub-state becomes a flag bit and
+  ;; collapses back to CONNECTION, and the chunked sub-state becomes CHUNKED.
+  ;; This is why `Connection: close, token, upgrade, token, keep-alive` ends at
+  ;; flags=7 -- the chain runs once per comma and once at the end of the value.
+  ;;
+  ;; THREE CALL SITES, THREE COPIES, AND NOT BY CHOICE. The value span is open
+  ;; at one of them and closed at the other two, and the verifier's flat span
+  ;; lattice refuses one node reached with two different span states. So the
+  ;; chain is generated from a prefix and a continuation.
+  (define (set-header-flags-nodes prefix next)
+    (define (nm suffix) (string->symbol (string-append prefix "-" suffix)))
+    (list
+     (make-field-branch-node (nm "keep-alive") 'equal
+                             (list 'header-state HS-CONNECTION-KEEP-ALIVE)
+                             (nm "set-keep-alive") (nm "close") #f)
+     (make-field-action-node (nm "set-keep-alive") 'set-mask
+                             (list 'flags F-CONNECTION-KEEP-ALIVE)
+                             (nm "to-connection") #f #f)
+     (make-field-branch-node (nm "close") 'equal
+                             (list 'header-state HS-CONNECTION-CLOSE)
+                             (nm "set-close") (nm "upgrade") #f)
+     (make-field-action-node (nm "set-close") 'set-mask
+                             (list 'flags F-CONNECTION-CLOSE)
+                             (nm "to-connection") #f #f)
+     (make-field-branch-node (nm "upgrade") 'equal
+                             (list 'header-state HS-CONNECTION-UPGRADE)
+                             (nm "set-upgrade") (nm "chunked") #f)
+     (make-field-action-node (nm "set-upgrade") 'set-mask
+                             (list 'flags F-CONNECTION-UPGRADE)
+                             (nm "to-connection") #f #f)
+     (make-field-branch-node (nm "chunked") 'equal
+                             (list 'header-state HS-TRANSFER-ENCODING-CHUNKED)
+                             (nm "set-chunked") next #f)
+     (make-field-action-node (nm "set-chunked") 'set-mask
+                             (list 'flags F-CHUNKED) next #f #f)
+     ;; NO CHECK COVERS THIS LINE, and the mutation that changes it survives
+     ;; both lanes. Collapsing to CONNECTION rather than to GENERAL is
+     ;; unobservable in strict REQUEST parsing: the chain above tests only the
+     ;; four sub-states, so 1 and 0 fall through it alike, and the field table
+     ;; overwrites the state at the next name either way. It is llhttp's value
+     ;; and it stays, because the obs-fold arm that reads it back is a lenient
+     ;; mode's and responses reach it differently. The slice that makes it
+     ;; observable owes this line a test.
+     (make-field-action-node (nm "to-connection") 'store
+                             (list 'header-state HS-CONNECTION) next #f #f)))
+
+  (define (set-header-flags-entry prefix)
+    (string->symbol (string-append prefix "-keep-alive")))
+
+  (define DIGITS '(0 1 2 3 4 5 6 7 8 9))
 
   (define DOT 46)
   (define (digit n) (+ 48 n))
@@ -194,17 +371,71 @@
   ;; well-formed version llhttp rejects as a pair, and a non-digit is a
   ;; malformed minor -- and the two land at different offsets, because the pair
   ;; error fires after its digit is consumed and the malformed one before.
+  ;;
+  ;; THE ACCEPTED DIGITS ARE NOW ONE CASE EACH, not one byte-set case, because
+  ;; each has to store its own value on the way through: `headers complete`
+  ;; prints `v=%d/%d`. The rejected ones stay a single set -- a version that
+  ;; fails never reaches the line that would print it.
   (define (version-minor-node name ok)
     (let ((bad (other-digits ok)))
       (make-byte-dispatch-node name
         (append
-         (if (null? ok) '()
-             (list (make-byte-case (make-byte-set-matcher (map digit ok))
-                                   (make-edge 'version-close 'advance) #f)))
+         (map (lambda (d)
+                (make-byte-case (make-exact-byte-matcher (digit d))
+                                (make-edge (version-minor-store-name d) 'advance) #f))
+              ok)
          (if (null? bad) '()
              (list (make-byte-case (make-byte-set-matcher (map digit bad))
                                    (make-edge 'version-close-bad-version 'advance) #f))))
         (make-edge 'version-close-bad-minor 'reexecute) 'e-eof-version #f)))
+
+  ;; The four accepted pairs are 0.9, 1.0, 1.1 and 2.0, so three majors and
+  ;; three minors are storable; the sets are derived from the pairs rather than
+  ;; written out, so adding a pair cannot forget its store node.
+  (define httparse-version-pairs '((0 . 9) (1 . 0) (1 . 1) (2 . 0)))
+  (define (distinct ns)
+    (let loop ((ns ns) (acc '()))
+      (cond ((null? ns) (list-sort < acc))
+            ((member (car ns) acc) (loop (cdr ns) acc))
+            (else (loop (cdr ns) (cons (car ns) acc))))))
+  (define version-majors (distinct (map car httparse-version-pairs)))
+  (define version-minors (distinct (map cdr httparse-version-pairs)))
+  (define (version-minors-for major)
+    (list-sort < (map cdr (filter (lambda (p) (= (car p) major))
+                                  httparse-version-pairs))))
+  (define (version-major-store-name d)
+    (string->symbol (string-append "version-major-store-" (number->string d))))
+  (define (version-minor-store-name d)
+    (string->symbol (string-append "version-minor-store-" (number->string d))))
+  (define (version-store-nodes)
+    (append
+     (map (lambda (d)
+            (make-field-action-node (version-major-store-name d) 'store
+                                    (list 'http-major d)
+                                    (version-dot-name d) #f #f))
+          version-majors)
+     (map (lambda (d)
+            (make-field-action-node (version-minor-store-name d) 'store
+                                    (list 'http-minor d)
+                                    'version-close #f #f))
+          version-minors)))
+  (define (version-dot-name d)
+    (string->symbol (string-append "version-dot-" (number->string d))))
+  (define (version-minor-name d)
+    (string->symbol (string-append "version-minor-" (number->string d))))
+
+  ;; Every node the version pair needs, generated from the pair list: a store
+  ;; per storable digit, a dot node and a minor node per accepted major, and
+  ;; the `other` pair that exists only to fail.
+  (define (version-nodes)
+    (append
+     (version-store-nodes)
+     (map (lambda (d) (version-dot-node (version-dot-name d) (version-minor-name d)))
+          version-majors)
+     (map (lambda (d) (version-minor-node (version-minor-name d) (version-minors-for d)))
+          version-majors)
+     (list (version-dot-node 'version-dot-other 'version-minor-other)
+           (version-minor-node 'version-minor-other '()))))
 
   ;; An event invocation. `pause-continuation` is mandatory -- every callback
   ;; declares where to resume if it pauses -- and for an event that is the same
@@ -216,7 +447,26 @@
   (define (make-request-line-machine)
     (make-machine
      'httparse-request-line 'start
-     (list (make-uint-field 'method-protocols 8 0 #f))
+     ;; THE STATE `headers complete` PRINTS, plus the one that routes the
+     ;; protocol check. llhttp's own callback reads `s->method, s->http_major,
+     ;; s->http_minor, s->flags, s->content_length` and prints them, so these
+     ;; four are named after its fields and the adapter reads them the same way
+     ;; (decision 0014). `flags` needs ten bits -- TRANSFER_ENCODING is 1 << 9
+     ;; -- and `content-length` is llhttp's uint64.
+     (list (make-uint-field 'method-protocols 8 0 #f)
+           (make-uint-field 'method 8 0 #f)
+           (make-uint-field 'http-major 8 0 #f)
+           (make-uint-field 'http-minor 8 0 #f)
+           (make-uint-field 'flags 16 0 #f)
+           (make-uint-field 'content-length 64 0 #f)
+           ;; Which value machine the field name selected. Not printed, but
+           ;; llhttp's numbering all the same -- see the constants above.
+           (make-uint-field 'header-state 8 0 #f)
+           ;; llhttp's `upgrade`, computed by `before_headers_complete` from
+           ;; the flags and the method and read by the body decision. Not
+           ;; printed -- it is the one piece of framing state the trace does
+           ;; not show, and it changes whether a body is read at all.
+           (make-uint-field 'upgrade 8 0 #f))
      (list (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
            (make-callback-declaration 'on-method-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-method-complete 'event #t '() #f #f)
@@ -230,13 +480,16 @@
            (make-callback-declaration 'on-header-field-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-header-value-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-header-value-complete 'event #t '() #f #f)
-           (make-callback-declaration 'on-headers-complete 'event #t '() #f #f))
+           (make-callback-declaration 'on-headers-complete 'event #t '() #f #f)
+           (make-callback-declaration 'on-body-data 'span-data #t '() #f #f)
+           (make-callback-declaration 'on-message-complete 'event #t '() #f #f))
      (list (make-span-declaration 'method-span 'on-method-data #f #f)
            (make-span-declaration 'url-span 'on-url-data #f #f)
            (make-span-declaration 'protocol-span 'on-protocol-data #f #f)
            (make-span-declaration 'version-span 'on-version-data #f #f)
            (make-span-declaration 'header-field-span 'on-header-field-data #f #f)
-           (make-span-declaration 'header-value-span 'on-header-value-data #f #f))
+           (make-span-declaration 'header-value-span 'on-header-value-data #f #f)
+           (make-span-declaration 'body-span 'on-body-data #f #f))
      ;; ONE CODE SYMBOL PER llhttp ERROR NUMBER, AND llhttp's REASON VERBATIM.
      ;; The corpus records `error code=N reason="..."`, and two of llhttp's
      ;; reasons are the same string under different numbers ("Expected CRLF
@@ -293,7 +546,38 @@
            (make-error-declaration 'lf-after-value 'lf-expected
                                    "Missing expected LF after header value" #f)
            (make-error-declaration 'lf-after-headers 'strict
-                                   "Expected LF after headers" #f))
+                                   "Expected LF after headers" #f)
+           ;; --- framing ----------------------------------------------------
+           ;; Four reasons under code 11 and two under 15, which is decision
+           ;; 0013's shape again: the code alone identifies neither.
+           (make-error-declaration 'duplicate-content-length
+                                   'unexpected-content-length
+                                   "Duplicate Content-Length" #f)
+           (make-error-declaration 'content-length-overflow 'invalid-content-length
+                                   "Content-Length overflow" #f)
+           (make-error-declaration 'bad-content-length-char 'invalid-content-length
+                                   "Invalid character in Content-Length" #f)
+           (make-error-declaration 'empty-content-length 'invalid-content-length
+                                   "Empty Content-Length" #f)
+           (make-error-declaration 'empty-transfer-encoding
+                                   'invalid-transfer-encoding
+                                   "Empty Transfer-Encoding" #f)
+           (make-error-declaration 'te-with-content-length
+                                   'invalid-transfer-encoding
+                                   "Transfer-Encoding can't be present with Content-Length" #f)
+           (make-error-declaration 'cl-with-te 'invalid-content-length
+                                   "Content-Length can't be present with Transfer-Encoding" #f)
+           (make-error-declaration 'bad-te-value 'invalid-transfer-encoding
+                                   "Invalid `Transfer-Encoding` header value" #f)
+           (make-error-declaration 'request-invalid-te 'invalid-transfer-encoding
+                                   "Request has invalid `Transfer-Encoding`" #f)
+           ;; PRI's HTTP/2 preface. llhttp calls it a pause in the reason and
+           ;; implements it as an ERROR, which is why this one has a number to
+           ;; rename and the CONNECT/Upgrade pause does not.
+           (make-error-declaration 'pri-upgrade 'paused-h2-upgrade
+                                   "Pause on PRI/Upgrade" #f)
+           (make-error-declaration 'bad-h2-preface 'invalid-version
+                                   "Expected HTTP/2 Connection Preface" #f))
      (append
       (list
       ;; --- the first byte -----------------------------------------------------
@@ -301,8 +585,14 @@
       ;; available but UNCONSUMED when `message begin` fires at offset 0, and
       ;; this also enforces `method = 1*tchar` -- an empty method is rejected
       ;; here, before any span opens.
+      ;; A STRAY LINE ENDING BEFORE THE REQUEST LINE IS SKIPPED. llhttp's
+      ;; `start` matches CR and LF back to itself, so `\r\nGET /test HTTP/1.1`
+      ;; reports `message begin` at 2 -- the skipped bytes are consumed and
+      ;; belong to no span.
       (make-byte-dispatch-node 'start
-        (list (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
+        (list (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'start 'advance) #f)
+              (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
                               (make-edge 'message-begin 'reexecute) #f))
         (make-edge 'e-bad-method 'reexecute) 'clean-eof #f)
       (make-finish-node 'clean-eof #f)
@@ -317,11 +607,12 @@
       (make-keyword-table-node 'method-table
         (map (lambda (name)
                (make-keyword-entry (ascii-bytes name)
-                                   (method-store-name (method-mask name)) #f))
+                                   (method-number-name name) #f))
              httparse-method-names)
         (make-edge 'e-bad-method-open 'reexecute)
         'e-eof-method #f #f))
-      ;; one store node per distinct protocol mask, not per name
+      ;; one node per name for the number, then one per distinct mask
+      (method-number-nodes)
       (method-store-nodes)
       (list
       (make-span-end-node 'method-close 'method-span 'method-complete #f)
@@ -410,29 +701,38 @@
       ;;   HTTP/1.x    span[version]="1."               Invalid minor version
       (make-span-start-node 'version-open 'version-span 'version-major #f)
       (make-byte-dispatch-node 'version-major
-        (list (make-byte-case (make-exact-byte-matcher (digit 0))
-                              (make-edge 'version-dot-0 'advance) #f)
-              (make-byte-case (make-exact-byte-matcher (digit 1))
-                              (make-edge 'version-dot-1 'advance) #f)
-              (make-byte-case (make-exact-byte-matcher (digit 2))
-                              (make-edge 'version-dot-2 'advance) #f)
-              (make-byte-case (make-byte-set-matcher (map digit (other-digits '(0 1 2))))
-                              (make-edge 'version-dot-other 'advance) #f))
-        (make-edge 'version-close-bad-major 'reexecute) 'e-eof-version #f)
-      (version-dot-node 'version-dot-0 'version-minor-0)
-      (version-dot-node 'version-dot-1 'version-minor-1)
-      (version-dot-node 'version-dot-2 'version-minor-2)
-      (version-dot-node 'version-dot-other 'version-minor-other)
-      (version-minor-node 'version-minor-0 '(9))
-      (version-minor-node 'version-minor-1 '(0 1))
-      (version-minor-node 'version-minor-2 '(0))
-      (version-minor-node 'version-minor-other '())
+        (append
+         (map (lambda (d)
+                (make-byte-case (make-exact-byte-matcher (digit d))
+                                (make-edge (version-major-store-name d) 'advance) #f))
+              version-majors)
+         (list (make-byte-case
+                (make-byte-set-matcher (map digit (other-digits version-majors)))
+                (make-edge 'version-dot-other 'advance) #f)))
+        (make-edge 'version-close-bad-major 'reexecute) 'e-eof-version #f))
+      (version-nodes)
+      (list
       (make-span-end-node 'version-close 'version-span 'version-complete #f)
       (make-span-end-node 'version-close-bad-major 'version-span 'e-bad-major #f)
       (make-span-end-node 'version-close-expected-dot 'version-span 'e-expected-dot #f)
       (make-span-end-node 'version-close-bad-minor 'version-span 'e-bad-minor #f)
       (make-span-end-node 'version-close-bad-version 'version-span 'e-bad-version #f)
-      (ev 'version-complete 'on-version-complete 'expect-cr)
+      ;; llhttp loads the method right after `version complete`: PRI takes the
+      ;; HTTP/2 preface path and everything else the CRLF.
+      (ev 'version-complete 'on-version-complete 'after-version)
+      (make-field-branch-node 'after-version 'equal
+                              (list 'method (method-number "PRI"))
+                              'pri-preface 'expect-cr #f)
+      ;; A `.match` of all ten bytes, so the error lands PAST them: the whole
+      ;; preface is consumed and `PRI * HTTP/1.1\r\n\r\nSM\r\n\r\n` reports at 24.
+      ;; One sequence case, so the prefix ambiguity that rules this construct
+      ;; out for the method and header tables cannot arise.
+      (make-sequence-dispatch-node 'pri-preface
+        (list (make-sequence-case (append (list CR LF CR LF)
+                                          (ascii-bytes "SM")
+                                          (list CR LF CR LF))
+                                  'e-pri-upgrade #f))
+        (make-edge 'e-bad-h2-preface 'reexecute) 'e-eof-none #f)
 
       ;; --- CRLF ---------------------------------------------------------------
       ;; Strict: a bare CR or a bare LF is a line-ending error, not a newline.
@@ -484,7 +784,51 @@
                               (make-edge 'e-bad-header-token 'reexecute) #f))
         (make-edge 'header-field-open 'reexecute) 'e-eof-none #f)
 
-      (make-span-start-node 'header-field-open 'header-field-span 'header-field-loop #f)
+      ;; THE NAME IS MATCHED AGAINST llhttp's FIVE SPECIAL HEADERS FIRST, and
+      ;; what the match changes is not the span -- it is which value machine
+      ;; runs, and what a space before the colon means.
+      ;;
+      ;; A no-match leaves the walk where it broke and reexecutes, so the
+      ;; general loop resumes mid-name with the span still open and the whole
+      ;; name still lands in it: `Content-Type` breaks at the `T` that does not
+      ;; continue `content-l`, and its span is all twelve bytes.
+      (make-span-start-node 'header-field-open 'header-field-span 'header-field-table #f))
+      (list
+      (make-keyword-table-node 'header-field-table
+        (map (lambda (row)
+               (make-keyword-entry (ascii-bytes (car row))
+                                   (header-state-store-name (cdr row)) #f))
+             httparse-special-headers)
+        (make-edge 'header-state-general 'reexecute)
+        'e-eof-header-field #t #f))
+      (header-state-store-nodes)
+      (list
+      ;; llhttp's `.otherwise(resetHeaderState('header_field_general'))`, shared
+      ;; by the table's no-match and by a special name that turns out to be a
+      ;; longer one -- `Connection-Duration` matches `connection`, then falls
+      ;; through here at the hyphen.
+      (make-field-action-node 'header-state-general 'store (list 'header-state HS-GENERAL)
+                              'header-field-loop #f #f)
+
+      ;; A SPACE BEFORE THE COLON IS A DIFFERENT ERROR FROM A SPACE ANYWHERE
+      ;; ELSE, and only on this path. llhttp peeks it, ends the span, and then
+      ;; `skipTo`s the error -- a skip CONSUMES -- so the reason is `Invalid
+      ;; header field char` and the offset is one past the space, while the
+      ;; general path's `Invalid header token` is at the character itself.
+      ;; Two fixtures turn on the pair.
+      (make-byte-dispatch-node 'header-field-colon
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'field-close-before-space 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher COLON)
+                              (make-edge 'header-field-close 'reexecute) #f))
+        (make-edge 'header-state-general 'reexecute) 'e-eof-header-field #f)
+      (make-span-end-node 'field-close-before-space 'header-field-span
+                          'eat-space-before-colon #f)
+      (make-byte-dispatch-node 'eat-space-before-colon
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'e-bad-header-field-char 'advance) #f))
+        (make-edge 'e-bad-header-field-char 'reexecute) 'e-eof-none #f)
+
       (make-byte-dispatch-node 'header-field-loop
         (list (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
                               (make-edge 'header-field-loop 'advance) #f))
@@ -506,7 +850,26 @@
         (list (make-byte-case (make-exact-byte-matcher COLON)
                               (make-edge 'header-field-complete 'advance) #f))
         (make-edge 'e-bad-header-token 'reexecute) 'e-eof-none #f)
-      (ev 'header-field-complete 'on-header-field-complete 'value-discard-ws)
+      ;; llhttp's `onHeaderFieldComplete` loads the header state and, for the
+      ;; two framing headers, refuses the pair before the value is read. BOTH
+      ;; sides exist now -- each has its own code AND its own reason, which is
+      ;; decision 0013's point yet again:
+      ;;
+      ;;   TE then CL   code 11  Content-Length can't be present with Transfer-Encoding
+      ;;   CL then TE   code 15  Transfer-Encoding can't be present with Content-Length
+      (ev 'header-field-complete 'on-header-field-complete 'after-field-complete)
+      (make-field-branch-node 'after-field-complete 'equal
+                              (list 'header-state HS-TRANSFER-ENCODING)
+                              'check-te-conflict 'after-field-complete-cl #f)
+      (make-field-branch-node 'check-te-conflict 'mask-any
+                              (list 'flags F-CONTENT-LENGTH)
+                              'e-te-with-content-length 'value-discard-ws #f)
+      (make-field-branch-node 'after-field-complete-cl 'equal
+                              (list 'header-state HS-CONTENT-LENGTH)
+                              'check-cl-conflict 'value-discard-ws #f)
+      (make-field-branch-node 'check-cl-conflict 'mask-any
+                              (list 'flags F-TRANSFER-ENCODING)
+                              'e-cl-with-te 'value-discard-ws #f)
 
       ;; --- the value ----------------------------------------------------------
       ;; Leading OWS is discarded and is not part of the span.
@@ -530,7 +893,20 @@
       (make-byte-dispatch-node 'value-discard-lws
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
                               (make-edge 'e-bad-header-value-char 'advance) #f))
-        (make-edge 'value-empty-open 'reexecute) 'e-eof-none #f)
+        (make-edge 'value-empty-check 'reexecute) 'e-eof-none #f)
+
+      ;; llhttp's `checkEmptyHeaderValue`: an empty value is announced as an
+      ;; empty span for a general header and is an ERROR for the two framing
+      ;; ones, and the state is read BEFORE the span is opened.
+      (make-field-branch-node 'value-empty-check 'equal
+                              (list 'header-state HS-CONTENT-LENGTH)
+                              'e-empty-content-length 'value-empty-check-te #f)
+      (make-field-branch-node 'value-empty-check-te 'equal
+                              (list 'header-state HS-TRANSFER-ENCODING)
+                              'e-empty-transfer-encoding
+                              (set-header-flags-entry "shf-empty") #f))
+      (set-header-flags-nodes "shf-empty" 'value-empty-open)
+      (list
 
       ;; An empty value is ANNOUNCED, not omitted: llhttp opens and immediately
       ;; closes the span, which is the upstream empty-span behaviour this
@@ -538,7 +914,161 @@
       (make-span-start-node 'value-empty-open 'header-value-span 'value-empty-close #f)
       (make-span-end-node 'value-empty-close 'header-value-span 'value-complete #f)
 
-      (make-span-start-node 'value-open 'header-value-span 'value-loop #f)
+      ;; llhttp's `header_value_start` loads the header state and picks a value
+      ;; machine. Content-Length is this slice's; Transfer-Encoding, Connection
+      ;; and Upgrade take llhttp's own default arm, `resetHeaderState`, until
+      ;; the slice that reads them.
+      (make-span-start-node 'value-open 'header-value-span 'value-start #f)
+      (make-field-branch-node 'value-start 'equal (list 'header-state HS-UPGRADE)
+                              'upgrade-set-flag 'value-start-te #f)
+      (make-field-action-node 'upgrade-set-flag 'set-mask (list 'flags F-UPGRADE)
+                              'value-state-general #f #f)
+      (make-field-branch-node 'value-start-te 'equal
+                              (list 'header-state HS-TRANSFER-ENCODING)
+                              'te-check-chunked 'value-start-cl #f)
+      (make-field-branch-node 'value-start-cl 'equal
+                              (list 'header-state HS-CONTENT-LENGTH)
+                              'cl-once 'value-start-conn #f)
+      (make-field-branch-node 'value-start-conn 'equal
+                              (list 'header-state HS-CONNECTION)
+                              'conn-value 'value-state-general #f)
+      (make-field-action-node 'value-state-general 'store (list 'header-state HS-GENERAL)
+                              'value-loop #f #f)
+
+      ;; --- Transfer-Encoding ---------------------------------------------------
+      ;;
+      ;; ONCE CHUNKED IS CHOSEN NO OTHER CODING IS ALLOWED IN A REQUEST, and
+      ;; llhttp enforces that at the START of the next value and at the comma
+      ;; inside one. Strict mode takes the refusing arm both times, so the
+      ;; span is ended -- EMPTY at the value start -- and one byte is skipped
+      ;; before the error, because `skipTo` consumes.
+      (make-field-branch-node 'te-check-chunked 'mask-any (list 'flags F-CHUNKED)
+                              'te-after-chunked 'te-set-flag #f)
+      (make-span-end-node 'te-after-chunked 'header-value-span 'te-eat-one #f)
+      (make-byte-dispatch-node 'te-eat-one
+        '() (make-edge 'e-bad-te-value 'advance) 'e-eof-none #f)
+
+      ;; The CHUNKED bit is CLEARED on the way in and set again only by
+      ;; `setHeaderFlags` at the end of a value that really was `chunked`, so a
+      ;; later coding un-chunks the message rather than adding to it.
+      (make-field-action-node 'te-set-flag 'set-mask (list 'flags F-TRANSFER-ENCODING)
+                              'te-unset-chunked #f #f)
+      ;; ALSO UNCHECKED, AND ALSO DELIBERATE. In a strict request the branch
+      ;; above refuses any coding that follows `chunked`, so this clear only
+      ;; ever runs with the bit already clear -- measured, not argued: the
+      ;; mutation that removes it survives both lanes. Lenient transfer
+      ;; encoding and responses both reach it with the bit set.
+      (make-field-action-node 'te-unset-chunked 'clear-mask (list 'flags F-CHUNKED)
+                              'te-chunked #f #f)
+      (make-keyword-table-node 'te-chunked
+        (list (make-keyword-entry (ascii-bytes "chunked") 'te-chunked-last #f))
+        (make-edge 'te-token 'reexecute) 'e-eof-header-value #t #f)
+
+      ;; `chunkedchunked` is not chunked: the table takes the first seven bytes
+      ;; and the eighth continues the token, so this falls through to the token
+      ;; loop and no sub-state is stored. Only SP is skipped here, not HTAB.
+      (make-byte-dispatch-node 'te-chunked-last
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'te-chunked-last 'advance) #f)
+              (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'te-mark-chunked 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher COMMA)
+                              (make-edge 'te-after-chunked 'reexecute) #f))
+        (make-edge 'te-token 'reexecute) 'e-eof-header-value #f)
+      (make-field-action-node 'te-mark-chunked 'store
+                              (list 'header-state HS-TRANSFER-ENCODING-CHUNKED)
+                              'after-value #f #f)
+
+      (make-byte-dispatch-node 'te-token
+        (list (make-byte-case (make-exact-byte-matcher COMMA)
+                              (make-edge 'te-token-ows 'advance) #f)
+              (make-byte-case (make-byte-set-matcher httparse-connection-token-bytes)
+                              (make-edge 'te-token 'advance) #f))
+        (make-edge 'value-state-general 'reexecute) 'e-eof-header-value #f)
+      (make-byte-dispatch-node 'te-token-ows
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'te-token-ows 'advance) #f))
+        (make-edge 'te-chunked 'reexecute) 'e-eof-header-value #f)
+
+      ;; --- Connection ----------------------------------------------------------
+      ;;
+      ;; `close` IS NOT `closed`. The table takes the keyword and reexecutes
+      ;; the byte after it; `conn-ws` then finds a byte that is neither comma,
+      ;; space nor line ending, resets the sub-state and hands the rest to the
+      ;; token loop -- so `closed` sets nothing. This is the pair a Gate 0
+      ;; spike measured, and the reason `make-sequence-dispatch-node` could
+      ;; not be used here even if the names were case-sensitive.
+      (make-byte-dispatch-node 'conn-value
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'conn-value 'advance) #f))
+        (make-edge 'conn-table 'reexecute) 'e-eof-header-value #f))
+      (list
+      (make-keyword-table-node 'conn-table
+        (map (lambda (row)
+               (make-keyword-entry (ascii-bytes (car row))
+                                   (conn-state-store-name (cdr row)) #f))
+             connection-keyword-states)
+        (make-edge 'conn-token 'reexecute) 'e-eof-header-value #t #f))
+      (conn-state-store-nodes)
+      (list
+      (make-byte-dispatch-node 'conn-ws
+        (list (make-byte-case (make-exact-byte-matcher COMMA)
+                              (make-edge (set-header-flags-entry "shf-comma") 'advance) #f)
+              (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'conn-ws 'advance) #f)
+              (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'after-value 'reexecute) #f))
+        (make-edge 'conn-token-reset 'reexecute) 'e-eof-header-value #f)
+      (make-field-action-node 'conn-token-reset 'store (list 'header-state HS-GENERAL)
+                              'conn-token #f #f)
+      (make-byte-dispatch-node 'conn-token
+        (list (make-byte-case (make-exact-byte-matcher COMMA)
+                              (make-edge 'conn-value 'advance) #f)
+              (make-byte-case (make-byte-set-matcher httparse-connection-token-bytes)
+                              (make-edge 'conn-token 'advance) #f))
+        (make-edge 'after-value 'reexecute) 'e-eof-header-value #f)
+
+      ;; --- Content-Length ------------------------------------------------------
+      ;;
+      ;; The flag is tested where the VALUE starts, not where the name matches,
+      ;; so a duplicate reports after the second name has completed.
+      (make-field-branch-node 'cl-once 'mask-any (list 'flags F-CONTENT-LENGTH)
+                              'e-duplicate-content-length 'cl-digits #f)
+
+      ;; THE OFFENDING DIGIT IS CONSUMED BEFORE THE OVERFLOW IS REPORTED, and
+      ;; that is the whole of `off=56 len=21` for a 22-digit length. llhttp
+      ;; `select`s the digit -- which consumes -- and only then runs `mulAdd`,
+      ;; so the value span holds the digit that broke it. This node reexecutes
+      ;; on overflow instead, so the digit is eaten here, one dispatch wide.
+      ;; Both overflow on the SAME digit: the check is `v > (max - d) / base`
+      ;; against a uint64 either way, which for `1` followed by zeros is the
+      ;; twenty-first.
+      (make-integer-accumulate-node 'cl-digits 'content-length 10
+                                    'cl-digits
+                                    (make-edge 'cl-ws 'reexecute)
+                                    'cl-overflow-eat
+                                    'e-eof-header-value #f)
+      (make-byte-dispatch-node 'cl-overflow-eat
+        (list (make-byte-case (make-byte-set-matcher (map digit DIGITS))
+                              (make-edge 'cl-overflow-close 'advance) #f))
+        (make-edge 'cl-overflow-close 'reexecute) 'e-eof-header-value #f)
+      (make-span-end-node 'cl-overflow-close 'header-value-span
+                          'e-content-length-overflow #f)
+
+      ;; Trailing spaces are MATCHED, so they are consumed and the span ends
+      ;; past them: `Content-Length: 4 ` records `span[header_value]="4 "`.
+      ;; Anything else is a reason of its own, at the character, with the span
+      ;; ended first so the digits still render.
+      (make-byte-dispatch-node 'cl-ws
+        (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
+                              (make-edge 'cl-ws 'advance) #f)
+              (make-byte-case (make-byte-set-matcher (list CR LF))
+                              (make-edge 'cl-set-flag 'reexecute) #f))
+        (make-edge 'cl-bad-close 'reexecute) 'e-eof-header-value #f)
+      (make-field-action-node 'cl-set-flag 'set-mask (list 'flags F-CONTENT-LENGTH)
+                              'after-value #f #f)
+      (make-span-end-node 'cl-bad-close 'header-value-span
+                          'e-bad-content-length-char #f)
       (make-byte-dispatch-node 'value-loop
         (list (make-byte-case (make-byte-set-matcher httparse-header-bytes)
                               (make-edge 'value-loop 'advance) #f))
@@ -570,26 +1100,122 @@
       (make-byte-dispatch-node 'value-lws
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
                               (make-edge 'e-ws-after-value 'reexecute) #f))
-        (make-edge 'value-complete 'reexecute) 'e-eof-none #f)
+        (make-edge (set-header-flags-entry "shf-complete") 'reexecute) 'e-eof-none #f))
+      (set-header-flags-nodes "shf-complete" 'value-complete)
+      (set-header-flags-nodes "shf-comma" 'conn-value)
+      (list
       (ev 'value-complete 'on-header-value-complete 'header-field-start)
 
       ;; --- the empty line ------------------------------------------------------
       (make-byte-dispatch-node 'headers-almost-done
         (list (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'headers-complete 'advance) #f))
+                              (make-edge 'before-headers-complete 'advance) #f))
         (make-edge 'e-lf-after-headers 'reexecute) 'e-eof-none #f)
-      ;; M3 stops here. The trace line `headers complete` carries `flags=` and
-      ;; `content_length=`, which are M4's; this is the EVENT, and no fixture
-      ;; M3 claims prints that line.
+
+      ;; llhttp's `before_headers_complete`, which runs so the callback can see
+      ;; the answer: a request upgrades when it carries BOTH upgrade bits, or
+      ;; when its method is CONNECT.
+      (make-field-branch-node 'before-headers-complete 'mask-all
+                              (list 'flags (+ F-UPGRADE F-CONNECTION-UPGRADE))
+                              'bhc-upgrade-yes 'bhc-check-connect #f)
+      (make-field-branch-node 'bhc-check-connect 'equal
+                              (list 'method (method-number "CONNECT"))
+                              'bhc-upgrade-yes 'bhc-upgrade-no #f)
+      (make-field-action-node 'bhc-upgrade-yes 'store (list 'upgrade 1)
+                              'headers-complete #f #f)
+      (make-field-action-node 'bhc-upgrade-no 'store (list 'upgrade 0)
+                              'headers-complete #f #f)
+
       (ev 'headers-complete 'on-headers-complete 'after-headers)
-      ;; A TERMINAL CANNOT SIT DIRECTLY BEHIND THE EVENT. `headers complete` is
-      ;; a callback node and therefore zero-width, so a stop behind it is
-      ;; EOF-reachable (`eof-reachable-stop`) and a finish behind it is
+
+      ;; THE UPGRADE ARM COMES FIRST, and it is why `CONNECT` with a
+      ;; Content-Length of 10 reads no body at all:
+      ;;
+      ;;   upgrade && (method == CONNECT || !hasBody)   ->  complete, then PAUSE
+      ;;
+      ;; with `hasBody` being chunked-or-a-nonzero-length. Skip-body is a
+      ;; response's, so the request condition is these two.
+      (make-field-branch-node 'after-headers 'nonzero (list 'upgrade)
+                              'after-headers-connect 'after-headers-chunked #f)
+      (make-field-branch-node 'after-headers-connect 'equal
+                              (list 'method (method-number "CONNECT"))
+                              'message-complete 'after-headers-has-chunked #f)
+      (make-field-branch-node 'after-headers-has-chunked 'mask-any
+                              (list 'flags F-CHUNKED)
+                              'after-headers-chunked 'after-headers-has-length #f)
+      (make-field-branch-node 'after-headers-has-length 'nonzero
+                              (list 'content-length)
+                              'after-headers-chunked 'message-complete #f)
+
+      ;; THE PAUSE HAS NO WORDS. llhttp's is `p.pause(ERROR.PAUSED_UPGRADE,
+      ;; 'Pause on CONNECT/Upgrade')` and prints as `error code=22 reason=...`;
+      ;; a pause here carries neither, so the trace adapter refuses rather than
+      ;; inventing the pair. Measured, not read: a paused result reports
+      ;; `error #f`. The gap is briefed upstream under decision 0006.
+      (make-pause-node 'upgrade-pause 'after-message #f)
+
+      ;; --- is there a body? ----------------------------------------------------
+      ;;
+      ;; llhttp asks a C callback, `llhttp__after_headers_complete`, and for a
+      ;; REQUEST its answer collapses to a short tree: `message_needs_eof` is
+      ;; unconditionally 0 for requests, and upgrade and skip-body are a later
+      ;; milestone's. What is left is
+      ;;
+      ;;   CHUNKED                      -> read chunks
+      ;;   TRANSFER_ENCODING, not chunked -> error, a request may not say that
+      ;;   CONTENT_LENGTH and nonzero   -> read that many bytes
+      ;;   otherwise                    -> no body
+      ;;
+      ;; This slice can make the third condition true, so its two branches are
+      ;; here. The chunked and transfer-encoding arms wait for the slice that
+      ;; can set their flags -- an unreachable node is refused, not stubbed.
+      ;;
+      ;; A CONTENT LENGTH OF ZERO IS NOT AN EMPTY BODY. llhttp answers 0 -- no
+      ;; body at all -- so there is no `span[body]=""` for `Content-Length: 0`,
+      ;; which is the opposite of what an empty HEADER value does.
+      ;; CHUNKED FIRST -- it overrides a Content-Length that is also present.
+      ;; Its target is the parking dispatch until M5 builds a chunk reader, so
+      ;; a chunked request's trace simply STOPS after `headers complete`
+      ;; rather than continuing with something llhttp never wrote.
+      (make-field-branch-node 'after-headers-chunked 'mask-any (list 'flags F-CHUNKED)
+                              'after-message 'after-headers-te #f)
+      ;; A request that named a transfer coding and did not end with `chunked`
+      ;; has no reliable body length: llhttp's `after_headers_complete`
+      ;; returns 5, AFTER the line that printed the flag.
+      (make-field-branch-node 'after-headers-te 'mask-any (list 'flags F-TRANSFER-ENCODING)
+                              'e-request-invalid-te 'after-headers-cl #f)
+      (make-field-branch-node 'after-headers-cl 'mask-any (list 'flags F-CONTENT-LENGTH)
+                              'body-length-check 'message-complete #f)
+      (make-field-branch-node 'body-length-check 'nonzero (list 'content-length)
+                              'body-open 'message-complete #f)
+
+      ;; The counted consume DECREMENTS `content-length` as it goes, which is
+      ;; llhttp's own `p.consume('content_length')`; the number the trace
+      ;; prints was already printed by then.
+      (make-span-start-node 'body-open 'body-span 'body-consume #f)
+      (make-counted-consume-node 'body-consume 'content-length 'body-close 'e-eof-body #f)
+      (make-span-end-node 'body-close 'body-span 'message-complete #f)
+
+      ;; ONE `message complete`, THEN THE UPGRADE TEST. llhttp invokes the
+      ;; callback at two sites -- the no-body decision and the end of a body --
+      ;; and both follow it with the same question, so the two collapse into
+      ;; one node here. A message that upgraded pauses; every other one carries
+      ;; on. THIS IS WHY A BODY IS STILL READ FOR AN UPGRADE THAT HAS ONE:
+      ;; `Connection: upgrade` with `Content-Length: 4` has a body, so the
+      ;; decision does NOT take the early exit -- it reads the four bytes and
+      ;; pauses afterwards.
+      (ev 'message-complete 'on-message-complete 'after-message-upgrade)
+      (make-field-branch-node 'after-message-upgrade 'nonzero (list 'upgrade)
+                              'upgrade-pause 'after-message #f)
+
+      ;; A TERMINAL CANNOT SIT DIRECTLY BEHIND A ZERO-WIDTH EVENT. A stop behind
+      ;; one is EOF-reachable (`eof-reachable-stop`) and a finish behind one is
       ;; byte-reachable (`non-eof-into-finish`) -- the verifier refuses both,
       ;; and the request line's stop tripped neither because it sat directly
-      ;; behind a consumed byte. A dispatch separates them: end of input is a
-      ;; clean end of message, and a byte is the body, which M4 builds here.
-      (make-byte-dispatch-node 'after-headers
+      ;; behind a consumed byte. A dispatch separates them: end of input after
+      ;; a complete message is clean, and a byte is the next message, which is
+      ;; the pipelining milestone's.
+      (make-byte-dispatch-node 'after-message
         '()
         (make-edge 'message-done 'reexecute) 'clean-eof #f)
       (make-stop-node 'message-done #f)
@@ -632,5 +1258,17 @@
       (make-error-node 'e-lf-after-value 'lf-after-value #f)
       (make-error-node 'e-lf-after-headers 'lf-after-headers #f)
       (make-error-node 'e-eof-header-field 'eof #f)
-      (make-error-node 'e-eof-header-value 'eof #f)))
+      (make-error-node 'e-eof-header-value 'eof #f)
+      (make-error-node 'e-eof-body 'eof #f)
+      (make-error-node 'e-duplicate-content-length 'duplicate-content-length #f)
+      (make-error-node 'e-content-length-overflow 'content-length-overflow #f)
+      (make-error-node 'e-bad-content-length-char 'bad-content-length-char #f)
+      (make-error-node 'e-empty-content-length 'empty-content-length #f)
+      (make-error-node 'e-empty-transfer-encoding 'empty-transfer-encoding #f)
+      (make-error-node 'e-te-with-content-length 'te-with-content-length #f)
+      (make-error-node 'e-cl-with-te 'cl-with-te #f)
+      (make-error-node 'e-bad-te-value 'bad-te-value #f)
+      (make-error-node 'e-request-invalid-te 'request-invalid-te #f)
+      (make-error-node 'e-pri-upgrade 'pri-upgrade #f)
+      (make-error-node 'e-bad-h2-preface 'bad-h2-preface #f)))
      'eof #f)))
