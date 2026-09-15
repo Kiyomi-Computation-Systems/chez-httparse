@@ -179,9 +179,10 @@ guaranteed structural refusal, every time.
 Six of M4's first-attempt mutations were exactly this — a `field-branch` whose
 two targets were collapsed onto one, so the error behind the other went
 unreachable. Two more in M3, three in M2, one in M6, where routing an
-illegal-byte arm to a span end left its error node with no path. Five
-milestones running. The habit is natural (removing a check is the obvious way
-to break it) and it is wasted every time.
+illegal-byte arm to a span end left its error node with no path, and one in
+M7, where making a three-digit chain loop back to its first digit orphaned the
+state that followed it. Six milestones running. The habit is natural (removing
+a check is the obvious way to break it) and it is wasted every time.
 
 **Point the branch the wrong way instead.** Swap the true and false targets, or
 send the arm to the node its neighbour uses. The machine stays well-formed, the
@@ -192,6 +193,25 @@ The same applies to a mutation that is itself ill-formed for some other reason:
 one of M4's put a terminal somewhere the verifier refuses, so it never reached
 the comparison it was written to exercise. Before believing a mutation's
 result, check that the mutant is a machine that could have run.
+
+**And a caught inversion does not prove the branch DECIDES anything.** This is
+the rule above turning round on itself, so it is worth stating plainly. M7
+wired `should_keep_alive`'s call to `message_needs_eof` and then mutated it
+two ways. Inverting the answer — needs-eof now says yes where it said no —
+was caught at once by two lanes, because every keep-alive message suddenly
+closed. Skipping the call entirely, wiring straight past the subgraph to the
+answer it always gave, was caught by NOTHING. Both mutants are well-formed and
+both run the same fixtures; the first flips a value the trace shows and the
+second removes a question whose answer was constant on every path that reaches
+it.
+
+So an inversion tests the WIRE. It says the target on the other side is wrong,
+which is usually what you want to know. It does not say the test is load-bearing,
+and when you are asking whether a condition earns its place, the mutation to
+write is the one that removes it. If that survives, "reached" was not
+"deciding", and the honest thing is to say where the answer stops being
+constant — for M7 that is the milestone which teaches the driver to finish a
+parse, because a message needing eof never completes without one.
 
 **A survivor is a missing test, a statement about scope, or the finding
 itself — and which one is a measurement.** M4 had two mutations survive both
@@ -218,6 +238,21 @@ can emit, the vendored corpus records **two**. There was nothing to write a
 test against. A same-in-every-lane survivor is the shape that tells you so —
 a difference between lanes is about your checks, an agreement across them is
 about your evidence.
+
+**What the oracle is missing may be a reason, or it may be an input shape that
+separates two conditions.** M7's three same-in-every-lane survivors were one
+finding with that second shape. llhttp asks two overlapping questions about a
+response — the body decision names 100, 102, 103, 204 and 304 exactly, and
+`message_needs_eof` names 1xx, 204 and 304 again — and on a message with no
+framing header the two agree, so either alone renders the right trace and a
+mutation to one of them changes nothing. They part only when such a status
+arrives WITH a `Content-Length` or a `Transfer-Encoding`, and the corpus
+records that for 304 alone. So the 304 mutation was caught and the 204 one
+survived, from identical code.
+
+The tell is a survivor whose condition is duplicated somewhere downstream. Do
+not go looking for a test; go looking for the input that would tell the two
+apart, and when the oracle has not got one, pin that.
 
 ## Check what the oracle covers, not only what your code does
 
@@ -300,6 +335,11 @@ None is obvious from reading the code.
   that named it in `SOURCES`, so both silently dropped that dependency. A
   lane's `SOURCES` list is the one place this hides well, because the lane
   still runs and still passes.
+* `(verify-machine m)` **returns a verdict; it does not raise one.** A script
+  that calls it and then prints "verified" has checked nothing — M7 wrote that
+  script, believed it, and was corrected by the emitter, which reads
+  `verification-ok?`. The general form: when an instrument ANSWERS rather than
+  throws, not reading the answer is indistinguishable from a pass.
 
 ## Claims about other people's code
 

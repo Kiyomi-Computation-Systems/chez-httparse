@@ -1410,3 +1410,111 @@ NEXT: M7, responses. 66 fixtures -- the status line, the `status` span,
 the whole of what `should_keep_alive` does not yet read). Its exit is
 decision 0009's v0.1 bar: 190 cumulative.
 
+
+
+M7 — RESPONSES (2026-09-15). Branch feat/m7-responses.
+
+Ratchet 124 -> 190 passing, 0 not-yet, 84 deferred. THE EXIT CRITERION IS MET
+EXACTLY: 190 is decision 0009's v0.1 bar, every strict fixture in llhttp's
+corpus passes, and everything left is deferred with a reason -- 37 lenient,
+24 pausing, 21 url sub-parser, 2 skip-body.
+
+Two slices, measured between them:
+
+  0  the type switch and the status line      +43
+  1  the response framing table               +23
+
+THE MEASUREMENT BEFORE SLICE 0 WAS DEGENERATE, and saying so is the point.
+Every one of the 66 failed at LINE 1 on the FIRST BYTE, because there was no
+response parser at all; `first-mismatch` had nothing to partition. So M7 is
+the one milestone whose count came off the ceilings table and was right, and
+that is because the milestone's boundary IS the request/response split rather
+than because bucketing on the deepest event predicted anything. The table's
+row now says so.
+
+DECISION 0017: A PARSER CANNOT BE STARTED IN A MODE. llhttp parses both kinds
+with one machine and one entry, and which start line it reads comes from
+`s->type`, a field the embedder writes before the first byte --
+`llhttp__test_init_response` is one line. byte-machine exports
+`parser-field-ref` and no writer, and a field's initial value belongs to the
+MACHINE, so two parsers from one machine cannot start in two modes. Three ways
+out, priced:
+
+  emit the graph twice        doubles a 234 KB artifact for one integer
+  a second entry node         refused: unreachable-node for the other mode
+  a decision callback         three nodes -- what shipped
+
+`on-message-type` is `required?`, is asked exactly where llhttp's `switchType`
+sits, and its branches STORE llhttp's own number -- so the callback configures
+and the field is still the state, read by the protocol fork, the version fork,
+`before_headers_complete`, `message_needs_eof`, the body decision and the
+adapter's `headers complete` line. Its fall-through is a refusal with no
+llhttp number, the `unexpected-eof` treatment, and PAUSING IS NOT ANSWERING:
+the pause continuation is that same refusal, because re-entering the node
+would ask again and the verifier refuses the zero-progress cycle outright.
+
+Filed upstream as this consumer's FOURTH brief
+(.plans/2026-09-15-upstream-parser-mode-brief.md), with the part worth
+designing named: what `parser-reset!` does with a mode. A reset that restores
+the declared initials and forgets the mode is the same bug as a default,
+arriving later. Nothing waited on it.
+
+TWO SUBGRAPHS ARE NOW SHARED WHERE llhttp WRITES THEM TWICE -- the three
+protocol constants and the four version pairs -- each with a zero-width branch
+on `type` where llhttp forks. One definition of what `HTTP` is and which
+versions are legal, so a response cannot drift from a request over either.
+
+`message_needs_eof` IS THE HINGE OF SLICE 1 and is generated at each of its
+two call sites, for the same reason `setHeaderFlags` has three copies. M6
+could omit `should_keep_alive`'s last line because the function is
+unconditionally 0 for a request; for a response it is the difference between
+a connection that restarts and one that does not. With it comes
+`body_identity_eof`: finish rises to SAFE_WITH_CB, the body span opens and
+never closes, and there is no `message complete` -- what ends such a message
+is the connection.
+
+LLHTTP'S THREE `message complete` SITES ARE NOW THREE HERE. Collapsing them
+into one with an upgrade test is safe for every fixture in the corpus, because
+"return 1" implies upgrade everywhere except a 101 with no upgrade header and
+"return 0" excludes it everywhere. It is not safe for real input, and the
+bytes nobody recorded are the point.
+
+THE PLAN'S M7 SECTION SAID "HEAD skip-body" AND SHOULD NOT HAVE. skipBody is
+one of decision 0009's own deferrals -- two fixtures -- and the ratchet has
+carried them as `deferred skip-body` since M1. The plan was wrong and the
+ratchet was right, which is what 0009 item 4 means by "not a judgement call".
+The grammar says which condition the skip-body milestone owes a branch.
+
+THIRTY-THREE MUTATIONS, each an inversion or a wrong value, run against its
+unit lane and -- for every survivor -- the conformance lane as well, with the
+artifact re-emitted so a fixture's trace has to notice rather than the
+executor differential. One was a COLLAPSE in disguise (a three-digit chain looped back to
+its first digit, orphaning the state after it, REFUSED-AT-VERIFICATION) and
+was rewritten as two wrong values, both caught. Sixth milestone for that trap.
+
+THREE SURVIVED EVERY LANE AND ARE ONE FINDING. llhttp asks two overlapping
+questions about a response: the body decision names 100, 102, 103, 204 and 304
+exactly, and `message_needs_eof` names 1xx, 204 and 304 again. On a message
+with no framing header the two AGREE, so either alone renders the right trace.
+They part only when such a status arrives WITH a Content-Length or a
+Transfer-Encoding, and the corpus records that for 304 alone -- which is why
+the 304 mutation was caught and the 204 one was not, from identical code.
+Response: the grammar names the overlap at each arm, and corpus-load-tests.sps
+pins which of the five the oracle separates, as M5's pins which
+chunk-extension reasons it records. A fourth survivor is the same shape one
+field along: `bhc-switching` sets `upgrade` on a 101, and a 101 pauses by a
+second independent route, so the field it sets is never read -- but an
+embedder reads `parser->upgrade` after a paused-upgrade result, a surface no
+trace can show, so llhttp's value stays.
+
+AND TWO MORE THAT ARE ABOUT INVERSION ITSELF. Inverting `should_keep_alive`'s
+needs-eof ANSWER was caught at once by two lanes; SKIPPING the call entirely,
+on either version arm, survived its unit lane AND the whole corpus. Both mutants are well-formed and run the same fixtures.
+The answer is constant on every path that reaches it -- a message needing eof
+was sent to `body-eof` and never completes -- so the inversion tested the wire
+and not the question. AGENTS.md now says so: a caught inversion does not prove
+the branch decides anything, and the mutation that asks whether a condition
+earns its place is the one that removes it.
+
+Artifact 217,945 -> 234,216 bytes. ABI unchanged at 7. Lanes 62 -> 66: two new
+unit lanes, unit.status-line and unit.response-framing, in source and aot.
