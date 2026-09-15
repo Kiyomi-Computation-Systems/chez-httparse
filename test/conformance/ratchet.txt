@@ -146,16 +146,16 @@ passing  request/sample.md#17
 deferred request/sample.md#18                            lenient
 passing  request/transfer-encoding.md#1
 passing  request/transfer-encoding.md#2
-not-yet  request/transfer-encoding.md#3
-not-yet  request/transfer-encoding.md#4
-not-yet  request/transfer-encoding.md#5
-not-yet  request/transfer-encoding.md#6
-not-yet  request/transfer-encoding.md#7
-not-yet  request/transfer-encoding.md#8
-not-yet  request/transfer-encoding.md#9
-not-yet  request/transfer-encoding.md#10
-not-yet  request/transfer-encoding.md#11
-not-yet  request/transfer-encoding.md#12
+passing  request/transfer-encoding.md#3
+passing  request/transfer-encoding.md#4
+passing  request/transfer-encoding.md#5
+passing  request/transfer-encoding.md#6
+passing  request/transfer-encoding.md#7
+passing  request/transfer-encoding.md#8
+passing  request/transfer-encoding.md#9
+passing  request/transfer-encoding.md#10
+passing  request/transfer-encoding.md#11
+passing  request/transfer-encoding.md#12
 passing  request/transfer-encoding.md#13
 passing  request/transfer-encoding.md#14
 deferred request/transfer-encoding.md#15                 lenient
@@ -164,17 +164,17 @@ passing  request/transfer-encoding.md#17
 passing  request/transfer-encoding.md#18
 deferred request/transfer-encoding.md#19                 lenient
 deferred request/transfer-encoding.md#20                 lenient
-not-yet  request/transfer-encoding.md#21
-not-yet  request/transfer-encoding.md#22
+passing  request/transfer-encoding.md#21
+passing  request/transfer-encoding.md#22
 passing  request/transfer-encoding.md#23
-not-yet  request/transfer-encoding.md#24
-not-yet  request/transfer-encoding.md#25
+passing  request/transfer-encoding.md#24
+passing  request/transfer-encoding.md#25
 deferred request/transfer-encoding.md#26                 lenient
-not-yet  request/transfer-encoding.md#27
+passing  request/transfer-encoding.md#27
 deferred request/transfer-encoding.md#28                 lenient
-not-yet  request/transfer-encoding.md#29
+passing  request/transfer-encoding.md#29
 deferred request/transfer-encoding.md#30                 lenient
-not-yet  request/transfer-encoding.md#31
+passing  request/transfer-encoding.md#31
 deferred request/transfer-encoding.md#32                 lenient
 passing  request/uri.md#1
 passing  request/uri.md#2

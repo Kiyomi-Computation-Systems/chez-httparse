@@ -778,6 +778,12 @@ httparse_add_scheme_lane(
 set(HTTPARSE_TRACE_FORMAT
     "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/trace-format.sls")
 
+# Set here rather than beside the lanes that judge it, because the lanes which
+# only USE it come first: a SOURCES entry naming a variable not yet set expands
+# to nothing, so the dependency is dropped without a word.
+set(HTTPARSE_ADAPTER
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/adapter.sls")
+
 httparse_add_scheme_lane(
   NAME httparse.unit.trace-format.chez.source
   BACKEND chez
@@ -924,6 +930,26 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- Chunked bodies (M5) ----------------------------------------------------
+#
+# One case per distinct chunk shape, in llhttp's own trace text. The ratchet
+# runs every chunked fixture at every chunk size; this lane is the literal
+# expectation that survives a corpus refresh.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.chunked-body.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/chunked-body-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/chunked-body-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- The checked-in generated parser (M2 Slice 4) ---------------------------
 #
 # A derived artifact, committed so that what this project ships is reviewable as
@@ -947,9 +973,6 @@ httparse_add_scheme_lane(
   LABELS determinism)
 
 # --- The conformance adapter and driver (M2 Slice 4) ------------------------
-
-set(HTTPARSE_ADAPTER
-    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/adapter.sls")
 
 # The instrument, judged on hand-built events before any parser runs
 # (decision 0008 item 4).

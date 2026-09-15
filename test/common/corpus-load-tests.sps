@@ -200,6 +200,33 @@
                 (corpus-parse-file (read-text (string-append corpus-dir "/" rel))))
               corpus-files)))
 
+;; Every reason llhttp's chunk-extension states can emit, in the order
+;; `src/llhttp/http.ts` writes them.
+(define chunk-extension-reasons
+  '("Invalid character in chunk extensions"
+    "Invalid character in chunk extensions name"
+    "Missing expected CR after chunk extension name"
+    "Invalid character in chunk extensions value"
+    "Missing expected CR after chunk extension value"
+    "Invalid character in chunk extensions quoted value"
+    "Invalid quoted-pair in chunk extensions quoted value"
+    "Invalid character in chunk extensions quote value"))
+
+;; Does any expectation line in the corpus carry this reason? Matched as a
+;; SUBSTRING of the whole line, because a reason arrives inside
+;; `off=N error code=C reason="..."`.
+(define (corpus-records-reason? reason)
+  (let ((lines (map expectation-text
+                    (apply append (map fixture-expected (load-all))))))
+    (exists (lambda (line) (substring-of? reason line)) lines)))
+
+(define (substring-of? needle hay)
+  (let ((n (string-length needle)) (h (string-length hay)))
+    (let loop ((i 0))
+      (cond ((> (+ i n) h) #f)
+            ((string=? needle (substring hay i (+ i n))) #t)
+            (else (loop (+ i 1)))))))
+
 (harness-group "the vendored corpus"
   (lambda ()
     (harness-case "the corpus directory was provided to the lane"
@@ -254,6 +281,23 @@
         (check-equal "patterns"
                      (length (filter expectation-pattern?
                                      (apply append (map fixture-expected (load-all)))))
-                     0)))))
+                     0)))
+    (harness-case "only two of llhttp's eight chunk-extension reasons are recorded"
+      (lambda ()
+        ;; WHICH ARMS THE ORACLE CAN JUDGE. llhttp's chunk-extension states can
+        ;; emit eight distinct reasons; the vendored corpus records two. The six
+        ;; below are translated from `src/llhttp/http.ts` and no fixture can
+        ;; confirm their offsets -- which the M5 mutation pass showed by
+        ;; surviving in EVERY lane, a finding about the corpus rather than about
+        ;; the grammar.
+        ;;
+        ;; This is the notice that the situation changed: a refresh that adds a
+        ;; fixture for any of the six turns this red, and the response is to
+        ;; check the arm against the new trace, not to update the number.
+        (check-equal "recorded"
+                     (filter (lambda (reason) (corpus-records-reason? reason))
+                             chunk-extension-reasons)
+                     '("Invalid character in chunk extensions"
+                       "Invalid character in chunk extensions quoted value"))))))
 
 (harness-finish)

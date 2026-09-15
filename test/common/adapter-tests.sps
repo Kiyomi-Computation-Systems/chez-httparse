@@ -42,12 +42,14 @@
         ;; A callback added to the grammar without a row here raises at the
         ;; first fixture that reaches it rather than being rendered as
         ;; something plausible.
-        (check-equal "rows" (length adapter-trace-names) 16)
+        (check-equal "rows" (length adapter-trace-names) 22)
         (check-equal "spans"
                      (map car (filter (lambda (r) (eq? (cadr r) 'span))
                                       adapter-trace-names))
                      '(on-method-data on-url-data on-protocol-data on-version-data
-                       on-header-field-data on-header-value-data on-body-data))))
+                       on-header-field-data on-header-value-data on-body-data
+                       on-chunk-extension-name-data
+                       on-chunk-extension-value-data))))
     (harness-case "an unknown callback is refused, not guessed"
       (lambda ()
         (check "refused"
@@ -95,6 +97,33 @@
                                                        '((method . 6) (http-major . 1)
                                                          (http-minor . 1) (flags . 0)
                                                          (content-length . "0"))))))))
+    (harness-case "a count line renders llhttp's one number"
+      (lambda ()
+        ;; request/transfer-encoding.md#3's first chunk header, built from a
+        ;; field value rather than from a parser.
+        (check-equal "chunk header"
+                     (line (adapter-event-for 'on-chunk-header 52 #f
+                                              '((content-length . 10))))
+                     '("off=52 chunk header len=10"))
+        ;; The zero chunk. `len=0` is a line llhttp writes for real messages,
+        ;; which is exactly why the field may not be defaulted.
+        (check-equal "the zero chunk"
+                     (line (adapter-event-for 'on-chunk-header 67 #f
+                                              '((content-length . 0))))
+                     '("off=67 chunk header len=0"))))
+    (harness-case "a count line with its field missing is refused, not zeroed"
+      (lambda ()
+        (check "no fields at all"
+               (refuses? (lambda () (adapter-event-for 'on-chunk-header 52 #f #f))))
+        (check "the wrong field"
+               (refuses? (lambda () (adapter-event-for 'on-chunk-header 52 #f
+                                                       '((method . 3))))))))
+    (harness-case "the count field is the one the chunk size accumulates into"
+      (lambda ()
+        ;; llhttp reuses `content_length` for the chunk size rather than
+        ;; adding a field, and its callback prints that one. A second field
+        ;; here would mean this layer had chosen a name of its own.
+        (check-equal "field" adapter-count-field 'content-length)))
     (harness-case "the state fields are llhttp's five, in its print order"
       (lambda ()
         ;; The recorder reads exactly these off the parser. A sixth added to
@@ -145,6 +174,7 @@
                        (invalid-url . 7) (invalid-constant . 8)
                        (invalid-version . 9) (invalid-header-token . 10)
                        (invalid-content-length . 11)
+                       (invalid-chunk-size . 12)
                        (invalid-transfer-encoding . 15)
                        (paused-upgrade . 22) (paused-h2-upgrade . 23)
                        (cr-expected . 25) (unexpected-space . 30)))))
@@ -162,8 +192,12 @@
                      '("off=18 error code=10 reason=\"Invalid header token\""))))
     (harness-case "an unmapped code is refused, not defaulted"
       (lambda ()
+        ;; `invalid-status` is a RESPONSE error and belongs to M7. The example
+        ;; here has to be a code no milestone has reached yet, so it moves as
+        ;; the table grows -- it was `invalid-chunk-size` until M5 gave that
+        ;; one a number.
         (check "refused"
-               (refuses? (lambda () (adapter-error-event 'invalid-chunk-size "x" 0))))))
+               (refuses? (lambda () (adapter-error-event 'invalid-status "x" 0))))))
     (harness-case "unexpected-eof has no number, deliberately"
       (lambda ()
         ;; llhttp prints nothing at all when input runs out mid-token, so a

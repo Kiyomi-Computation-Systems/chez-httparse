@@ -245,6 +245,41 @@ fixture that records it is one of the nine the pause gap blocks.
 `chunk header len=`, `chunk complete`, `chunk_extension_name` /
 `chunk_extension_value` spans, trailers, the zero chunk, `invalid-chunk-size`.
 
+**Done, in two slices.** Ratchet **96 → 113 passing**, 77 not-yet, 84
+deferred — all seventeen chunked fixtures, which is every one the measurement
+at M4's close named.
+
+| | |
+|---|---|
+| ⓪ | the chunk reader, the zero chunk and trailers (+13) |
+| ① | chunk extensions: names, values, quoted values (+4) |
+
+**The chunk reader added no field and no span.** llhttp accumulates the size
+into `content_length` and prints that field from `on_chunk_header`, so the
+size shares the field a fixed-length body counts down, the data shares
+`span[body]`, and the zero chunk shares `header_field_start` — trailers are
+the header section again, told apart by a flag. The whole of the trailer
+support is one field-branch and one callback node.
+
+**Six of llhttp's eight chunk-extension reasons are unrecorded in the
+corpus.** The mutation pass found it by surviving in every lane, and a search
+of all 274 fixtures confirms it: only `Invalid character in chunk extensions`
+and `... quoted value` appear. What stands behind the other six is the
+llparse IDIOM rather than the arm — `skipTo` past the byte, `.otherwise` at
+it, a bare-LF peek at it, a `.match` past it — and each idiom is measured
+somewhere the corpus can see. The corpus-load lane pins the count at two, so a
+refresh that brings a fixture for any of the six goes red.
+
+The `span-active-at-pause` rule cost one reorder: llhttp opens the extension
+value's span and THEN fires the name's complete event, and a callback
+reachable with a span open is refused. Both steps are zero-width and land on
+the same byte, so the trace cannot tell — and the order here is the one that
+stays right if the callback ever pauses.
+
+**M5 has no request fixture left that chunked bodies alone can reach.** The
+eleven remaining are M6 (nine) and M11 (two), exactly as measured at M4's
+close.
+
 ### M6 — the message loop
 
 `should_keep_alive`, `message_needs_eof`, the finish states and
@@ -291,10 +326,15 @@ under-counts others, and no care with the arithmetic fixes that.
 | M2 | 17 | 9 |
 | M3 | 44 cumulative | 29 |
 | M4 | +15 and a share of 63 | 87 cumulative, +58 |
+| M5 | — | 113 cumulative, +17 |
 
 M2 and M3 both fell short; M4 overshot, because the header-section row's
 fixtures mostly needed framing and the `message complete` row's mostly did not
-need chunks. `Content-Length: 1000000000000000000000` is the case that shows
+need chunks. **M5 hit its number exactly, and that is the table's own point
+rather than a counter-example**: its seventeen were not read off this table at
+all, but measured at M4's close by running every remaining fixture and reading
+its first mismatch. A count taken that way is a prediction; a count read off a
+grouping is an ordering. `Content-Length: 1000000000000000000000` is the case that shows
 the mechanism: it errors inside the header section and buckets there, but
 llhttp's value span is 21 of its 22 digits — bounded by where the accumulator
 overflows — so only the framing milestone could ever produce it.

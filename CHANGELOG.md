@@ -258,6 +258,39 @@ the bootstrap slice design is
   fingerprint `12284084569705248381`. All three upstream briefs are now
   discharged.
 
+- **Chunked bodies** (M5, two slices), taking the ratchet from **96 to 113
+  passing** (77 not-yet, 84 deferred). All seventeen of the corpus's chunked
+  request fixtures pass, and **no request fixture is left that chunks alone
+  can reach**.
+
+  A hex size, `chunk header len=`, the data as `span[body]`, `chunk complete`,
+  and the whole extension grammar — names, values, quoted values with escapes,
+  and their four spans and events. The size accumulates into
+  `content-length`, the field a fixed-length body counts down, because llhttp
+  reuses it and prints it; so the chunk reader shares the body span and the
+  counted consume rather than adding either.
+
+  **The zero chunk re-enters the header section.** Trailers are parsed by the
+  same states a header block uses, and a flag the zero chunk sets is the only
+  thing that tells the empty line at the end which block it just closed —
+  `chunk complete` when it is a trailer, `headers complete` when it is not.
+
+  Exact in ways easy to get wrong, each a check: a space after the size is
+  matched into a lenient test strict mode refuses, so its error is one **past**
+  the space, while the catch-all reports **at** the byte; a CR already
+  consumed stays consumed when no LF follows; an extension span closes at its
+  delimiter and its event fires past it, 88 and 99 rather than 88 and 98; and
+  a quoted value's span **includes both quotes**, so it is two bytes longer
+  than its text.
+
+  **Six of llhttp's eight chunk-extension reasons are unrecorded in the
+  corpus**, which the mutation pass found by surviving in every lane. They are
+  translated from `src/llhttp/http.ts` and what stands behind each is an idiom
+  the corpus measures elsewhere; the grammar names the idiom arm by arm, and
+  the corpus-load lane pins the count at two so a refresh that brings evidence
+  goes red rather than quiet. The chunk-size overflow shim is the same shape:
+  no fixture in the corpus carries a chunk larger than 51.
+
 ### Removed
 
 ### Fixed
