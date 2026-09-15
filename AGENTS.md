@@ -196,6 +196,44 @@ parser directly. When a mutation's outcome differs between two lanes, the
 DIFFERENCE is the finding — run it against both before concluding anything
 from either.
 
+The fourth kind is its complement, and it points somewhere else entirely.
+**When a mutation survives in EVERY lane, suspect the oracle before the test
+set.** Three of M5's nineteen did, all in the chunk-extension machine, and the
+cause was not a missing test: of the eight reasons llhttp's extension states
+can emit, the vendored corpus records **two**. There was nothing to write a
+test against. A same-in-every-lane survivor is the shape that tells you so —
+a difference between lanes is about your checks, an agreement across them is
+about your evidence.
+
+## Check what the oracle covers, not only what your code does
+
+Having found an arm the oracle cannot judge, the tempting fix is a test that
+asserts what the parser currently does there. **Do not.** That is
+`numbers in a test come from the oracle` with the source of the number hidden
+one step further back, and this repo's `.match`/`.peek` trap has been wrong
+three times *precisely* where no fixture looked.
+
+Two things are worth doing instead, and M5 did both.
+
+**Name the idiom, not the arm.** An unmeasured arm is usually an instance of a
+pattern that *is* measured somewhere else. Each of M5's six unrecorded
+extension errors is one of four llparse idioms — `end().skipTo(error)` one
+past the byte, `.otherwise(error)` at it, a bare-LF `.peek` at it, `.match`
+past it — and every one of those four is pinned by a fixture in some other
+production. The grammar now says which, arm by arm. That is weaker evidence
+than a trace and it is honest about being weaker.
+
+**Then pin the oracle's coverage as a check.** The corpus-load lane asserts
+which two of the eight reasons the corpus records. It is a fact about the
+fixtures, so it needs no parser and can be neither a snapshot nor a
+change-detector — and a corpus refresh that brings a fixture for any of the
+six turns it red. The right response to that red is to check the arm against
+the new trace, not to update the number; the case says so.
+
+A gap you have measured and pinned is a different thing from a gap you have
+described. This is `make the refusal a value` applied to the oracle instead of
+to the parser.
+
 ## A blocked fixture stops gating everything else it covered
 
 A fixture deferred or blocked for one reason was probably holding down several.
@@ -243,6 +281,11 @@ None is obvious from reading the code.
   (`vendor/chez-srfi/%3a64/testing-impl.scm:568-571`: the R6RS
   `%test-evaluate-with-catch` is `(guard (ex (else #F)) …)`).
 * Chez evaluates argument expressions right-to-left in compiled library code
+* A CMake variable read before it is `set` expands to **nothing**, with no
+  warning. `test/CMakeLists.txt` defined `HTTPARSE_ADAPTER` below two lanes
+  that named it in `SOURCES`, so both silently dropped that dependency. A
+  lane's `SOURCES` list is the one place this hides well, because the lane
+  still runs and still passes.
 
 ## Claims about other people's code
 

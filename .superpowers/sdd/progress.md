@@ -1254,3 +1254,42 @@ that name it, so the header-section lane's SOURCES entry expanded to nothing
 and the dependency was dropped without a word. Moved up beside
 HTTPARSE_TRACE_FORMAT.
 
+CLOSING RITUAL COMPLETE (2026-09-15). PR #10 squash-merged as 45f08a0
+"feat(grammar): M5 — chunked bodies, and the ratchet reaches 113 (#10)".
+Local main fast-forwarded, branch deleted locally (after an empty diff against
+main) and on the remote. Merged main re-verified from a CLEAN build:
+make test-all 58/58, ratchet 113 / 77 / 84, and the conformance lane green
+under the full scan as well as the pr preset. CI on the PR head was the
+billing refusal, not a test result -- linux-amd64 failure steps=0, no logs,
+3s (decision 0004).
+https://github.com/Kiyomi-Computation-Systems/chez-httparse/pull/10
+
+REFLECTION. One standard extended, one added, one trap recorded.
+
+  1. "Mutate by inverting a branch" gained a FOURTH kind of survivor, the
+     complement of M4's third. When a mutation survives in EVERY lane, suspect
+     the ORACLE before the test set. A difference between lanes is about your
+     checks; an agreement across them is about your evidence. Three of M5's
+     nineteen survived everywhere and there was nothing to write a test
+     against -- the corpus records two of eight extension reasons.
+  2. NEW: "Check what the oracle covers, not only what your code does." Having
+     found an arm no fixture can judge, do not assert what the parser
+     currently does there -- that is `numbers in a test come from the oracle`
+     with the source hidden one step further back, and the `.match`/`.peek`
+     trap has been wrong three times precisely where no fixture looked.
+     Instead name the IDIOM behind the arm and where that idiom IS measured,
+     then pin the oracle's coverage as a check. The corpus-load case needs no
+     parser, so it can be neither a snapshot nor a change-detector, and a
+     refresh that brings evidence turns it red.
+  3. TRAP: a CMake variable read before it is `set` expands to nothing with no
+     warning, and a lane's SOURCES list is where that hides best -- the lane
+     still runs and still passes.
+
+Nothing routed to memory: every finding is in the tree (AGENTS.md, the
+grammar, the corpus-load lane, this ledger).
+
+NEXT: M6, the message loop. Nine fixtures -- five in connection.md, three in
+finish.md, one in pipelining.md -- and its exit criterion is all 124 strict
+request fixtures, which is the point where the server layer can begin against
+this parser rather than waiting for the release.
+
