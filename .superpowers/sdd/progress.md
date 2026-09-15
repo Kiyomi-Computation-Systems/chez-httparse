@@ -1362,3 +1362,51 @@ REFUSED-AT-VERIFICATION -- and was rewritten as an inversion (the space arm
 and the illegal-byte arm swapped), which two cases then caught. AGENTS.md's
 "mutate by inverting" rule, earning its place a fourth time.
 
+CLOSING RITUAL COMPLETE (2026-09-15). PR #11 squash-merged as b18751a
+"feat(grammar): M6 — the message loop, and every strict request fixture
+passes (#11)". Local main fast-forwarded, branch deleted locally (after an
+empty diff against main) and on the remote. Merged main re-verified from a
+CLEAN build: make test-all 62/62, ratchet 124 / 66 / 84, all 124 in-scope
+request fixtures passing, and the conformance lane green under the full scan
+as well as the pr preset. CI on the PR head was the billing refusal, not a
+test result -- linux-amd64 failure steps=0, no logs, 5s (decision 0004).
+https://github.com/Kiyomi-Computation-Systems/chez-httparse/pull/11
+
+REFLECTION. Two standards extended, one tally corrected.
+
+  1. "Claims about other people's code" now covers claims that shape how a
+     LANE WORKS, not only ones entering a decision record -- and those are
+     worth more, because a lane's model is load-bearing for every milestone
+     after it. The driver carried "llhttp's own harness calls `llhttp_finish`
+     only for the `*-finish` fixture types" from M1. It does not; the hook is
+     one line and prints a field. The claim was inferred from the fixture
+     type's NAME and reading it took two minutes once anyone looked.
+
+     With it, the observation that made it last: A CORRECT CHECK DOES NOT
+     VOUCH FOR THE THEORY THAT PRODUCED IT. The wrong model was protected by
+     a right refusal -- the eof path produced an `unexpected-eof` the oracle
+     never records, the adapter refused it exactly as it should, and three
+     fixtures stayed honestly red. Nothing shipped wrong. But the red had an
+     explanation and the explanation was TRUE, so nobody looked for a second
+     one. When a fixture has been red for more than one milestone and you
+     have an explanation, its being true is not evidence that it is complete.
+
+  2. "An estimate read off a grouping is not a prediction" gained the other
+     half: A MEASUREMENT THAT NAMES A CAPABILITY STILL DOES NOT SCOPE IT.
+     M4's close put two fixtures behind M11 and was right that they need the
+     url sub-parser; what they needed OF it was eight nodes against 221
+     lines. "Needs X" is not "needs all of X", and the size is answered by
+     reading the fixture, not the attribution.
+
+  3. The collapse-mutation tally is now five milestones running (three in M2,
+     two in M3, six in M4, one in M6).
+
+Nothing routed to memory: every finding is in the tree (AGENTS.md, decision
+0016, the grammar, this ledger).
+
+NEXT: M7, responses. 66 fixtures -- the status line, the `status` span,
+`status complete`, and the response branch of the framing table (1xx / 204 /
+304, HEAD skip-body, and the `message_needs_eof` arms M6 left to it, which is
+the whole of what `should_keep_alive` does not yet read). Its exit is
+decision 0009's v0.1 bar: 190 cumulative.
+

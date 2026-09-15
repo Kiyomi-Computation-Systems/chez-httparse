@@ -133,6 +133,18 @@ So an estimate of this kind is a starting order for the work, and it stops
 being an estimate the moment a measurement exists. The ratchet is the
 measurement: publish the number it reports, not the number the table implied.
 
+**And a measurement that names a capability still does not scope it.** M4's
+close measured two request fixtures as needing the url sub-parser, which is
+deferred past v0.1 — correctly: they do need it. What they needed *of* it was
+eight nodes, against a 221-line sub-parser, because both are about the
+target's boundary and neither touches its structure. M6 met its exit criterion
+instead of amending it, and only because someone opened the fixtures to see
+which part they wanted.
+
+"Needs X" is not "needs all of X". A measurement tells you which milestone a
+fixture belongs behind; the size of the debt is a separate question, and it is
+answered by reading the fixture, not the attribution.
+
 ## What you cannot reproduce, refuse — and make the refusal a value
 
 An instrument that fills a gap with a plausible value produces a comparison
@@ -166,8 +178,10 @@ guaranteed structural refusal, every time.
 
 Six of M4's first-attempt mutations were exactly this — a `field-branch` whose
 two targets were collapsed onto one, so the error behind the other went
-unreachable. Two more in M3, three in M2. The habit is natural (removing a
-check is the obvious way to break it) and it is wasted every time.
+unreachable. Two more in M3, three in M2, one in M6, where routing an
+illegal-byte arm to a span end left its error node with no path. Five
+milestones running. The habit is natural (removing a check is the obvious way
+to break it) and it is wasted every time.
 
 **Point the branch the wrong way instead.** Swap the true and false targets, or
 send the arm to the node its neighbour uses. The machine stays well-formed, the
@@ -301,3 +315,27 @@ was written down, and each was caught only by executing the specific claim.
 This is `prefer a check to a comment` pointed outward. The traps above are all
 about our own code being surprising; these are about someone else's code
 differing from its documentation, or from what it did last month.
+
+**The rule is not only for decision records. A claim that shapes how a LANE
+WORKS is the same claim, and it is worth more.** The conformance driver
+carried this comment from M1:
+
+> llhttp's own harness calls `llhttp_finish` only for the `*-finish` fixture
+> types
+
+It does not. `llhttp__test_finish` is one line, it prints `s->finish`, and it
+never calls `llhttp_finish` at all. The claim was inferred from the fixture
+type's NAME, written into a comment, and built into the driver's model for
+four milestones — and reading it took two minutes once anyone looked.
+
+**A correct check does not vouch for the theory that produced it.** What made
+this last so long is that the wrong model was *protected by a right refusal*:
+driving the parser to its end-of-input states produced an `unexpected-eof` the
+oracle never records, the adapter refused it exactly as it should, and three
+fixtures stayed honestly red. Nothing shipped wrong. But the red had an
+explanation, and the explanation was true — so nobody went looking for a
+second one.
+
+So: when a fixture has been red for more than one milestone and you have an
+explanation for it, the explanation being true is not evidence that it is
+complete. Go and read the thing that produces the line.
