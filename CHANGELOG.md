@@ -35,11 +35,28 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   so it is pinned against a LIVE llhttp built in skip-body mode from the
   commit the corpus came from.
 
+- **A milestone plan's header is checked against its own ladder.** It had gone
+  stale twice: M8 shipped while the header still introduced the document as a
+  design, and M9 landed one pull request later and left the Goal section
+  calling M9 deferred while its own heading said DONE. The lane fails a
+  decision link that resolves to no record, and a deferral sentence in the
+  header that names a milestone marked DONE. Three synthetic documents witness
+  it, so deleting either check reddens instead of passing quietly, and a run
+  that finds no ladder to judge fails rather than reporting success.
+
 ### Changed
 
 - `trace-recorder-bindings` takes the harness mode as a third required
   argument. `drive-feed!` joins `(httparse test drive)`, so the conformance
   lane and the unit lanes resume a pause through one loop rather than two.
+
+- The milestone plan's header no longer names a decision range, and no longer
+  enumerates which milestones are deferred. Both restated state the tree
+  already carries, and both drifted the moment a record or a milestone landed;
+  the milestone sections carry their own status. A check that the range ends at
+  the highest-numbered record was deliberately NOT written: the records are
+  project-wide, so a later decision need not concern that plan, and such a lane
+  would demand a false edit.
 
 ## [0.1.0] - 2026-09-15
 
