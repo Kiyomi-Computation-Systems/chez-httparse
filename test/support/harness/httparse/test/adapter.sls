@@ -19,10 +19,11 @@
 ;;; instrument cannot measure a parser (decision 0008 item 4).
 (library (httparse test adapter)
   (export adapter-trace-names adapter-error-codes adapter-state-fields
-          adapter-count-field
-          adapter-event-for adapter-error-event
+          adapter-count-field adapter-finish-states adapter-finish-statuses
+          adapter-event-for adapter-error-event adapter-finish-event
           make-trace-recorder trace-recorder-bindings trace-recorder-events
           trace-recorder-note-error! trace-recorder-note-paused!
+          trace-recorder-note-finish!
           adapter-error? adapter-error-detail)
   (import (rnrs) (httparse test trace-format) (byte-machine runtime))
 
@@ -180,6 +181,22 @@
            (make-trace-mark offset (count-line-text name fields)))
           (else (adapter-refuse 'adapter-event-for "unknown callback kind"))))))
 
+  ;; llhttp's FINISH states. A fourth value is one this layer cannot spell --
+  ;; `llhttp_finish` itself calls `abort()` on one -- so it is refused rather
+  ;; than printed.
+  (define adapter-finish-states '(0 1 2))
+
+  ;; adapter-finish-event : ExactInteger -> Event
+  ;; `off=NULL finish=N`, which is what llhttp's fixture harness prints once
+  ;; the input runs out. NOT A CALLBACK AND NOT AN OUTCOME: the hook reads
+  ;; `s->finish` and prints it with a NULL position, so there is no offset and
+  ;; the number is a parser field like the five on a state line.
+  (define (adapter-finish-event value)
+    (unless (and (integer? value) (exact? value) (memv value adapter-finish-states))
+      (adapter-refuse 'adapter-finish-event
+        "the parser's finish field is not one of llhttp's three states"))
+    (make-trace-mark-at-null (string-append "finish=" (number->string value))))
+
   ;; adapter-error-event : Symbol String Nat -> Event
   ;; `off=N error code=C reason="R"`, the shape llhttp's driver prints.
   (define (adapter-error-event code reason offset)
@@ -268,6 +285,29 @@
     (recorder-push! r (adapter-error-event (parser-error-code pause)
                                            (parser-error-reason pause)
                                            (parser-error-offset pause))))
+
+  ;; The outcomes a `*-finish` fixture is recorded ending in. All four in the
+  ;; corpus run out of input cleanly, so those are the ones this layer can
+  ;; spell.
+  (define adapter-finish-statuses '(need-input stopped finished))
+
+  ;; trace-recorder-note-finish! : Recorder Parser (Option Symbol) -> Void
+  ;; Reads the parser's own `finish` field, the way the state-line arm reads
+  ;; its five. Called once, after the last feed, and only for the fixture
+  ;; types whose harness asks for it.
+  ;;
+  ;; AN ERRORED `*-finish` PARSE IS REFUSED, NOT GUESSED. `llhttp__test_finish`
+  ;; prints unconditionally, but whether llparse's driver still calls it after
+  ;; a failed `llparse_execute` is not visible from the vendored sources, and
+  ;; every `*-finish` fixture in the corpus parses cleanly -- so no trace
+  ;; records the combination. Like every other row with nothing to rename,
+  ;; this refuses, which makes the fixture fail rather than the lane crash.
+  (define (trace-recorder-note-finish! r p status)
+    (unless (or (not status) (memq status adapter-finish-statuses))
+      (adapter-refuse 'trace-recorder-note-finish!
+        (string-append "a *-finish fixture ended in `" (symbol->string status)
+                       "`, which the oracle never records")))
+    (recorder-push! r (adapter-finish-event (parser-field-ref p 'finish))))
 
   ;; trace-recorder-note-error! : Recorder ParserError -> Void
   (define (trace-recorder-note-error! r e)

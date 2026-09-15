@@ -81,10 +81,17 @@
 (define interpreted
   (make-interpreted-machine (verify-machine (make-request-line-machine))))
 
-;; llhttp's own harness calls `llhttp_finish` only for the `*-finish` fixture
-;; types (test/fixtures/index.ts), so this does too -- feeding everything and
-;; then finishing unconditionally would invent an end-of-input error the oracle
-;; never records.
+;; llhttp's own harness asks for a finish LINE only for the `*-finish` fixture
+;; types (test/fixtures/index.ts, which defines `LLPARSE__TEST_FINISH` for
+;; exactly those two), so this does too.
+;;
+;; WHAT THAT HOOK DOES IS PRINT A FIELD, NOT END A PARSE.
+;; `llhttp__test_finish` is one line -- `llparse__print(NULL, NULL,
+;; "finish=%d", s->finish)`. It never calls `llhttp_finish`, so no callback
+;; fires and no end-of-input state is entered; the trace simply gains
+;; `off=NULL finish=N` after the last feed. Driving this parser to its
+;; eof-targets instead would invent an `unexpected-eof` the oracle never
+;; records, which is what the adapter was refusing before M6.
 (define (finishing? f)
   (let ((type (fixture-meta-ref f 'type #f)))
     (and (string? type)
@@ -103,11 +110,7 @@
     (let loop ((bounds (corpus-chunk-bounds len size)) (result #f))
       (cond
        ((null? bounds)
-        (let ((final (if (and (finishing? f)
-                              (or (not result)
-                                  (eq? (parser-result-status result) 'need-input)))
-                         (parser-finish! p)
-                         result)))
+        (let ((final result))
           (when (and final (eq? (parser-result-status final) 'error))
             (trace-recorder-note-error! r (parser-result-error final)))
           ;; A PAUSE IS AN OUTCOME, NOT AN ENDING, and it is a renameable
@@ -116,6 +119,12 @@
           ;; from a failed one.
           (when (and final (eq? (parser-result-status final) 'paused))
             (trace-recorder-note-paused! r (parser-result-pause final)))
+          ;; The adapter refuses an outcome it has no row for, here as
+          ;; everywhere else -- so a `*-finish` fixture that did not parse
+          ;; cleanly is a FAILING FIXTURE and not a crashed lane.
+          (when (finishing? f)
+            (trace-recorder-note-finish!
+             r p (and final (parser-result-status final))))
           (trace-format (trace-recorder-events r))))
        (else
         (let ((res (parser-feed! p bv (caar bounds) (cdar bounds))))

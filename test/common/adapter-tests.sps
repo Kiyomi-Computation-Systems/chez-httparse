@@ -191,6 +191,24 @@
                      (line (adapter-error-event 'invalid-header-token
                                                 "Invalid header token" 18))
                      '("off=18 error code=10 reason=\"Invalid header token\""))))
+    (harness-case "the finish line is off=NULL, and its number is a field"
+      (lambda ()
+        ;; NOT A CALLBACK AND NOT AN OUTCOME. llhttp's fixture harness prints
+        ;; `s->finish` once the input runs out, with a NULL position -- so
+        ;; there is no offset to render and the number is a parser field like
+        ;; any other (decision 0014).
+        (check-equal "a complete message"
+                     (line (adapter-finish-event 0))
+                     '("off=NULL finish=0"))
+        (check-equal "stopping here would lose data"
+                     (line (adapter-finish-event 2))
+                     '("off=NULL finish=2"))))
+    (harness-case "a finish value that is not a state is refused"
+      (lambda ()
+        ;; llhttp has three, and a fourth would be a field this layer cannot
+        ;; spell -- `abort()` is what its own `llhttp_finish` does with one.
+        (check "three" (refuses? (lambda () (adapter-finish-event 3))))
+        (check "not a number" (refuses? (lambda () (adapter-finish-event "0"))))))
     (harness-case "an unmapped code is refused, not defaulted"
       (lambda ()
         ;; `invalid-status` is a RESPONSE error and belongs to M7. The example

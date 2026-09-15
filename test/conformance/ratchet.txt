@@ -59,9 +59,9 @@ passing  request/content-length.md#15
 deferred request/content-length.md#16                    skip-body
 passing  request/content-length.md#17
 deferred request/content-length.md#18                    lenient
-not-yet  request/finish.md#1
-not-yet  request/finish.md#2
-not-yet  request/finish.md#3
+passing  request/finish.md#1
+passing  request/finish.md#2
+passing  request/finish.md#3
 passing  request/invalid.md#1
 passing  request/invalid.md#2
 passing  request/invalid.md#3
