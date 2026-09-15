@@ -346,6 +346,26 @@ fixture's own numbers. M4 did this for the two upgrade arms — an upgrade with 
 body reads it, one without does not — and the mutation that collapses them
 survives without that case. It was written because the survivor pointed at it.
 
+## A dependency that shipped does not un-block anything by itself
+
+M4 measured nine request fixtures as blocked upstream: a generator pause
+carried no code and no reason, so `error code=22 reason="Pause on
+CONNECT/Upgrade"` could not be rendered. The brief was written, upstream
+shipped it at `v0.4.0`, and this tree has been pinned there since before M5.
+
+M9 then found there was nothing left to build. Every event node already
+declared its pause continuation as the place an unpaused run would have gone,
+so all 24 `pausing` fixtures passed on the lane's FIRST run, at every chunk
+size, once the harness could say `off=N pause`. Four milestones ran with a
+capability the tree already had, recorded as absent.
+
+The ledger does not re-ask. A fixture deferred with a reason keeps the reason
+after the reason stops being true, and the two-way ratchet cannot help: a
+`deferred` entry is not run, so it cannot start passing loudly. So when a
+dependency lands, go back to what its absence was blocking and ASK WHAT IS
+LEFT, rather than reading the old note. The cheapest form of the question is
+to promote the rows and run the lane — the answer takes one build.
+
 ## Explain the behaviour in the code and the version in the changelog
 
 The rename audit has caught the same thing in four consecutive milestones, most
