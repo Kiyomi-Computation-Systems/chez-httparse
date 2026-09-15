@@ -42,12 +42,14 @@
         ;; A callback added to the grammar without a row here raises at the
         ;; first fixture that reaches it rather than being rendered as
         ;; something plausible.
-        (check-equal "rows" (length adapter-trace-names) 18)
+        (check-equal "rows" (length adapter-trace-names) 22)
         (check-equal "spans"
                      (map car (filter (lambda (r) (eq? (cadr r) 'span))
                                       adapter-trace-names))
                      '(on-method-data on-url-data on-protocol-data on-version-data
-                       on-header-field-data on-header-value-data on-body-data))))
+                       on-header-field-data on-header-value-data on-body-data
+                       on-chunk-extension-name-data
+                       on-chunk-extension-value-data))))
     (harness-case "an unknown callback is refused, not guessed"
       (lambda ()
         (check "refused"

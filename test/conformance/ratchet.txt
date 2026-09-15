@@ -151,11 +151,11 @@ passing  request/transfer-encoding.md#4
 passing  request/transfer-encoding.md#5
 passing  request/transfer-encoding.md#6
 passing  request/transfer-encoding.md#7
-not-yet  request/transfer-encoding.md#8
+passing  request/transfer-encoding.md#8
 passing  request/transfer-encoding.md#9
-not-yet  request/transfer-encoding.md#10
-not-yet  request/transfer-encoding.md#11
-not-yet  request/transfer-encoding.md#12
+passing  request/transfer-encoding.md#10
+passing  request/transfer-encoding.md#11
+passing  request/transfer-encoding.md#12
 passing  request/transfer-encoding.md#13
 passing  request/transfer-encoding.md#14
 deferred request/transfer-encoding.md#15                 lenient

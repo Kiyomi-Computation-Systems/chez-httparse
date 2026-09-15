@@ -64,6 +64,10 @@
       ;; nothing else, so this reads that one field off the parser the way a
       ;; state line reads its five (decision 0014).
       (on-chunk-header           count-line "chunk header")
+      (on-chunk-extension-name-data      span  "chunk_extension_name")
+      (on-chunk-extension-name-complete  event "chunk_extension_name complete")
+      (on-chunk-extension-value-data     span  "chunk_extension_value")
+      (on-chunk-extension-value-complete event "chunk_extension_value complete")
       (on-chunk-complete         event      "chunk complete")
       (on-message-complete       event      "message complete")))
 

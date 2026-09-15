@@ -83,6 +83,38 @@
                                  (car expected) (and (pair? lines) (car lines))))
           (loop (cdr lines) (cdr expected))))))
 
+;; The prelude `request/transfer-encoding.md#8`, `#11` and `#12` share, and
+;; the fourteen lines it produces -- the same trick the PUT prelude plays
+;; above, for the three fixtures whose extensions are the point.
+(define ext-prelude "POST /chunked_w_unicorns_after_length HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n")
+
+(define ext-prelude-lines
+  '("off=0 message begin"
+    "off=0 len=4 span[method]=\"POST\""
+    "off=4 method complete"
+    "off=5 len=32 span[url]=\"/chunked_w_unicorns_after_length\""
+    "off=38 url complete"
+    "off=38 len=4 span[protocol]=\"HTTP\""
+    "off=42 protocol complete"
+    "off=43 len=3 span[version]=\"1.1\""
+    "off=46 version complete"
+    "off=48 len=17 span[header_field]=\"Transfer-Encoding\""
+    "off=66 header_field complete"
+    "off=67 len=7 span[header_value]=\"chunked\""
+    "off=76 header_value complete"
+    "off=78 headers complete method=3 v=1/1 flags=208 content_length=0"))
+
+(define (after-ext-prelude body)
+  (let loop ((lines (trace (string-append ext-prelude body)))
+             (expected ext-prelude-lines))
+    (if (null? expected)
+        lines
+        (begin
+          (unless (and (pair? lines) (string=? (car lines) (car expected)))
+            (assertion-violation 'after-ext-prelude "the prelude moved"
+                                 (car expected) (and (pair? lines) (car lines))))
+          (loop (cdr lines) (cdr expected))))))
+
 (harness-begin "unit.chunked-body")
 
 (harness-group "one chunk, then the zero chunk"
@@ -274,5 +306,109 @@
                        "off=79 chunk header len=5"
                        "off=79 len=5 span[body]=\"ABCDE\""
                        "off=84 error code=2 reason=\"Expected LF after chunk data\""))))))
+
+(harness-group "chunk extensions"
+  (lambda ()
+    (harness-case "request/transfer-encoding.md#8 -- names, values, and names alone"
+      (lambda ()
+        ;; EVERY COMPLETE FIRES PAST ITS DELIMITER. The name span ends AT the
+        ;; `=` or `;` and the event that follows fires one byte later, because
+        ;; llhttp peeks the delimiter to close the span and then skips it.
+        (check-equal "trace"
+                     (after-ext-prelude "5;ilovew3;somuchlove=aretheseparametersfor;another=withvalue\r\nhello\r\n6;blahblah;blah\r\n world\r\n0\r\n")
+                     '("off=80 len=7 span[chunk_extension_name]=\"ilovew3\""
+                       "off=88 chunk_extension_name complete"
+                       "off=88 len=10 span[chunk_extension_name]=\"somuchlove\""
+                       "off=99 chunk_extension_name complete"
+                       "off=99 len=21 span[chunk_extension_value]=\"aretheseparametersfor\""
+                       "off=121 chunk_extension_value complete"
+                       "off=121 len=7 span[chunk_extension_name]=\"another\""
+                       "off=129 chunk_extension_name complete"
+                       "off=129 len=9 span[chunk_extension_value]=\"withvalue\""
+                       "off=139 chunk_extension_value complete"
+                       "off=140 chunk header len=5"
+                       "off=140 len=5 span[body]=\"hello\""
+                       "off=147 chunk complete"
+                       "off=149 len=8 span[chunk_extension_name]=\"blahblah\""
+                       "off=158 chunk_extension_name complete"
+                       "off=158 len=4 span[chunk_extension_name]=\"blah\""
+                       "off=163 chunk_extension_name complete"
+                       "off=164 chunk header len=6"
+                       "off=164 len=6 span[body]=\" world\""
+                       "off=172 chunk complete"
+                       "off=175 chunk header len=0"))))
+    (harness-case "request/transfer-encoding.md#11 -- quoted values, quotes included"
+      (lambda ()
+        ;; THE QUOTES ARE IN THE SPAN. The value span opens on the byte after
+        ;; the `=` -- which is the opening quote -- and closes after the
+        ;; closing one, so a quoted value is two bytes longer than its text
+        ;; and an escaped `\\"` inside it is two bytes, not one.
+        (check-equal "trace"
+                     (after-ext-prelude "5;ilovew3=\"I \\\"love\\\"; \\\\extensions\\\\\";somuchlove=\"aretheseparametersfor\";blah;foo=bar\r\nhello\r\n6;blahblah;blah\r\n world\r\n0\r\n")
+                     '("off=80 len=7 span[chunk_extension_name]=\"ilovew3\""
+                       "off=88 chunk_extension_name complete"
+                       "off=88 len=28 span[chunk_extension_value]=\"\"I \\\"love\\\"; \\\\extensions\\\\\"\""
+                       "off=116 chunk_extension_value complete"
+                       "off=117 len=10 span[chunk_extension_name]=\"somuchlove\""
+                       "off=128 chunk_extension_name complete"
+                       "off=128 len=23 span[chunk_extension_value]=\"\"aretheseparametersfor\"\""
+                       "off=151 chunk_extension_value complete"
+                       "off=152 len=4 span[chunk_extension_name]=\"blah\""
+                       "off=157 chunk_extension_name complete"
+                       "off=157 len=3 span[chunk_extension_name]=\"foo\""
+                       "off=161 chunk_extension_name complete"
+                       "off=161 len=3 span[chunk_extension_value]=\"bar\""
+                       "off=165 chunk_extension_value complete"
+                       "off=166 chunk header len=5"
+                       "off=166 len=5 span[body]=\"hello\""
+                       "off=173 chunk complete"
+                       "off=175 len=8 span[chunk_extension_name]=\"blahblah\""
+                       "off=184 chunk_extension_name complete"
+                       "off=184 len=4 span[chunk_extension_name]=\"blah\""
+                       "off=189 chunk_extension_name complete"
+                       "off=190 chunk header len=6"
+                       "off=190 len=6 span[body]=\" world\""
+                       "off=198 chunk complete"
+                       "off=201 chunk header len=0"))))
+    (harness-case "request/transfer-encoding.md#12 -- a quoted value no quote closes"
+      (lambda ()
+        ;; The span still delivers what it read: the value closes at the CR
+        ;; and the CR is then skipped, so the error is one past it.
+        (check-equal "trace"
+                     (after-ext-prelude "5;ilovew3=\"abc\";somuchlove=\"def; ghi\r\nhello\r\n6;blahblah;blah\r\n world\r\n0\r\n")
+                     '("off=80 len=7 span[chunk_extension_name]=\"ilovew3\""
+                       "off=88 chunk_extension_name complete"
+                       "off=88 len=5 span[chunk_extension_value]=\"\"abc\"\""
+                       "off=93 chunk_extension_value complete"
+                       "off=94 len=10 span[chunk_extension_name]=\"somuchlove\""
+                       "off=105 chunk_extension_name complete"
+                       "off=105 len=9 span[chunk_extension_value]=\"\"def; ghi\""
+                       "off=115 error code=2 reason=\"Invalid character in chunk extensions quoted value\""))))
+    (harness-case "request/transfer-encoding.md#10 -- a semicolon a CR follows"
+      (lambda ()
+        ;; An extension must START with something. CR and SP are refused where
+        ;; a name is due, and both are MATCHED -- so the error is one past the
+        ;; CR at 97, not at it.
+        (check-equal "trace"
+                     (trace "POST /chunked_w_unicorns_after_length HTTP/1.1\r\nHost: localhost\r\nTransfer-encoding: chunked\r\n\r\n2;\r\naa\r\n0\r\n\r\n")
+                     '("off=0 message begin"
+                       "off=0 len=4 span[method]=\"POST\""
+                       "off=4 method complete"
+                       "off=5 len=32 span[url]=\"/chunked_w_unicorns_after_length\""
+                       "off=38 url complete"
+                       "off=38 len=4 span[protocol]=\"HTTP\""
+                       "off=42 protocol complete"
+                       "off=43 len=3 span[version]=\"1.1\""
+                       "off=46 version complete"
+                       "off=48 len=4 span[header_field]=\"Host\""
+                       "off=53 header_field complete"
+                       "off=54 len=9 span[header_value]=\"localhost\""
+                       "off=65 header_value complete"
+                       "off=65 len=17 span[header_field]=\"Transfer-encoding\""
+                       "off=83 header_field complete"
+                       "off=84 len=7 span[header_value]=\"chunked\""
+                       "off=93 header_value complete"
+                       "off=95 headers complete method=3 v=1/1 flags=208 content_length=0"
+                       "off=98 error code=2 reason=\"Invalid character in chunk extensions\""))))))
 
 (harness-finish)

@@ -265,6 +265,19 @@
   (define httparse-hex-bytes
     (append (range 48 57) (range 97 102) (range 65 70)))
 
+  (define DQUOTE 34)
+  (define BACKSLASH 92)
+  (define SEMICOLON 59)
+  (define EQUALS 61)
+
+  ;; llhttp's QDTEXT: the header bytes without the two a quoted string gives a
+  ;; meaning of its own. Derived from the same list rather than transcribed, so
+  ;; the two sets cannot drift apart -- and what llhttp allows after a
+  ;; backslash is the WHOLE header set, these two included.
+  (define httparse-qdtext-bytes
+    (filter (lambda (b) (not (or (= b DQUOTE) (= b BACKSLASH))))
+            httparse-header-bytes))
+
 
   ;; llhttp's SPECIAL_HEADERS: the five field names that select a value machine
   ;; rather than being copied through. `proxy-connection` shares CONNECTION's
@@ -502,6 +515,10 @@
            (make-callback-declaration 'on-headers-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-body-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-chunk-header 'event #t '() #f #f)
+           (make-callback-declaration 'on-chunk-extension-name-data 'span-data #t '() #f #f)
+           (make-callback-declaration 'on-chunk-extension-name-complete 'event #t '() #f #f)
+           (make-callback-declaration 'on-chunk-extension-value-data 'span-data #t '() #f #f)
+           (make-callback-declaration 'on-chunk-extension-value-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-chunk-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-message-complete 'event #t '() #f #f))
      (list (make-span-declaration 'method-span 'on-method-data #f #f)
@@ -510,7 +527,11 @@
            (make-span-declaration 'version-span 'on-version-data #f #f)
            (make-span-declaration 'header-field-span 'on-header-field-data #f #f)
            (make-span-declaration 'header-value-span 'on-header-value-data #f #f)
-           (make-span-declaration 'body-span 'on-body-data #f #f))
+           (make-span-declaration 'body-span 'on-body-data #f #f)
+           (make-span-declaration 'chunk-ext-name-span
+                                  'on-chunk-extension-name-data #f #f)
+           (make-span-declaration 'chunk-ext-value-span
+                                  'on-chunk-extension-value-data #f #f))
      ;; ONE CODE SYMBOL PER llhttp ERROR NUMBER, AND llhttp's REASON VERBATIM.
      ;; The corpus records `error code=N reason="..."`, and two of llhttp's
      ;; reasons are the same string under different numbers ("Expected CRLF
@@ -609,6 +630,29 @@
                                    "Expected LF after chunk data" #f)
            (make-error-declaration 'cr-after-chunk-data 'cr-expected
                                    "Missing expected CR after chunk data" #f)
+           ;; Six reasons under code 2 for one production, which is decision
+           ;; 0013's shape at its most extreme: llhttp names the place inside
+           ;; the extension where the byte was refused, and only the reason
+           ;; says which.
+           (make-error-declaration 'bad-chunk-ext 'strict
+                                   "Invalid character in chunk extensions" #f)
+           (make-error-declaration 'bad-chunk-ext-name 'strict
+                                   "Invalid character in chunk extensions name" #f)
+           (make-error-declaration 'bad-chunk-ext-value 'strict
+                                   "Invalid character in chunk extensions value" #f)
+           (make-error-declaration 'bad-chunk-ext-quoted 'strict
+                                   "Invalid character in chunk extensions quoted value" #f)
+           (make-error-declaration 'bad-chunk-ext-qp 'strict
+                                   "Invalid quoted-pair in chunk extensions quoted value" #f)
+           ;; llhttp's own wording, `quote value` and not `quoted value`, for
+           ;; the byte after a closed quoted string. A trace is compared
+           ;; BIT-EXACTLY, so the typo is part of the oracle.
+           (make-error-declaration 'bad-chunk-ext-quote-value 'strict
+                                   "Invalid character in chunk extensions quote value" #f)
+           (make-error-declaration 'cr-after-chunk-ext-name 'cr-expected
+                                   "Missing expected CR after chunk extension name" #f)
+           (make-error-declaration 'cr-after-chunk-ext-value 'cr-expected
+                                   "Missing expected CR after chunk extension value" #f)
            ;; PRI's HTTP/2 preface. llhttp calls it a pause in the reason and
            ;; implements it as an ERROR, which is why this one has a number to
            ;; rename and the CONNECT/Upgrade pause does not.
@@ -1302,7 +1346,9 @@
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'chunk-size-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-cr-after-chunk-size 'advance) #f))
+                              (make-edge 'e-cr-after-chunk-size 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher SEMICOLON)
+                              (make-edge 'chunk-extensions 'advance) #f))
         (make-edge 'e-bad-chunk-size 'reexecute) 'e-eof-none #f)
 
       (make-byte-dispatch-node 'chunk-size-almost-done
@@ -1340,6 +1386,158 @@
         (make-edge 'e-lf-after-chunk-data 'reexecute) 'e-eof-none #f)
 
       (ev 'chunk-complete 'on-chunk-complete 'chunk-size-start)
+
+      ;; --- chunk extensions ----------------------------------------------------
+      ;;
+      ;; `chunk-size ; name = value ; name ; name = "quoted" CRLF`, with the
+      ;; name and the value each delivered as a span and each followed by its
+      ;; own complete event.
+      ;;
+      ;; THE SPAN CLOSES AT ITS DELIMITER AND THE EVENT FIRES PAST IT. llhttp
+      ;; PEEKS the delimiter to end the span and then SKIPS it, which is why
+      ;; `request/transfer-encoding.md#8` records `span[chunk_extension_name]`
+      ;; at 88 for ten bytes and `chunk_extension_name complete` at 99 rather
+      ;; than 98. The shape here splits that into a span end, a dispatch that
+      ;; re-reads the delimiter, and one callback node per arm -- the same
+      ;; close-then-decide shape `after-value` uses in the header section, and
+      ;; the reason the dispatch can be shared is that every delimiter falls
+      ;; through the loop's own catch-all.
+      ;;
+      ;; THE BARE LF ARM DOES NOT SKIP. It is llhttp's one `.peek` that ends
+      ;; the span WITHOUT a `skipTo`, so its error lands AT the LF while every
+      ;; other arm's lands past its delimiter.
+      ;;
+      ;; SIX OF THE EIGHT REASONS BELOW ARE UNRECORDED. Of everything the
+      ;; extension states can report, the corpus carries exactly two --
+      ;; `Invalid character in chunk extensions` (#10) and `... quoted value`
+      ;; (#12) -- and the M5 mutation pass proved it by surviving in BOTH
+      ;; lanes when the other arms were changed. The corpus-load lane pins
+      ;; that count, so a refresh that brings evidence goes red rather than
+      ;; quiet.
+      ;;
+      ;; What stands behind the six is the IDIOM rather than the arm, and each
+      ;; idiom is measured somewhere the corpus can see:
+      ;;
+      ;;   end().skipTo(error)   one past the byte    the quoted catch-all, #12
+      ;;   .otherwise(error)     AT the byte          chunk_size_digit's, #24
+      ;;   .peek(LF, end(...))   AT the LF            the header value's
+      ;;                                              `Missing expected CR`
+      ;;   .match(byte, error)   one past the byte    chunk_extensions', #10
+      (make-byte-dispatch-node 'chunk-extensions
+        (list (make-byte-case (make-byte-set-matcher (list SP CR))
+                              (make-edge 'e-bad-chunk-ext 'advance) #f))
+        (make-edge 'chunk-ext-name-open 'reexecute) 'e-eof-none #f)
+
+      (make-span-start-node 'chunk-ext-name-open 'chunk-ext-name-span
+                            'chunk-ext-name #f)
+      (make-byte-dispatch-node 'chunk-ext-name
+        (list (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
+                              (make-edge 'chunk-ext-name 'advance) #f))
+        (make-edge 'chunk-ext-name-close 'reexecute) 'e-eof-chunk-ext-name #f)
+      (make-span-end-node 'chunk-ext-name-close 'chunk-ext-name-span
+                          'chunk-ext-name-after #f)
+      ;; The catch-all SKIPS the byte it refused and fires no complete event --
+      ;; llhttp's `.otherwise(end().skipTo(error))`, where the four named arms
+      ;; all announce the name and this one does not.
+      (make-byte-dispatch-node 'chunk-ext-name-after
+        (list (make-byte-case (make-exact-byte-matcher EQUALS)
+                              (make-edge 'chunk-ext-name-done-eq 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher SEMICOLON)
+                              (make-edge 'chunk-ext-name-done-semi 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'chunk-ext-name-done-cr 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'chunk-ext-name-done-lf 'reexecute) #f))
+        (make-edge 'e-bad-chunk-ext-name 'advance) 'e-eof-none #f)
+
+      ;; THE TWO ZERO-WIDTH STEPS ARE IN THE OTHER ORDER FROM llhttp'S, and
+      ;; the trace cannot tell. llhttp opens the value span and THEN fires the
+      ;; name's complete event; a callback reached with a span open is refused
+      ;; here (`span-active-at-pause`), because a pause there would strand the
+      ;; span. Both steps are zero-width and land on the byte after the `=`, so
+      ;; firing the event first produces the same line at the same offset --
+      ;; and it is the order that stays correct if the callback ever pauses.
+      (ev 'chunk-ext-name-done-eq 'on-chunk-extension-name-complete
+          'chunk-ext-value-open)
+      (make-span-start-node 'chunk-ext-value-open 'chunk-ext-value-span
+                            'chunk-ext-value #f)
+      (ev 'chunk-ext-name-done-semi 'on-chunk-extension-name-complete
+          'chunk-extensions)
+      (ev 'chunk-ext-name-done-cr 'on-chunk-extension-name-complete
+          'chunk-size-almost-done)
+      (ev 'chunk-ext-name-done-lf 'on-chunk-extension-name-complete
+          'e-cr-after-chunk-ext-name)
+
+      ;; A DOUBLE QUOTE IS PART OF THE VALUE, not a wrapper around it. It is
+      ;; MATCHED -- consumed with the span still open -- so a quoted value's
+      ;; span carries both quotes and is two bytes longer than its text:
+      ;; `request/transfer-encoding.md#11` records len=28 for 26 bytes of
+      ;; content.
+      (make-byte-dispatch-node 'chunk-ext-value
+        (list (make-byte-case (make-exact-byte-matcher DQUOTE)
+                              (make-edge 'chunk-ext-quoted 'advance) #f)
+              (make-byte-case (make-byte-set-matcher httparse-tchar-bytes)
+                              (make-edge 'chunk-ext-value 'advance) #f))
+        (make-edge 'chunk-ext-value-close 'reexecute) 'e-eof-chunk-ext-value #f)
+      (make-span-end-node 'chunk-ext-value-close 'chunk-ext-value-span
+                          'chunk-ext-value-after #f)
+      (make-byte-dispatch-node 'chunk-ext-value-after
+        (list (make-byte-case (make-exact-byte-matcher SEMICOLON)
+                              (make-edge 'chunk-ext-value-done-semi 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'chunk-ext-value-done-cr 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'chunk-ext-value-done-lf 'reexecute) #f))
+        (make-edge 'e-bad-chunk-ext-value 'advance) 'e-eof-none #f)
+      (ev 'chunk-ext-value-done-semi 'on-chunk-extension-value-complete
+          'chunk-extensions)
+      (ev 'chunk-ext-value-done-cr 'on-chunk-extension-value-complete
+          'chunk-size-almost-done)
+      (ev 'chunk-ext-value-done-lf 'on-chunk-extension-value-complete
+          'e-cr-after-chunk-ext-value)
+
+      ;; Inside the quotes. The closing quote is MATCHED and the span ends
+      ;; after it; a backslash escapes the NEXT byte whatever it is, so the
+      ;; quoted-pair node accepts the whole header set rather than QDTEXT.
+      (make-byte-dispatch-node 'chunk-ext-quoted
+        (list (make-byte-case (make-byte-set-matcher httparse-qdtext-bytes)
+                              (make-edge 'chunk-ext-quoted 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher DQUOTE)
+                              (make-edge 'chunk-ext-quoted-close 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher BACKSLASH)
+                              (make-edge 'chunk-ext-quoted-pair 'advance) #f))
+        (make-edge 'chunk-ext-quoted-bad-close 'reexecute)
+        'e-eof-chunk-ext-value #f)
+      (make-span-end-node 'chunk-ext-quoted-close 'chunk-ext-value-span
+                          'chunk-ext-quoted-done-value #f)
+      (ev 'chunk-ext-quoted-done-value 'on-chunk-extension-value-complete
+          'chunk-ext-quoted-done)
+      (make-byte-dispatch-node 'chunk-ext-quoted-done
+        (list (make-byte-case (make-exact-byte-matcher SEMICOLON)
+                              (make-edge 'chunk-extensions 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'chunk-size-almost-done 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'e-cr-after-chunk-ext-value 'reexecute) #f))
+        (make-edge 'e-bad-chunk-ext-quote-value 'reexecute) 'e-eof-none #f)
+      (make-byte-dispatch-node 'chunk-ext-quoted-pair
+        (list (make-byte-case (make-byte-set-matcher httparse-header-bytes)
+                              (make-edge 'chunk-ext-quoted 'advance) #f))
+        (make-edge 'chunk-ext-qp-bad-close 'reexecute)
+        'e-eof-chunk-ext-value #f)
+
+      ;; Both refusals inside the quotes END THE SPAN FIRST and then skip the
+      ;; byte, so what was read still renders and the error is one past it:
+      ;; `request/transfer-encoding.md#12` records a nine-byte value and then
+      ;; off=115 for the CR at 114.
+      (make-span-end-node 'chunk-ext-quoted-bad-close 'chunk-ext-value-span
+                          'chunk-ext-quoted-bad-eat #f)
+      (make-byte-dispatch-node 'chunk-ext-quoted-bad-eat
+        '() (make-edge 'e-bad-chunk-ext-quoted 'advance) 'e-eof-none #f)
+      (make-span-end-node 'chunk-ext-qp-bad-close 'chunk-ext-value-span
+                          'chunk-ext-qp-bad-eat #f)
+      (make-byte-dispatch-node 'chunk-ext-qp-bad-eat
+        '() (make-edge 'e-bad-chunk-ext-qp 'advance) 'e-eof-none #f)
 
       ;; ONE `message complete`, THEN THE UPGRADE TEST. llhttp invokes the
       ;; callback at two sites -- the no-body decision and the end of a body --
@@ -1424,6 +1622,21 @@
       (make-error-node 'e-cr-after-chunk-size 'cr-after-chunk-size #f)
       (make-error-node 'e-lf-after-chunk-data 'lf-after-chunk-data #f)
       (make-error-node 'e-cr-after-chunk-data 'cr-after-chunk-data #f)
+      ;; The extension errors. Every one is reached with the span already
+      ;; ended -- llhttp closes it before it refuses, so what was read still
+      ;; renders -- which is why none of them needs a second, span-open twin.
+      (make-error-node 'e-bad-chunk-ext 'bad-chunk-ext #f)
+      (make-error-node 'e-bad-chunk-ext-name 'bad-chunk-ext-name #f)
+      (make-error-node 'e-bad-chunk-ext-value 'bad-chunk-ext-value #f)
+      (make-error-node 'e-bad-chunk-ext-quoted 'bad-chunk-ext-quoted #f)
+      (make-error-node 'e-bad-chunk-ext-qp 'bad-chunk-ext-qp #f)
+      (make-error-node 'e-bad-chunk-ext-quote-value 'bad-chunk-ext-quote-value #f)
+      (make-error-node 'e-cr-after-chunk-ext-name 'cr-after-chunk-ext-name #f)
+      (make-error-node 'e-cr-after-chunk-ext-value 'cr-after-chunk-ext-value #f)
+      ;; End of input with a span still OPEN, one node per span, as the
+      ;; verifier's flat lattice requires.
+      (make-error-node 'e-eof-chunk-ext-name 'eof #f)
+      (make-error-node 'e-eof-chunk-ext-value 'eof #f)
       (make-error-node 'e-pri-upgrade 'pri-upgrade #f)
       (make-error-node 'e-bad-h2-preface 'bad-h2-preface #f)))
      'eof #f)))
