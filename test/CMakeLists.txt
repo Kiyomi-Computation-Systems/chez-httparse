@@ -1119,3 +1119,180 @@ httparse_add_scheme_lane(
               "HTTPARSE_SCAN_SELECTION=full"
   TIMEOUT 900
   LABELS conformance full-scan)
+
+# --- Generated input: the generator, the oracle reader, and the properties --
+#
+# Three lanes that need no llhttp, plus the opt-in differential below that
+# does. The order is deliberate: an instrument is calibrated before anything
+# is measured with it, so the generator and the oracle reader are specified
+# first and the lanes that use them come after.
+
+set(HTTPARSE_GENERATE
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/generate.sls")
+set(HTTPARSE_DRIVE
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/drive.sls")
+set(HTTPARSE_ORACLE
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/oracle.sls")
+set(HTTPARSE_PRNG
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/prng.sls")
+
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.generate.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/generate-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_PRNG}
+            ${HTTPARSE_GENERATE}
+            "${CMAKE_CURRENT_LIST_DIR}/common/generate-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
+# The oracle reader's calibration is the corpus, so this lane needs the
+# fixtures even though it never runs a parser.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.oracle.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/oracle-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_CORPUS_LOAD}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ORACLE}
+            "${CMAKE_CURRENT_LIST_DIR}/common/oracle-tests.sps"
+    ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
+httparse_add_scheme_lane(
+  NAME httparse.property.generated-input.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/property-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GRAMMAR}
+          ${HTTPARSE_GENERATED_PARSER}
+          ${HTTPARSE_CORPUS_DECODE}
+          ${HTTPARSE_CORPUS_LOAD}
+          ${HTTPARSE_TRACE_FORMAT}
+          ${HTTPARSE_CONFORMANCE}
+          ${HTTPARSE_ADAPTER}
+          ${HTTPARSE_PRNG}
+          ${HTTPARSE_GENERATE}
+          ${HTTPARSE_DRIVE}
+          "${CMAKE_CURRENT_LIST_DIR}/common/property-tests.sps"
+  ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+  TIMEOUT 600
+  LABELS property)
+
+# --- What parsing costs -----------------------------------------------------
+#
+# The allocation audit asserts a SHAPE and runs on every pull request; the
+# benchmark prints numbers and carries a label the pull-request preset does
+# not select, because a measured rate that gates a merge is a lane that fails
+# for reasons which are not about this code.
+
+httparse_add_scheme_lane(
+  NAME httparse.property.allocation.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/allocation-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GENERATED_PARSER}
+          "${CMAKE_CURRENT_LIST_DIR}/common/allocation-tests.sps"
+  TIMEOUT 300
+  LABELS property)
+
+httparse_add_scheme_lane(
+  NAME httparse.benchmark.throughput.chez.source
+  BACKEND chez
+  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
+  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+          ${HTTPARSE_GENERATOR_SOURCES}
+          ${HTTPARSE_GENERATED_PARSER}
+          "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
+  TIMEOUT 300
+  LABELS benchmark)
+
+# --- The live llhttp differential: local, opt-in, never a merge gate --------
+#
+# Decision 0010. The checkout is named by a variable and the lane is ABSENT
+# when it is unset -- not skipped, not failing, not registered at all. Point
+# it at a built llhttp checkout to turn the lane on:
+#
+#   cmake --preset dev -DHTTPARSE_LLHTTP_ROOT=/path/to/llhttp
+#
+# The checkout must have had `npm install` run in it; the oracle binaries are
+# built by llhttp's OWN test harness, which is the program that produced the
+# vendored corpus.
+set(HTTPARSE_LLHTTP_ROOT "" CACHE PATH
+    "A built llhttp checkout; enables the local live-oracle differential lane")
+
+if(HTTPARSE_LLHTTP_ROOT)
+  # Asked for and unbuildable is an error, not a silent absence: a lane that
+  # quietly fails to register is how a green run stops meaning anything.
+  find_program(HTTPARSE_NODE_EXECUTABLE NAMES node
+               DOC "Node.js, used to build and drive the llhttp oracle")
+  if(NOT HTTPARSE_NODE_EXECUTABLE)
+    message(FATAL_ERROR
+      "HTTPARSE_LLHTTP_ROOT is set but no `node` was found. The live-oracle "
+      "lane builds llhttp with its own Node harness. Install Node, or "
+      "reconfigure with -UHTTPARSE_LLHTTP_ROOT to leave the lane out.")
+  endif()
+  if(NOT EXISTS "${HTTPARSE_LLHTTP_ROOT}/node_modules/llparse-test-fixture")
+    message(FATAL_ERROR
+      "HTTPARSE_LLHTTP_ROOT=${HTTPARSE_LLHTTP_ROOT} has no node_modules/"
+      "llparse-test-fixture. Run `npm install` in that checkout, or "
+      "reconfigure with -UHTTPARSE_LLHTTP_ROOT to leave the lane out.")
+  endif()
+
+  set(HTTPARSE_ORACLE_BIN_DIR "${CMAKE_BINARY_DIR}/llhttp-oracle")
+  set(HTTPARSE_ORACLE_BUILD "${CMAKE_SOURCE_DIR}/tools/oracle/build-oracle.mjs")
+  set(HTTPARSE_ORACLE_RUNNER "${CMAKE_SOURCE_DIR}/tools/oracle/run-oracle.mjs")
+
+  # Built in the checkout's own directory so that `--import tsx` and every
+  # bare import inside llhttp's harness resolve against its node_modules
+  # rather than against this project, which has neither.
+  add_custom_command(
+    OUTPUT "${HTTPARSE_ORACLE_BIN_DIR}/http-request-c"
+           "${HTTPARSE_ORACLE_BIN_DIR}/http-response-c"
+           "${HTTPARSE_ORACLE_BIN_DIR}/VERSION"
+    COMMAND "${HTTPARSE_NODE_EXECUTABLE}" --import tsx
+            "${HTTPARSE_ORACLE_BUILD}" "${HTTPARSE_LLHTTP_ROOT}"
+            "${HTTPARSE_ORACLE_BIN_DIR}"
+    WORKING_DIRECTORY "${HTTPARSE_LLHTTP_ROOT}"
+    DEPENDS "${HTTPARSE_ORACLE_BUILD}"
+    COMMENT "httparse: building the live llhttp oracle binaries"
+    VERBATIM)
+  add_custom_target(httparse_llhttp_oracle ALL
+    DEPENDS "${HTTPARSE_ORACLE_BIN_DIR}/http-request-c"
+            "${HTTPARSE_ORACLE_BIN_DIR}/http-response-c"
+            "${HTTPARSE_ORACLE_BIN_DIR}/VERSION")
+
+  httparse_add_scheme_lane(
+    NAME httparse.differential.llhttp.chez.source
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/differential-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_GENERATED_PARSER}
+            ${HTTPARSE_CORPUS_DECODE}
+            ${HTTPARSE_CORPUS_LOAD}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_CONFORMANCE}
+            ${HTTPARSE_ADAPTER}
+            ${HTTPARSE_PRNG}
+            ${HTTPARSE_GENERATE}
+            ${HTTPARSE_DRIVE}
+            ${HTTPARSE_ORACLE}
+            "${CMAKE_CURRENT_LIST_DIR}/common/differential-tests.sps"
+    ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+                "HTTPARSE_ORACLE_BIN_DIR=${HTTPARSE_ORACLE_BIN_DIR}"
+                "HTTPARSE_ORACLE_RUNNER=${HTTPARSE_ORACLE_RUNNER}"
+                "HTTPARSE_ORACLE_NODE=${HTTPARSE_NODE_EXECUTABLE}"
+    TIMEOUT 900
+    LABELS differential)
+endif()

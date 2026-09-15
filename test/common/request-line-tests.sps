@@ -327,13 +327,22 @@
 
 (harness-group "rejections"
   (lambda ()
-    (harness-case "an empty method is rejected before any span opens"
+    (harness-case "an empty method is rejected, but the message has begun"
       (lambda ()
-        ;; `method = 1*tchar`. The leading space is not a tchar, so `start`
-        ;; rejects at offset 0 and no method span is ever opened.
+        ;; `method = 1*tchar` and a space is not one -- but the refusal is the
+        ;; METHOD TABLE's, not a guard standing in front of it, so
+        ;; `message begin` has already fired and no span has opened.
+        ;;
+        ;; THE EVENT IS llhttp'S, MEASURED. For ` / HTTP/1.1` a live llhttp
+        ;; prints `off=0 message begin` and then `off=0 error code=6`. No
+        ;; fixture in the corpus begins with a byte no method may start with,
+        ;; so this number cannot come from a recorded trace -- it came from
+        ;; the differential lane, which found this parser printing the error
+        ;; alone.
         (check-equal "code" (error-code-of " / HTTP/1.1\r\n") 'invalid-method)
         (check-equal "offset" (error-offset-of " / HTTP/1.1\r\n") 0)
-        (check-equal "no events" (events-of " / HTTP/1.1\r\n") '())))
+        (check-equal "the message began and nothing else did"
+                     (events-of " / HTTP/1.1\r\n") '((message-begin 0)))))
     (harness-case "a method not followed by a space is rejected at that byte"
       (lambda ()
         ;; The method span closes, `method complete` fires, and the dispatch
@@ -690,18 +699,31 @@
                      (list-sort < (map cdr httparse-method-numbers))
                      (let loop ((i 46) (acc '()))
                        (if (< i 0) acc (loop (- i 1) (cons i acc)))))))
-    (harness-case "the node names stay distinct once downcased"
+    (harness-case "the node names stay distinct under the real transformation"
       (lambda ()
-        ;; A generated node name is [a-z][a-z0-9-]*, so the 47 names are
-        ;; downcased to make one node each. Two names colliding under
-        ;; downcasing would silently merge two methods into one number.
-        (check-equal "distinct downcased names"
-                     (length (let loop ((ns (map string-downcase httparse-method-names))
+        ;; A generated node name is [a-z][a-z0-9-]*, so each of the 47 names
+        ;; is folded to make one node. Two names colliding under that fold
+        ;; would silently merge two methods into one number -- and the fold is
+        ;; not just downcasing: `GET_PARAMETER`'s underscore is unportable in
+        ;; a node name and becomes a hyphen, which is the same character
+        ;; `M-SEARCH` already carries. So this asks the grammar's own
+        ;; procedure rather than a lookalike.
+        (check-equal "distinct folded names"
+                     (length (let loop ((ns (map method-name->identifier
+                                                 httparse-method-names))
                                         (acc '()))
                                (cond ((null? ns) acc)
                                      ((member (car ns) acc) (loop (cdr ns) acc))
                                      (else (loop (cdr ns) (cons (car ns) acc))))))
                      47)))
+    (harness-case "the fold is the one the generator will accept"
+      (lambda ()
+        ;; Stated on the two names that need it, so a fold that quietly
+        ;; stopped folding would fail here rather than at emit time.
+        (check-equal "underscore" (method-name->identifier "GET_PARAMETER")
+                     "get-parameter")
+        (check-equal "hyphen" (method-name->identifier "M-SEARCH") "m-search")
+        (check-equal "plain" (method-name->identifier "GET") "get")))
     (harness-case "MKCOLA matches MKCOL and then rejects the A"
       (lambda ()
         ;; request/invalid.md: `off=0 len=5 span[method]="MKCOL"`,
@@ -714,14 +736,33 @@
                        (method-complete 5)))
         (check-equal "status" (status-of "MKCOLA / HTTP/1.1\r\n") 'error)
         (check-equal "offset" (error-offset-of "MKCOLA / HTTP/1.1\r\n") 5)))
-    (harness-case "GET-PARAMETER matches whole, though GET is a proper prefix of it"
+    (harness-case "GET_PARAMETER matches whole, though GET is a proper prefix of it"
       (lambda ()
         ;; This pair is why the table cannot be `make-sequence-dispatch-node`,
         ;; which rejects a case list where one entry is a proper prefix of
         ;; another. A keyword table tolerates the pair and takes the longer
         ;; name when the input reaches it.
+        ;;
+        ;; THE SEPARATOR IS AN UNDERSCORE AND THAT IS NOT A TYPO. llhttp's
+        ;; method map is a TypeScript object whose keys are the strings it
+        ;; matches, and the RTSP pair are written `GET_PARAMETER: 41` and
+        ;; `SET_PARAMETER: 42` -- underscores, as RFC 2326 spells them. Only
+        ;; `'M-SEARCH': 24` is quoted, because a hyphen cannot be a bare key.
+        ;; This table carried hyphens for six milestones; no corpus fixture
+        ;; uses either method, so nothing could say so until a live llhttp did.
+        (check-equal "method" (assq 'method (events-of "GET_PARAMETER / HTTP/1.1\r\n"))
+                     '(method 0 13 "GET_PARAMETER"))))
+    (harness-case "and the hyphenated spelling is not a method at all"
+      (lambda ()
+        ;; llhttp matches `GET`, completes the method at 3, and then refuses
+        ;; the hyphen: `off=3 error code=6 reason="Expected space after
+        ;; method"`. Measured against a live llhttp, which is the only thing
+        ;; that records it.
         (check-equal "method" (assq 'method (events-of "GET-PARAMETER / HTTP/1.1\r\n"))
-                     '(method 0 13 "GET-PARAMETER"))))
+                     '(method 0 3 "GET"))
+        (check-equal "offset" (error-offset-of "GET-PARAMETER / HTTP/1.1\r\n") 3)
+        (check-equal "code" (error-code-of "GET-PARAMETER / HTTP/1.1\r\n")
+                     'invalid-method)))
     (harness-case "GET followed by a space matches GET, not the longer name"
       (lambda ()
         (check-equal "method" (assq 'method (events-of "GET / HTTP/1.1\r\n"))
