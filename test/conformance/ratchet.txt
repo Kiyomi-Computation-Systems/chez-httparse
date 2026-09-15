@@ -135,7 +135,7 @@ passing  request/sample.md#6
 passing  request/sample.md#7
 passing  request/sample.md#8
 passing  request/sample.md#9
-not-yet  request/sample.md#10
+passing  request/sample.md#10
 deferred request/sample.md#11                            lenient
 passing  request/sample.md#12
 passing  request/sample.md#13
@@ -182,7 +182,7 @@ passing  request/uri.md#3
 passing  request/uri.md#4
 passing  request/uri.md#5
 passing  request/uri.md#6
-not-yet  request/uri.md#7
+passing  request/uri.md#7
 passing  request/uri.md#8
 passing  request/uri.md#9
 passing  request/uri.md#10

@@ -969,6 +969,25 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- The request target's two ends (M6) -------------------------------------
+#
+# Where the target stops and what follows it: the two behaviours the strict
+# request corpus needs from llhttp's url sub-parser, which is otherwise M11's.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.request-target.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/request-target-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/request-target-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- The checked-in generated parser (M2 Slice 4) ---------------------------
 #
 # A derived artifact, committed so that what this project ships is reviewable as

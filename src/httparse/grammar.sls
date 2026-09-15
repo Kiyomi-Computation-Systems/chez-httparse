@@ -569,7 +569,14 @@
                                    "Invalid method encountered" #f)
            (make-error-declaration 'no-space-after-method 'invalid-method
                                    "Expected space after method" #f)
-           (make-error-declaration 'bad-url 'invalid-url "invalid request target" #f)
+           ;; llhttp's own reasons, from `src/llhttp/url.ts`. `bad-url` was a
+           ;; placeholder standing in for a decision the url sub-parser had
+           ;; not made; no fixture ever recorded it, and these two are what
+           ;; the strict request corpus actually asks for.
+           (make-error-declaration 'bad-url-char 'invalid-url
+                                   "Invalid char in url path" #f)
+           (make-error-declaration 'expected-crlf 'invalid-url
+                                   "Expected CRLF" #f)
            (make-error-declaration 'bad-protocol 'invalid-constant
                                    "Expected HTTP/, RTSP/ or ICE/" #f)
            (make-error-declaration 'method-not-http 'invalid-constant
@@ -757,19 +764,66 @@
         (make-edge 'e-no-space-after-method 'reexecute) 'e-eof-none #f)
 
       ;; --- request target -----------------------------------------------------
+      ;;
+      ;; THE TARGET HAS THREE LEGAL ENDINGS AND ONE ILLEGAL ONE, and which of
+      ;; them a byte is decides whether the span closes at all.
+      ;;
+      ;;   SP     the version follows           close, skip, `url complete`
+      ;;   CRLF   there is no version: HTTP/0.9 close, skip both, 0/9
+      ;;   LF     the same, one byte shorter    close, skip, 0/9
+      ;;   other  no target may carry it        DO NOT CLOSE -- error
+      ;;
+      ;; The last is why `url-after-path` exists rather than the loop falling
+      ;; straight into a span end. llhttp ends its PATH span where the target
+      ;; characters stop and leaves the URL span open, so an illegal byte
+      ;; delivers no `span[url]` fragment at all: `request/uri.md#7` records
+      ;; the error at 5 and nothing before it but the method.
+      ;;
+      ;; This is NOT the url sub-parser. The schema, the server, the query and
+      ;; the fragment -- and the spans they each deliver -- are M11's, deferred
+      ;; by decision 0009. These are the two boundary behaviours the strict
+      ;; request corpus needs, and `httparse-url-bytes` still stands in for
+      ;; llhttp's URL_CHAR.
       (make-span-start-node 'url-open 'url-span 'url-loop #f)
       (make-byte-dispatch-node 'url-loop
         (list (make-byte-case (make-byte-set-matcher httparse-url-bytes)
                               (make-edge 'url-loop 'advance) #f))
-        (make-edge 'url-close 'reexecute) 'e-eof-url #f)
-      (make-span-end-node 'url-close 'url-span 'after-url #f)
-      ;; the SP is consumed FIRST, so the event lands one byte later than the
-      ;; other three: `off=13 url complete` with the SP at 12
-      (make-byte-dispatch-node 'after-url
+        (make-edge 'url-after-path 'reexecute) 'e-eof-url #f)
+      ;; The url span is STILL OPEN here, which is the whole point of the
+      ;; node -- and why its own end-of-input target is the span-open one.
+      (make-byte-dispatch-node 'url-after-path
         (list (make-byte-case (make-exact-byte-matcher SP)
-                              (make-edge 'url-complete 'advance) #f))
-        (make-edge 'e-bad-url 'reexecute) 'e-eof-none #f)
+                              (make-edge 'url-close-sp 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'url-close-cr 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'url-close-lf 'reexecute) #f))
+        (make-edge 'e-bad-url-char 'reexecute) 'e-eof-url #f)
+
+      ;; Each ending closes the span and then SKIPS its own delimiter, which
+      ;; is llparse's `skipTo` -- a dispatch with no cases whose fallback
+      ;; advances. That is what puts `url complete` one byte PAST its space
+      ;; while the other three completions fire AT their delimiter.
+      (make-span-end-node 'url-close-sp 'url-span 'url-skip-sp #f)
+      (make-byte-dispatch-node 'url-skip-sp
+        '() (make-edge 'url-complete 'advance) 'e-eof-none #f)
       (ev 'url-complete 'on-url-complete 'protocol-open)
+
+      ;; HTTP/0.9: no protocol span, no version span, and the version pair set
+      ;; from nothing at all. `request/sample.md#10` records `v=0/9` for
+      ;; `GET /` and `url complete` at 7 -- past both bytes of the CRLF.
+      (make-span-end-node 'url-close-cr 'url-span 'url-crlf-09 #f)
+      (make-sequence-dispatch-node 'url-crlf-09
+        (list (make-sequence-case (list CR LF) 'url-09-major #f))
+        (make-edge 'e-expected-crlf 'reexecute) 'e-eof-none #f)
+      (make-span-end-node 'url-close-lf 'url-span 'url-skip-lf #f)
+      (make-byte-dispatch-node 'url-skip-lf
+        '() (make-edge 'url-09-major 'advance) 'e-eof-none #f)
+      (make-field-action-node 'url-09-major 'store (list 'http-major 0)
+                              'url-09-minor #f #f)
+      (make-field-action-node 'url-09-minor 'store (list 'http-minor 9)
+                              'url-complete-09 #f #f)
+      (ev 'url-complete-09 'on-url-complete 'headers-start)
 
       ;; --- protocol -----------------------------------------------------------
       ;;
@@ -1661,7 +1715,10 @@
       ;; refuses one node reached with two different span states.
       (make-error-node 'e-bad-method-open 'bad-method #f)
       (make-error-node 'e-no-space-after-method 'no-space-after-method #f)
-      (make-error-node 'e-bad-url 'bad-url #f)
+      ;; Reached with the url span OPEN, which is what keeps a rejected target
+      ;; from delivering a fragment.
+      (make-error-node 'e-bad-url-char 'bad-url-char #f)
+      (make-error-node 'e-expected-crlf 'expected-crlf #f)
       (make-error-node 'e-bad-protocol 'bad-protocol #f)
       (make-error-node 'e-method-not-http 'method-not-http #f)
       (make-error-node 'e-method-not-rtsp 'method-not-rtsp #f)
