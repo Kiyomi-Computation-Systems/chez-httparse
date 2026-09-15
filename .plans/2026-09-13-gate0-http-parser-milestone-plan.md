@@ -392,11 +392,59 @@ measured at 71 of 71 against 13 of 169, and llhttp shares the exception
 exactly. The unqualified property would have been a false one and the corpus
 could not have said so.
 
-### Deferred past v0.1, in order
+### M9 — pausing, and skip body — DONE
 
-**M9** pausing and upgrade (24 + 2 fixtures) · **M10** lenient modes (37) ·
-**M11** the URL sub-parser (21). All are vendored and ratcheted from M1, so each
-deferral is a visible count rather than an absence.
+The 26 fixtures decision [0009](decisions/0009-v01-is-strict-request-and-response-parsing.md)
+deferred: 24 `pausing` and 2 `skipBody`. Ratchet **216 passing / 0 not-yet /
+58 deferred**, from 190 / 0 / 84.
+
+**NOTHING IN THE PARSER NEEDED CHANGING FOR PAUSING, and the gap had been read
+as a parser gap since M4.** Every event node already declares its pause
+continuation as the place an unpaused run would have gone, so a resume
+re-enters the graph correctly; what was missing was the HARNESS's vocabulary.
+All 24 passed on the lane's first run, at every chunk size. The lesson is the
+one M4 half-learned in reverse: a fixture blocked on a dependency stays
+blocked in the ledger after the dependency ships, and nothing re-asks the
+question. `v0.4.0` had carried the pause reason since before M5.
+
+**A parser is now bound in a harness mode** ([0019](decisions/0019-the-harness-mode-and-the-two-kinds-of-pause.md)),
+which is upstream's shape rather than an invention: `test/md-test.ts` turns
+the meta into `-DLLHTTP__TEST_PAUSE_<NAME>=1` or `-DLLHTTP__TEST_SKIP_BODY=1`
+and caches one binary per mode, and `extra.c` makes the two exclusive with an
+`#ifdef / #elif`. One argument, not two flags.
+
+**The two pauses print differently and the discriminator is the declared
+reason.** A pause reason belongs to a node, so the machine's pause node has
+one and a callback answering `callback-pause` does not — measured with a probe
+before it was written down. A reasonless pause nobody asked for is still
+refused, which is what stops a parser that merely stopped from rendering a
+pause that looks deliberate.
+
+**Two of fifteen pause points are not a fold of their key.**
+`pause: "on_chunk_extension_name"` names the MACRO, and upstream puts that
+macro inside `llhttp__on_chunk_extension_name_complete` — not the span
+callback of the same name. The table is read out of `extra.c` by listing the
+function each `#ifdef` sits inside, which is the "extracting a set from
+someone else's source" discipline paying for itself a second time.
+
+**`skipBody` is a flag, not a jump**, because `llhttp__after_headers_complete`
+reads it twice: once inside the upgrade disjunct and once as the no-body test.
+`on-headers-complete` becomes the second decision callback and its branch sets
+the flag, which is exactly what `http.ts` does with the C return value 1.
+
+**The upgrade disjunct has no fixture at all**, so it was measured against a
+LIVE llhttp built in skip-body mode from the corpus's own commit — upstream's
+`test/fixtures/index.ts` plus the one define its `md-test.ts` adds. Its 25
+lines are copied from that run and this parser matches them exactly. Decision
+[0010](decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md)'s
+argument, cashed a second time: the corpus is a set of cases someone chose,
+and the oracle answers about the ones they did not.
+
+### Deferred, in order
+
+**M10** lenient modes (37) · **M11** the URL sub-parser (21). Both are
+vendored and ratcheted from M1, so each deferral is a visible count rather
+than an absence.
 
 ## Reachable ceilings, measured
 

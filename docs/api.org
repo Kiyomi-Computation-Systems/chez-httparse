@@ -97,6 +97,9 @@ there is no field writer here, so the parser asks. Decision 0017 records the
 alternatives and why this one.
 
 Returning neither symbol, or pausing, is an error: pausing is not answering.
+=on-headers-complete= is the other callback that answers — with ='skip-body=,
+or nothing — and there pausing IS allowed, because a resumed run re-enters
+the body decision exactly where an unpaused one would.
 
 ** The full list
 
@@ -152,8 +155,9 @@ finish again afterwards.
 legal. It runs the machine with input exhausted, taking each state's
 end-of-input route, and returns ='finished=, ='error= or ='paused=.
 
-*v0.1 does not exercise the last two.* The conformance corpus never calls
-=parser-finish!= — upstream's harness does not either, which took four
-milestones to notice — and pausing is deferred with its 24 fixtures. Both
-work as far as the machinery goes; neither carries this project's
-bit-exact evidence yet. See [[file:conformance.org][conformance.org]].
+*The corpus never calls =parser-finish!=* — upstream's harness does not
+either, which took four milestones to notice — so ='error= and ='paused=
+from a finish carry no bit-exact evidence here, though the machinery works.
+A PAUSE FROM A FEED IS DIFFERENT: 24 fixtures record one, and this parser
+matches all of them at every chunk size. See
+[[file:conformance.org][conformance.org]].

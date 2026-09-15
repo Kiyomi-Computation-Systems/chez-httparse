@@ -2,7 +2,7 @@
 
 - [[file:api.org][api.org]] — the public surface: making a parser, feeding it, the callbacks,
   reading its state.
-- [[file:conformance.org][conformance.org]] — what v0.1 parses, the 84 fixtures it does not, and every
+- [[file:conformance.org][conformance.org]] — what this parses, the 58 fixtures it does not, and every
   measured divergence from llhttp.
 - [[file:performance.org][performance.org]] — allocation and throughput, measured.
 

@@ -111,17 +111,19 @@
                                     (not (eq? derived declared))))
                                 (entries)))
                        0))))
-    (harness-case "84 fixtures are deferred and 190 are in scope for v0.1"
+    (harness-case "58 fixtures are deferred and 216 are in scope"
       (lambda ()
-        ;; Decision 0009's bar, as a count this lane can check.
+        ;; Decision 0009's bar was 84 and 190. M9 moved the 24 `pausing` and
+        ;; 2 `skipBody` fixtures across, which is why these two numbers change
+        ;; together and why the change is a reviewed diff rather than a drift.
         (let ((es (entries)))
           (check-equal "deferred"
                        (length (filter (lambda (e) (eq? (ratchet-entry-status e) 'deferred)) es))
-                       84)
+                       58)
           (check-equal "in scope"
                        (length (filter (lambda (e) (memq (ratchet-entry-status e)
                                                          '(passing not-yet))) es))
-                       190))))
+                       216))))
     (harness-case "no deferred entry is missing its reason word"
       (lambda ()
         (check-equal "reasonless deferrals"

@@ -21,9 +21,11 @@
   (export adapter-trace-names adapter-error-codes adapter-state-fields
           adapter-count-field adapter-finish-states adapter-finish-statuses
           adapter-message-type-callback adapter-message-types
+          adapter-pause-points
           adapter-event-for adapter-error-event adapter-finish-event
           make-trace-recorder trace-recorder-bindings trace-recorder-events
           trace-recorder-note-error! trace-recorder-note-paused!
+          trace-recorder-note-requested-pause!
           trace-recorder-note-finish!
           adapter-error? adapter-error-detail)
   (import (rnrs) (httparse test trace-format) (byte-machine runtime))
@@ -243,9 +245,13 @@
   ;; The shell. A recorder holds the events in arrival order and hands out the
   ;; binding list a parser needs -- every declared callback, because they are
   ;; declared `required?` and a parser refuses a partial list.
-  (define-record-type recorder (fields (mutable reversed)))
+  ;; `armed` is the harness mode the recorder was BOUND with, and it starts as
+  ;; `unbound` rather than `#f` so "nobody asked for a pause" and "nobody has
+  ;; bound this recorder yet" stay distinguishable -- the second is a
+  ;; sequencing mistake and the first is the ordinary case.
+  (define-record-type recorder (fields (mutable reversed) (mutable armed)))
 
-  (define (make-trace-recorder) (make-recorder '()))
+  (define (make-trace-recorder) (make-recorder '() 'unbound))
 
   (define (recorder-push! r event)
     (recorder-reversed-set! r (cons event (recorder-reversed r))))
@@ -253,62 +259,176 @@
   ;; trace-recorder-events : Recorder -> (Listof Event)
   (define (trace-recorder-events r) (reverse (recorder-reversed r)))
 
+  ;; THE PAUSE POINTS UPSTREAM DECLARES, read out of llhttp's
+  ;; `test/fixtures/extra.c` at v9.4.3-1-gee51043 by listing the function each
+  ;; `#ifdef LLHTTP__TEST_PAUSE_*` sits inside. A fixture's `pause` meta names
+  ;; the MACRO, so the key here is upstream's spelling and the value is the
+  ;; callback this project binds.
+  ;;
+  ;; TWO ROWS ARE NOT A FOLD OF THEIR KEY. `on_chunk_extension_name` guards the
+  ;; macro inside `llhttp__on_chunk_extension_name_complete`, not inside the
+  ;; span callback of the same name, and likewise for the value. Deriving this
+  ;; table by replacing underscores with hyphens would arm a span callback --
+  ;; a callback upstream never pauses in, and one that takes five arguments
+  ;; where a pausing callback takes two.
+  ;;
+  ;; `on_reset` is here because upstream declares it. No vendored fixture uses
+  ;; it, and a table that held only the used rows would be a table of this
+  ;; corpus rather than of llhttp's harness.
+  (define adapter-pause-points
+    '(("on_message_begin"          . on-message-begin)
+      ("on_reset"                  . on-reset)
+      ("on_method_complete"        . on-method-complete)
+      ("on_url_complete"           . on-url-complete)
+      ("on_protocol_complete"      . on-protocol-complete)
+      ("on_version_complete"       . on-version-complete)
+      ("on_status_complete"        . on-status-complete)
+      ("on_header_field_complete"  . on-header-field-complete)
+      ("on_header_value_complete"  . on-header-value-complete)
+      ("on_headers_complete"       . on-headers-complete)
+      ("on_chunk_header"           . on-chunk-header)
+      ("on_chunk_extension_name"   . on-chunk-extension-name-complete)
+      ("on_chunk_extension_value"  . on-chunk-extension-value-complete)
+      ("on_chunk_complete"         . on-chunk-complete)
+      ("on_message_complete"       . on-message-complete)))
+
+  ;; The callback whose RETURN VALUE upstream reads, and the only one: the
+  ;; `skip body` line and the 1 that follows it are both inside
+  ;; `llhttp__on_headers_complete`.
+  (define adapter-skip-body-callback 'on-headers-complete)
+
+  ;; checked-mode : Any -> HarnessMode
+  ;; `#f` is the plain harness; `(pause <llhttp name>)` arms one callback;
+  ;; `(skip-body)` makes the headers-complete callback answer 1. Anything else
+  ;; is refused rather than read as the plain harness, because a mode that
+  ;; quietly armed nothing would give a fixture that must pause a clean
+  ;; unpaused trace and a diff that names the wrong thing.
+  ;;
+  ;; THE TWO ARE EXCLUSIVE BY CONSTRUCTION, which is upstream's own shape:
+  ;; `extra.c` guards `on_headers_complete` with
+  ;; `#ifdef ..._PAUSE_ON_HEADERS_COMPLETE / #elif defined(..._SKIP_BODY)`, so
+  ;; a build is never both and neither is a mode here.
+  (define (checked-mode mode)
+    (cond
+     ((eq? mode #f) #f)
+     ((and (pair? mode) (eq? (car mode) 'pause)
+           (pair? (cdr mode)) (null? (cddr mode))
+           (string? (cadr mode)))
+      (unless (assoc (cadr mode) adapter-pause-points)
+        (adapter-refuse 'trace-recorder-bindings
+          (string-append "llhttp declares no pause macro for " (cadr mode))))
+      mode)
+     ((and (pair? mode) (eq? (car mode) 'skip-body) (null? (cdr mode))) mode)
+     (else (adapter-refuse 'trace-recorder-bindings
+             "a harness mode is #f, (pause <llhttp callback name>) or (skip-body)"))))
+
+  ;; mode-pause-callback : HarnessMode -> (Option Symbol)
+  (define (mode-pause-callback mode)
+    (and (pair? mode) (eq? (car mode) 'pause)
+         (cdr (assoc (cadr mode) adapter-pause-points))))
+
+  ;; mode-skip-body? : HarnessMode -> Boolean
+  (define (mode-skip-body? mode)
+    (and (pair? mode) (eq? (car mode) 'skip-body)))
+
+  ;; push-event! : Recorder Symbol Symbol Parser -> Void
+  ;; The event one of the three NON-SPAN kinds records. A pausing callback
+  ;; records through this too, so what it prints is produced by the same
+  ;; construction an unpaused one uses -- a second copy would be a second
+  ;; answer to "what does this callback print", and no trace could tell the
+  ;; two apart until they disagreed.
+  (define (push-event! r callback kind p)
+    (recorder-push!
+     r (case kind
+         ((event) (adapter-event-for callback (parser-stream-offset p) #f #f))
+         ;; The only arm that reads parser STATE rather than callback
+         ;; arguments. It reads the five fields llhttp's own callback reads and
+         ;; hands them to the pure half, which owns the format -- so a wrong
+         ;; number here is a wrong number in the parser, not in the rendering.
+         ((state-line)
+          (adapter-event-for callback (parser-stream-offset p) #f
+                             (map (lambda (f) (cons f (parser-field-ref p f)))
+                                  adapter-state-fields)))
+         ;; The same read as the state-line arm, over one name.
+         ((count-line)
+          (adapter-event-for callback (parser-stream-offset p) #f
+                             (list (cons adapter-count-field
+                                         (parser-field-ref p adapter-count-field)))))
+         (else (adapter-refuse 'push-event! "unknown callback kind")))))
+
   ;; A span fragment's ABSOLUTE start is the stream offset minus its length: the
   ;; callback fires having already advanced past the bytes it is handed, so
   ;; `from` is the absolute offset only when the feed started at zero.
-  ;; trace-recorder-bindings : Recorder Symbol -> (Listof (List Symbol Procedure))
+  ;; trace-recorder-bindings : Recorder Symbol HarnessMode
+  ;;                           -> (Listof (List Symbol Procedure))
   ;; THE TYPE IS A REQUIRED ARGUMENT, and that is the point: llhttp's harness
   ;; cannot build a parser without saying what it is parsing either. A default
   ;; here would silently make every response a request.
-  (define (trace-recorder-bindings r type)
+  ;;
+  ;; SO IS THE MODE, for the same reason: upstream bakes it into the binary as
+  ;; a `-D` define and caches one binary per mode, so a parser that has not
+  ;; been told its mode does not exist over there either.
+  ;;
+  ;; THE PAUSING CALLBACK RECORDS FIRST AND PAUSES SECOND. Every guarded
+  ;; callback in `test/fixtures/extra.c` calls `llparse__print` and only then
+  ;; returns `LLPARSE__ERROR_PAUSE`, so the event and the pause land at the
+  ;; same offset with the event ahead. Here that ordering is structural: the
+  ;; two arms differ only in the value they answer with.
+  (define (trace-recorder-bindings r type mode)
     (unless (memq type adapter-message-types)
       (adapter-refuse 'trace-recorder-bindings
         "a recorder was asked to bind a parser that is neither a request nor a response"))
-    (cons
-     (list adapter-message-type-callback (lambda (p ctx) type))
-     (map (lambda (row)
-           (let ((callback (car row)) (kind (cadr row)))
-             (list callback
-                   (case kind
-                     ((event)
-                      (lambda (p ctx)
-                        (recorder-push!
-                         r (adapter-event-for callback (parser-stream-offset p) #f #f))
-                        callback-continue))
-                     ;; The only arm that reads parser STATE rather than
-                     ;; callback arguments. It reads the five fields llhttp's
-                     ;; own callback reads and hands them to the pure half,
-                     ;; which owns the format -- so a wrong number here is a
-                     ;; wrong number in the parser, not in the rendering.
-                     ((state-line)
-                      (lambda (p ctx)
-                        (recorder-push!
-                         r (adapter-event-for
-                            callback (parser-stream-offset p) #f
-                            (map (lambda (f) (cons f (parser-field-ref p f)))
-                                 adapter-state-fields)))
-                        callback-continue))
-                     ;; The same read as the state-line arm, over one name.
-                     ((count-line)
-                      (lambda (p ctx)
-                        (recorder-push!
-                         r (adapter-event-for
-                            callback (parser-stream-offset p) #f
-                            (list (cons adapter-count-field
-                                        (parser-field-ref p adapter-count-field)))))
-                        callback-continue))
-                     ((span)
-                      (lambda (p ctx bv from to)
-                        (let* ((len (- to from))
-                               (b (make-bytevector len)))
-                          (bytevector-copy! bv from b 0 len)
-                          (recorder-push!
-                           r (adapter-event-for callback
-                                                (- (parser-stream-offset p) len) b #f)))
-                        callback-continue))
-                     (else (adapter-refuse 'trace-recorder-bindings
-                                           "unknown callback kind"))))))
-          adapter-trace-names)))
+    (for-each (lambda (row)
+                (unless (memq (cadr row) '(event state-line count-line span))
+                  (adapter-refuse 'trace-recorder-bindings "unknown callback kind")))
+              adapter-trace-names)
+    (recorder-armed-set! r (checked-mode mode))
+    (let ((pause-at (mode-pause-callback (recorder-armed r)))
+          (skip-at (and (mode-skip-body? (recorder-armed r))
+                        adapter-skip-body-callback)))
+      (cons
+       (list adapter-message-type-callback (lambda (p ctx) type))
+       (map (lambda (row)
+              (let ((callback (car row)) (kind (cadr row)))
+                (list callback
+                      (if (eq? kind 'span)
+                          (lambda (p ctx bv from to)
+                            (let* ((len (- to from))
+                                   (b (make-bytevector len)))
+                              (bytevector-copy! bv from b 0 len)
+                              (recorder-push!
+                               r (adapter-event-for callback
+                                                    (- (parser-stream-offset p) len) b #f)))
+                            callback-continue)
+                          ;; THREE ARMS THAT DIFFER ONLY IN THE ANSWER, and
+                          ;; one that prints a second line before giving it.
+                          ;; Upstream's skip-body callback calls
+                          ;; `llparse__print(p, endp, "skip body")` and THEN
+                          ;; returns 1, so `skip body` is the callback's own
+                          ;; output and lands at the offset its event did --
+                          ;; unlike `pause`, which the driver prints.
+                          (let ((answer (cond ((eq? callback pause-at) callback-pause)
+                                              ((eq? callback skip-at) 'skip-body)
+                                              (else callback-continue))))
+                            (lambda (p ctx)
+                              (push-event! r callback kind p)
+                              (when (eq? callback skip-at)
+                                (recorder-push!
+                                 r (make-trace-mark (parser-stream-offset p) "skip body")))
+                              answer))))))
+            adapter-trace-names))))
+
+  ;; trace-recorder-note-requested-pause! : Recorder Nat -> Void
+  ;; `off=N pause`, the line upstream's driver prints when a callback answers
+  ;; `LLPARSE__ERROR_PAUSE`. It is a rename of a pause this harness ASKED FOR,
+  ;; which is why an unarmed recorder refuses: a parser that stopped where
+  ;; llhttp does not would otherwise render a trace that looks deliberate, and
+  ;; a reasonless pause is exactly the shape that has nothing else to rename.
+  (define (trace-recorder-note-requested-pause! r offset)
+    (unless (pair? (recorder-armed r))
+      (adapter-refuse 'trace-recorder-note-requested-pause!
+        "the parser paused with no reason and this harness asked for no pause"))
+    (recorder-push! r (make-trace-mark offset "pause")))
 
   ;; trace-recorder-note-paused! : Recorder (Option ParserError) -> Void
   ;; A RENAME LIKE EVERY OTHER ROW. llhttp prints a

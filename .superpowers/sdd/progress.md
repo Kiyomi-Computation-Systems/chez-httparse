@@ -1683,3 +1683,77 @@ declared length is the obvious mistake.
 `make test-all` green, ratchet 190 / 0 / 84 — decision 0009's v0.1 bar,
 unchanged by three parser fixes because none of the three is something the
 corpus records.
+
+## 2026-09-15 — M9: pausing, and skip body
+
+**The 26 fixtures v0.1 deferred, and 24 of them needed no parser at all.**
+Ratchet 216 / 0 / 58, from 190 / 0 / 84. `make test-all` green at 79 lanes.
+
+**The finding worth keeping.** The pause gap was read as a parser gap from M4
+onward — nine request fixtures were "blocked upstream" because a byte-machine
+pause carried no reason, and the third brief fixed that at `v0.4.0`, the pin
+this project has used since before M5. What nobody re-asked was whether the
+PARSER still lacked anything. It did not. Every event node already declared
+its pause continuation as the place an unpaused run would have gone, so all 24
+`pausing` fixtures passed on the lane's first run at every chunk size, once
+the harness could say `off=N pause`. A fixture blocked on a dependency stays
+blocked in the ledger after the dependency ships; the ledger does not re-ask.
+
+**The harness mode.** Upstream decides pausing and skip-body BEFORE the first
+byte: `test/md-test.ts` turns the meta into a `-D` define and caches one
+compiled binary per mode. So a parser is bound in a mode here too, as a third
+REQUIRED argument — `#f`, `(pause <name>)` or `(skip-body)`. One argument
+rather than two flags, because `extra.c` guards `on_headers_complete` with
+`#ifdef PAUSE / #elif SKIP_BODY` and a both-at-once build cannot exist; two
+booleans would have made it representable.
+
+**Two pauses, one word.** llhttp prints a callback's pause as bare `off=N
+pause` and the upgrade pause as `off=N error code=22 reason="..."`. The
+discriminator is the DECLARED REASON: a pause reason belongs to a node, so the
+machine's pause node carries one and a callback answering `callback-pause`
+cannot. Measured with a probe — `(status paused pause #f consumed 0 next 0)` —
+before it entered a decision record, per the rule. A reasonless pause NOBODY
+ASKED FOR is still refused; dropping that check is a mutation caught by
+exactly one case and by nothing else, which is how it was confirmed to carry
+weight.
+
+**Two of fifteen pause points are not a fold of their key.**
+`on_chunk_extension_name` names a macro that sits inside
+`llhttp__on_chunk_extension_name_complete`, not in the span callback of the
+same name. Derived by listing the function each `#ifdef LLHTTP__TEST_PAUSE_*`
+encloses rather than by transforming the string — the same discipline the
+method table needed, hit again.
+
+**Skip body is a flag because the decision reads it twice.**
+`llhttp__after_headers_complete` tests `F_SKIPBODY` inside the upgrade
+disjunct and again as the no-body test, so a branch that jumped could serve
+only one. `on-headers-complete` becomes the grammar's second decision callback
+and its branch stores the flag, which is what `http.ts` does with the C return
+value 1. No field writer was needed, and none exists: `parser-field-ref` is
+read-only by upstream's design, and a branch key is the same expressive power
+for an embedder's answer (as 0017 already found for the message kind).
+
+**One arm had no fixture, so the oracle answered for it.** `upgrade &&
+(CONNECT || SKIPBODY || !hasBody)` is in llhttp's C, and nothing in the corpus
+arms skip-body on an upgrade — which is the gap decision 0010 exists to close.
+A skip-body-mode binary was built from upstream's own `test/fixtures/index.ts`
+with the define its `md-test.ts` adds, at the corpus's commit; its 25 lines
+are the unit case's expectation, copied, and this parser matches them exactly.
+
+TWO THINGS COST TIME THERE AND ARE WORTH KEEPING. The fixture driver's scan
+range is HALF-OPEN — `82:82` runs nothing and prints nothing, which looks
+exactly like a binary that failed to parse; `82:83` is the whole-buffer run.
+And the committed oracle builder makes only the two plain-mode binaries,
+because that is what the differential lane drives, so the skip-body pair was
+a hand build from a recipe now in decision 0019. A lane that swept the modes
+would be its own piece of work.
+
+**The live differential ran clean over the M9 changes**: 1097 agreed, 45
+url-machine, 4 late-complete, 0 unclassified — the two named classes and
+nothing new. `drive-feed!` sits in the path of every parse, so this is the
+check that it changed nothing for the un-paused ones.
+
+Four mutations on the grammar and two on the harness, all caught: inverting
+either skip-body disjunct, letting the skip-body mode print without answering,
+inverting the pause discriminator, folding the two chunk-extension rows, and
+dropping the armed check.

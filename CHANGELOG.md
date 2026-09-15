@@ -6,7 +6,40 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Pausing, and `skipBody`** — M9, the 26 fixtures decision
+  [0009](.plans/decisions/0009-v01-is-strict-request-and-response-parsing.md)
+  deferred past v0.1. The ratchet stands at **216 of 253** HTTP fixtures, from
+  190; the 58 that remain are 37 lenient-mode and 21 URL.
+
+  A parser is now BOUND IN A HARNESS MODE, which is upstream's own shape: its
+  test driver turns a fixture's meta into a compiler define and caches one
+  binary per mode, and the two modes are exclusive in the C preprocessor. Here
+  that is one required argument — `#f`, `(pause <name>)` or `(skip-body)` —
+  rather than two flags that could represent a build nobody can make.
+  ([0019](.plans/decisions/0019-the-harness-mode-and-the-two-kinds-of-pause.md))
+
+- **`off=N pause`, told apart from the machine's own pause.** Upstream prints
+  a callback's pause as the bare word and an upgrade pause as an error line,
+  and nothing in the word says which. The discriminator is the declared
+  reason: a pause reason belongs to a NODE, so the machine's pause node
+  carries one and a callback answering `callback-pause` cannot. A reasonless
+  pause nobody asked for is still refused.
+
+- **`off=N skip body`**, and the flag behind it. `on-headers-complete` is now
+  the grammar's second decision callback; its `skip-body` branch sets
+  `F_SKIPBODY` and rejoins the body decision, because that decision reads the
+  flag in two places and a jump could only serve one. The second of the two —
+  an upgrade whose embedder said "no body" — has no fixture to vouch for it,
+  so it is pinned against a LIVE llhttp built in skip-body mode from the
+  commit the corpus came from.
+
+### Changed
+
+- `trace-recorder-bindings` takes the harness mode as a third required
+  argument. `drive-feed!` joins `(httparse test drive)`, so the conformance
+  lane and the unit lanes resume a pause through one loop rather than two.
 
 ## [0.1.0] - 2026-09-15
 

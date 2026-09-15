@@ -1,10 +1,13 @@
-#+TITLE: What chez-httparse v0.1 does, and what it does not
+#+TITLE: What chez-httparse does, and what it does not
 #+OPTIONS: toc:2
 
 The claim this project makes is narrow and checkable: *strict-mode HTTP/1.x
 request and response parsing, byte-exact against llhttp's own recorded
-traces, for 190 of the 253 HTTP fixtures in its conformance corpus.* The
-other 63, plus 21 URL fixtures, are enumerated below rather than omitted.
+traces, for 216 of the 253 HTTP fixtures in its conformance corpus.* The
+other 37, plus 21 URL fixtures, are enumerated below rather than omitted.
+
+v0.1 shipped 190 of them. Pausing and =skipBody= — 26 fixtures — came in
+after it, and are on =main= unreleased.
 
 A compatibility claim that names what it does not do is the only kind worth
 publishing.
@@ -36,14 +39,12 @@ The result is a *ratchet*: a manifest naming every fixture and its status. It
 fails both when a passing fixture breaks and when a deferred one starts
 passing, so a change in either direction is a reviewed diff.
 
-* The 84 not in v0.1
+* The 58 still out
 
-| Deferred            | Fixtures | Why                                                |
-|---------------------+----------+----------------------------------------------------|
-| Lenient modes       |       37 | v0.1 is strict only                                |
-| Pausing and upgrade |       24 | control flow, not HTTP; the machinery exists       |
-| URL sub-parser      |       21 | =url.md= only; the target is one opaque span here  |
-| =skipBody=          |        2 | an embedder instruction v0.1 does not offer        |
+| Deferred       | Fixtures | Why                                               |
+|----------------+----------+---------------------------------------------------|
+| Lenient modes  |       37 | this parser is strict only                        |
+| URL sub-parser |       21 | =url.md= only; the target is one opaque span here |
 
 Each is a milestone of its own, and every one of their fixtures is already
 vendored and already in the ratchet — so the deferral is a visible count

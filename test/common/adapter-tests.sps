@@ -235,7 +235,7 @@
   (lambda ()
     (harness-case "every declared callback is bound, and the type is bound too"
       (lambda ()
-        (let ((bs (trace-recorder-bindings (make-trace-recorder) 'request)))
+        (let ((bs (trace-recorder-bindings (make-trace-recorder) 'request #f)))
           (check-equal "one per row, plus the decision"
                        (length bs) (+ 1 (length adapter-trace-names)))
           (check "the message type is bound"
@@ -248,18 +248,135 @@
         ;; would print `method=0` for all 66 of them.
         (for-each
          (lambda (want)
-           (let* ((bs (trace-recorder-bindings (make-trace-recorder) want))
+           (let* ((bs (trace-recorder-bindings (make-trace-recorder) want #f))
                   (f (cadr (assq adapter-message-type-callback bs))))
              (check-equal (symbol->string want) (f #f #f) want)))
          adapter-message-types)))
     (harness-case "a kind that is neither is refused, not assumed"
       (lambda ()
         (check "url" (refuses? (lambda () (trace-recorder-bindings
-                                           (make-trace-recorder) 'url))))
+                                           (make-trace-recorder) 'url #f))))
         (check "none" (refuses? (lambda () (trace-recorder-bindings
-                                            (make-trace-recorder) 'none))))
+                                            (make-trace-recorder) 'none #f))))
         (check "a string" (refuses? (lambda () (trace-recorder-bindings
-                                                (make-trace-recorder) "request"))))))))
+                                                (make-trace-recorder) "request" #f))))))))
+
+;;; THE HARNESS MODE IS THE THIRD REQUIRED ARGUMENT, and it is ONE argument
+;;; rather than two because upstream makes the two exclusive in the C
+;;; preprocessor: `test/fixtures/extra.c` guards `on_headers_complete` with
+;;; `#ifdef ..._PAUSE_ON_HEADERS_COMPLETE / #elif defined(..._SKIP_BODY)`, so a
+;;; build is never both. Modelling it as two booleans would make a combination
+;;; representable that no oracle binary can be.
+;;;
+;;; THE MODE CARRIES LLHTTP'S OWN SPELLING, because renaming it is this layer's
+;;; job and not the driver's. The two are not the same word: upstream's
+;;; `pause: "on_chunk_extension_name"` arms the macro inside
+;;; `llhttp__on_chunk_extension_name_COMPLETE`, so a mechanical
+;;; underscore-to-hyphen fold would arm the span callback instead -- a callback
+;;; upstream never pauses in.
+(harness-group "the pause points, as a rename"
+  (lambda ()
+    (harness-case "every point upstream declares has a row"
+      (lambda ()
+        ;; Read out of `test/fixtures/extra.c` by listing the function each
+        ;; `#ifdef LLHTTP__TEST_PAUSE_*` sits inside, at v9.4.3-1-gee51043.
+        (check-equal "points" (length adapter-pause-points) 15)
+        (check-equal "the two that are not a fold"
+                     (list (cdr (assoc "on_chunk_extension_name" adapter-pause-points))
+                           (cdr (assoc "on_chunk_extension_value" adapter-pause-points)))
+                     '(on-chunk-extension-name-complete
+                       on-chunk-extension-value-complete))))
+    (harness-case "every row names a callback this adapter binds"
+      (lambda ()
+        ;; A row naming a callback with no binding would arm nothing.
+        (check-equal "rows with no callback"
+                     (filter (lambda (row)
+                               (not (assq (cdr row) adapter-trace-names)))
+                             adapter-pause-points)
+                     '())))
+    (harness-case "no row names a span callback"
+      (lambda ()
+        ;; Upstream's span callbacks are `llparse__print_span` and return its
+        ;; value; none carries a pause macro. A row that named one would pause
+        ;; somewhere no fixture can record.
+        (check-equal "span rows"
+                     (filter (lambda (row)
+                               (eq? 'span (cadr (assq (cdr row) adapter-trace-names))))
+                             adapter-pause-points)
+                     '())))))
+
+(harness-group "the harness mode, as a check on its shape"
+  (lambda ()
+    ;; What the mode DOES is checked where a parser exists; what it REFUSES is
+    ;; checked here, with the rest of the no-default discipline.
+    (harness-case "a mode naming a point upstream has no macro for is refused"
+      (lambda ()
+        ;; A typo would otherwise arm nothing and produce a clean unpaused
+        ;; trace for a fixture that must pause.
+        (check "not a point"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) 'request
+                                     '(pause "on_nothing_at_all")))))
+        (check "a span, which upstream never pauses in"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) 'request
+                                     '(pause "on_method")))))
+        (check "our spelling, which is not upstream's"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) 'request
+                                     '(pause "on-message-begin")))))))
+    (harness-case "a mode that is neither shape is refused"
+      (lambda ()
+        (check "a bare symbol" (refuses? (lambda ()
+                                           (trace-recorder-bindings
+                                            (make-trace-recorder) 'request 'pause))))
+        (check "true" (refuses? (lambda () (trace-recorder-bindings
+                                            (make-trace-recorder) 'request #t))))
+        (check "an unknown word" (refuses? (lambda ()
+                                             (trace-recorder-bindings
+                                              (make-trace-recorder) 'request
+                                              '(lenient)))))
+        (check "a pause naming nothing"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) 'request '(pause)))))
+        (check "a pause naming two"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) 'request
+                                     '(pause "on_message_begin" "on_reset")))))))))
+
+;;; THE EMBEDDER'S PAUSE AND THE MACHINE'S ARE DIFFERENT LINES, and the
+;;; discriminator is measured rather than assumed: a callback that returns
+;;; `callback-pause` leaves the result's pause slot EMPTY, because a pause
+;;; reason is declared on a NODE and this project's event nodes declare none.
+;;; A pause that carries a reason is the machine's own and prints as llhttp's
+;;; error line; a pause with no reason is one this harness asked for.
+(harness-group "a requested pause"
+  (lambda ()
+    (harness-case "it renders as the bare word, at the offset given"
+      (lambda ()
+        (let ((r (make-trace-recorder)))
+          (trace-recorder-bindings r 'request '(pause "on_message_begin"))
+          (trace-recorder-note-requested-pause! r 32)
+          (check-equal "the line"
+                       (map utf8->string (trace-format (trace-recorder-events r)))
+                       '("off=32 pause")))))
+    (harness-case "a pause nobody asked for is still refused"
+      (lambda ()
+        ;; This is the check that keeps the new line honest. Without it, any
+        ;; reasonless pause anywhere would print `pause` and a parser stopping
+        ;; where llhttp does not would render a trace that looks deliberate.
+        (let ((r (make-trace-recorder)))
+          (trace-recorder-bindings r 'request #f)
+          (check "unarmed"
+                 (refuses? (lambda () (trace-recorder-note-requested-pause! r 0)))))))
+    (harness-case "a recorder that was never bound is refused too"
+      (lambda ()
+        ;; A recorder with no bindings has armed nothing, and `#f` is not a
+        ;; mode it was told -- it is a mode it was never asked about.
+        (check "unbound"
+               (refuses? (lambda ()
+                           (trace-recorder-note-requested-pause!
+                            (make-trace-recorder) 0))))))))
 
 (harness-group "the error table"
   (lambda ()

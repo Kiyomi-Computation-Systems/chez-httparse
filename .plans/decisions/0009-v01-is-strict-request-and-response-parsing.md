@@ -2,6 +2,9 @@
 
 Date: 2026-09-13
 Status: accepted
+Amended by: [0019](0019-the-harness-mode-and-the-two-kinds-of-pause.md) — M9 brought
+the 24 `pausing` and 2 `skipBody` fixtures in scope, leaving 37 lenient and 21 URL
+deferred. The v0.1 bar this record states was met and shipped unchanged.
 Milestone: Gate 0 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md)
 
 ## Context

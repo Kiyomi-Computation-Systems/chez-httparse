@@ -56,7 +56,7 @@ passing  request/content-length.md#12
 passing  request/content-length.md#13
 passing  request/content-length.md#14
 passing  request/content-length.md#15
-deferred request/content-length.md#16                    skip-body
+passing  request/content-length.md#16
 passing  request/content-length.md#17
 deferred request/content-length.md#18                    lenient
 passing  request/finish.md#1
@@ -112,19 +112,19 @@ passing  request/method.md#13
 passing  request/method.md#14
 passing  request/method.md#15
 passing  request/method.md#16
-deferred request/pausing.md#1                            pausing
-deferred request/pausing.md#2                            pausing
-deferred request/pausing.md#3                            pausing
-deferred request/pausing.md#4                            pausing
-deferred request/pausing.md#5                            pausing
-deferred request/pausing.md#6                            pausing
-deferred request/pausing.md#7                            pausing
-deferred request/pausing.md#8                            pausing
-deferred request/pausing.md#9                            pausing
-deferred request/pausing.md#10                           pausing
-deferred request/pausing.md#11                           pausing
-deferred request/pausing.md#12                           pausing
-deferred request/pausing.md#13                           pausing
+passing  request/pausing.md#1
+passing  request/pausing.md#2
+passing  request/pausing.md#3
+passing  request/pausing.md#4
+passing  request/pausing.md#5
+passing  request/pausing.md#6
+passing  request/pausing.md#7
+passing  request/pausing.md#8
+passing  request/pausing.md#9
+passing  request/pausing.md#10
+passing  request/pausing.md#11
+passing  request/pausing.md#12
+passing  request/pausing.md#13
 passing  request/pipelining.md#1
 passing  request/sample.md#1
 passing  request/sample.md#2
@@ -207,7 +207,7 @@ passing  response/connection.md#17
 passing  response/connection.md#18
 passing  response/content-length.md#1
 passing  response/content-length.md#2
-deferred response/content-length.md#3                    skip-body
+passing  response/content-length.md#3
 passing  response/content-length.md#4
 passing  response/finish.md#1
 passing  response/invalid.md#1
@@ -230,17 +230,17 @@ deferred response/invalid.md#17                          lenient
 passing  response/invalid.md#18
 deferred response/invalid.md#19                          lenient
 deferred response/lenient-version.md#1                   lenient
-deferred response/pausing.md#1                           pausing
-deferred response/pausing.md#2                           pausing
-deferred response/pausing.md#3                           pausing
-deferred response/pausing.md#4                           pausing
-deferred response/pausing.md#5                           pausing
-deferred response/pausing.md#6                           pausing
-deferred response/pausing.md#7                           pausing
-deferred response/pausing.md#8                           pausing
-deferred response/pausing.md#9                           pausing
-deferred response/pausing.md#10                          pausing
-deferred response/pausing.md#11                          pausing
+passing  response/pausing.md#1
+passing  response/pausing.md#2
+passing  response/pausing.md#3
+passing  response/pausing.md#4
+passing  response/pausing.md#5
+passing  response/pausing.md#6
+passing  response/pausing.md#7
+passing  response/pausing.md#8
+passing  response/pausing.md#9
+passing  response/pausing.md#10
+passing  response/pausing.md#11
 passing  response/pipelining.md#1
 passing  response/sample.md#1
 passing  response/sample.md#2
