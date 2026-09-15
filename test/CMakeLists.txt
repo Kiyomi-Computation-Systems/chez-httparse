@@ -1035,7 +1035,7 @@ endforeach()
 # so a grammar edit not followed by `make parser-refresh` reddens rather than
 # shipping an artifact that no longer describes its source.
 set(HTTPARSE_GENERATED_PARSER
-    "${CMAKE_SOURCE_DIR}/src/generated/httparse-request-line.sls")
+    "${CMAKE_SOURCE_DIR}/src/generated/httparse-message.sls")
 
 httparse_add_scheme_lane(
   NAME httparse.determinism.generated-artifact.chez.source
@@ -1099,7 +1099,7 @@ set(HTTPARSE_CONFORMANCE_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps")
 
 httparse_add_scheme_lane(
-  NAME httparse.conformance.request-line.chez.source
+  NAME httparse.conformance.message.chez.source
   BACKEND chez
   PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps"
   SOURCES ${HTTPARSE_CONFORMANCE_SOURCES}
@@ -1110,7 +1110,7 @@ httparse_add_scheme_lane(
   LABELS conformance)
 
 httparse_add_scheme_lane(
-  NAME httparse.conformance.request-line-full-scan.chez.source
+  NAME httparse.conformance.message-full-scan.chez.source
   BACKEND chez
   PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/conformance-driver-tests.sps"
   SOURCES ${HTTPARSE_CONFORMANCE_SOURCES}

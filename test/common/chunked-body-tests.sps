@@ -27,7 +27,7 @@
         (byte-machine runtime))
 
 (define machine
-  (make-interpreted-machine (verify-machine (make-request-line-machine))))
+  (make-interpreted-machine (verify-machine (make-message-machine))))
 
 ;; trace : String -> (Listof String)
 (define (trace input)

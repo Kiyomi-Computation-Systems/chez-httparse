@@ -1545,6 +1545,50 @@ HTTPS path instead -- `git fetch https://...` for the catch-up and
 NEXT: M8, the release. The live llhttp differential as a local opt-in lane
 (decision 0010), property and fuzz work over generated and fragmented input,
 an allocation audit, a benchmark baseline, the reference documentation set,
-and v0.1. Note that the parser is still named `request-line` everywhere and
-now reads responses too; that rename wants to land before the release names
-it in public.
+and v0.1.
+
+
+RENAME: THE PARSER IS NAMED FOR WHAT IT PARSES (2026-09-15). Branch
+refactor/name-the-parser-for-what-it-parses.
+
+`request-line` was accurate in M2 and has been wrong since M3. The shipped
+artifact is now src/generated/httparse-message.sls, library
+`(generated httparse-message)` exporting `httparse-message-machine`, emitted
+by tools/emit-message.ss from `(httparse grammar)`'s `make-message-machine`;
+the machine's own name symbol is `'httparse-message`, which is where the
+library's collection name comes from. Conformance lanes follow:
+httparse.conformance.message.chez.source and
+httparse.conformance.message-full-scan.chez.source.
+
+`message` was chosen because it is RFC 9110's own noun for a request OR a
+response, and because the one machine still to come -- the url sub-parser --
+is a different machine rather than a bigger one. So it should not go stale
+the way `request-line` did.
+
+WHAT KEPT ITS NAME. test/common/request-line-tests.sps, the lanes
+httparse.unit.request-line.chez.{source,aot}, and trace-format-tests's "a
+request-line trace renders in order": each is genuinely about the request
+line. CHANGELOG.md and this ledger's earlier entries were NOT rewritten --
+they say what was true when they were written.
+
+THE ARTIFACT IS BYTE-IDENTICAL TO ITS PREDECESSOR ONCE THE NAME IS
+SUBSTITUTED, checked by diffing the re-emitted file against a sed of the old
+one rather than by eyeballing a 3,840-line diff. 234,216 -> 234,201 bytes,
+which is the fifteen characters the shorter name saves. ABI unchanged at 7.
+make test-all 66/66, and the rename-audit lane green.
+
+AND THE RENAME TURNED UP A VACUOUS CHECK, which is the M7 trap found in the
+tree hours after it was written down. request-line-tests.sps had
+
+    (check "verify-machine returns" (verify-machine (make-request-line-machine)))
+
+green since M2 and checking nothing: `verify-machine` RETURNS a
+`verification-result` whether the machine is clean or not, so the check could
+only have failed if the call raised, which it does not. It now reads the
+verdict -- `verification-diagnostics` mapped to codes, and `verification-ok?`
+-- and, because a broken grammar can never reach that case (the lane's
+`make-interpreted-machine` raises at load time), a second case CALIBRATES it
+against a hand-built machine with exactly one fault, asserting the verifier
+answers `(unreachable-node)` and `verification-ok?` is false. Watched it fail
+twice on the way: wrong arity to `make-machine`, then a second diagnostic
+from a first attempt whose entry was itself a finish node.

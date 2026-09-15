@@ -14,11 +14,12 @@
 (import (rnrs)
         (httparse test harness)
         (httparse grammar)
+        (byte-machine graph)
         (byte-machine verify)
         (byte-machine interpret)
         (byte-machine runtime))
 
-(define compiled (make-interpreted-machine (verify-machine (make-request-line-machine))))
+(define compiled (make-interpreted-machine (verify-machine (make-message-machine))))
 
 ;; Runs `input` and returns (values status events), where an event is
 ;;   (name offset)                       an event callback
@@ -163,7 +164,48 @@
   (lambda ()
     (harness-case "it verifies"
       (lambda ()
-        (check "verify-machine returns" (verify-machine (make-request-line-machine)))))))
+        ;; `verify-machine` RETURNS A VERDICT; IT DOES NOT RAISE ONE, so the
+        ;; answer has to be read. This case asked only whether the call
+        ;; returned -- and a `verification-result` always does, clean or not
+        ;; -- so it was green from M2 to M7 while checking nothing. What
+        ;; actually gates this lane is `make-interpreted-machine` above,
+        ;; which does raise; this is the check that says so out loud, and
+        ;; names the diagnostics when it does not.
+        (let ((v (verify-machine (make-message-machine))))
+          (check-equal "diagnostics"
+                       (map diagnostic-code (verification-diagnostics v))
+                       '())
+          (check "the verdict itself" (verification-ok? v)))))
+    (harness-case "and the verdict is one this case can read"
+      (lambda ()
+        ;; CALIBRATING THE CHECK ABOVE, because it cannot be witnessed in
+        ;; place: `make-interpreted-machine` runs at load time and raises, so
+        ;; a grammar broken enough to produce diagnostics never reaches the
+        ;; case that would report them. A machine broken HERE does, and it
+        ;; proves the two accessors above answer differently for a machine
+        ;; the verifier refuses -- which the old `(check "verify-machine
+        ;; returns" ...)` could not have, because a verification result is
+        ;; truthy either way.
+        (let ((v (verify-machine
+                  (make-machine
+                   'probe 'entry
+                   (list (make-uint-field 'f 8 0 #f))
+                   (list (make-callback-declaration 'on-x 'event #t '() #f #f))
+                   '()
+                   (list (make-error-declaration 'e 'strict "x" #f))
+                   ;; A machine with exactly one fault: `entry` consumes
+                   ;; for ever and ends cleanly at end of input, and nothing
+                   ;; whatever reaches `orphan`.
+                   (list (make-byte-dispatch-node
+                          'entry '() (make-edge 'entry 'advance) 'done #f)
+                         (make-finish-node 'done #f)
+                         (make-finish-node 'orphan #f))
+                   'e #f))))
+          (check "a broken machine still RETURNS" (and v #t))
+          (check "and says so" (not (verification-ok? v)))
+          (check-equal "by name"
+                       (map diagnostic-code (verification-diagnostics v))
+                       '(unreachable-node)))))))
 
 (harness-group "a complete request line, at the corpus's own offsets"
   (lambda ()

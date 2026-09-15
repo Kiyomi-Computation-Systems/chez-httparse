@@ -98,7 +98,7 @@
 ;;; against its `.otherwise`, and there NO FIXTURE LOOKS: both carry
 ;;; "Invalid response status", which the corpus never records.
 (library (httparse grammar)
-  (export make-request-line-machine
+  (export make-message-machine
           httparse-tchar-bytes httparse-url-bytes httparse-header-bytes
           httparse-method-names httparse-method-numbers
           httparse-http-methods httparse-rtsp-methods httparse-ice-methods)
@@ -587,9 +587,9 @@
   (define (ev node callback continue)
     (make-callback-node node callback continue '() continue #f))
 
-  (define (make-request-line-machine)
+  (define (make-message-machine)
     (make-machine
-     'httparse-request-line 'start
+     'httparse-message 'start
      ;; THE STATE `headers complete` PRINTS, plus the one that routes the
      ;; protocol check. llhttp's own callback reads `s->method, s->http_major,
      ;; s->http_minor, s->flags, s->content_length` and prints them, so these
