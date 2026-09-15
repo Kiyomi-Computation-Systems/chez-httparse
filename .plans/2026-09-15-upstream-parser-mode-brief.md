@@ -98,13 +98,32 @@ twenty-two nodes ahead of its entry state**, asked once per parser, to encode
 one integer the embedder already knows.
 
 Two things make that bearable and are worth keeping in any design that
-replaces it. Optional callbacks with a declared `default-branch` mean an
-embedder that wants none of the modes binds nothing and the 218 strict
-fixtures exercise the default rather than a binding that says "no". And
-putting the chain at the ENTRY rather than inside the message loop is what
-makes "once per parser" true — which is the semantics an initial-value
-argument would have for free, and which a `parser-reset!` that restored
-declared initials would silently undo.
+replaces it.
+
+**Optional callbacks with a declared `default-branch` cost an embedder that
+wants none of the modes nothing at all.** It binds no lenient callback, and
+the 216 strict fixtures in this consumer's corpus then exercise the DEFAULT
+path rather than a binding that answers "no" — so a default that stopped
+meaning strict breaks 216 lanes at once instead of nothing.
+
+**Putting the chain at the ENTRY rather than inside the message loop survives
+`parser-reset!` for free, which was not obvious and is measured rather than
+assumed.** A reset restores the declared initials, so the mode field goes back
+to zero — and then the next feed re-enters the entry, re-asks, and sets it
+again:
+
+```
+(before-any-feed lenient-flags 0)     ; the asks have not run
+(after-feed      lenient-flags 16)    ; LENIENT_VERSION
+(after-reset     lenient-flags 0)     ; declared initial restored
+(after-second-feed lenient-flags 16)  ; re-asked, and re-set
+```
+
+That is worth naming because an initial-values argument to `make-parser` does
+NOT get it for free: it would have to decide, deliberately, whether a reset
+restores the declared initials or the ones the embedder gave. The callback
+chain answers that question by construction — the embedder is asked again —
+and a replacement should be at least as hard to get wrong.
 
 ## 3. What the shape probably is not
 

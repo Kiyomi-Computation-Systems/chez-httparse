@@ -123,6 +123,35 @@
                        (list-tail ls (- (length ls) 2))
                        '("off=36 headers complete method=1 v=5/6 flags=0 content_length=0"
                          "off=36 message complete")))))
+    (harness-case "the embedder is asked once, however many messages arrive"
+      (lambda ()
+        ;; THE CLAIM THE FOURTH UPSTREAM BRIEF MAKES, as a count rather than
+        ;; a comment. The asks are idempotent, so a chain that ran per message
+        ;; would produce IDENTICAL traces -- the only thing that changes is
+        ;; how often the embedder is asked, and nothing but a count can see
+        ;; it. Moving the chain into the restart is caught here and nowhere
+        ;; else.
+        (let* ((asked 0)
+               (r (make-trace-recorder))
+               (bindings
+                (cons (list 'on-lenient-version
+                            (lambda (p ctx) (set! asked (+ asked 1)) 'yes))
+                      (trace-recorder-bindings r '(request) #f)))
+               (p (make-parser machine bindings #f))
+               (bv (string->utf8 (string-append "GET / HTTP/5.6\r\n\r\n"
+                                                "GET / HTTP/5.6\r\n\r\n"
+                                                "GET / HTTP/5.6\r\n\r\n"))))
+          (parser-feed! p bv 0 (bytevector-length bv))
+          (check-equal "three messages parsed"
+                       (length (filter (lambda (l)
+                                         (and (> (string-length l) 16)
+                                              (string=? (substring l (- (string-length l) 16)
+                                                                   (string-length l))
+                                                        "message complete")))
+                                       (map utf8->string
+                                            (trace-format (trace-recorder-events r)))))
+                       3)
+          (check-equal "asked once" asked 1))))
     (harness-case "no lenient binding at all is the strict parser"
       (lambda ()
         ;; The default path, named. Every one of the 216 strict fixtures runs
@@ -132,5 +161,35 @@
         (check-equal "strict"
                      (list-tail (trace '(request) "GET / HTTP/5.6\r\n") 8)
                      '("off=14 error code=9 reason=\"Invalid HTTP version\""))))))
+
+;;; This one is not about a trace. It is the property the fourth upstream
+;;; brief now cites, and a brief that cites a measurement this tree does not
+;;; keep is a claim with nothing behind it.
+(harness-group "a reset re-asks rather than forgetting"
+  (lambda ()
+    (harness-case "the mode is restored by being asked again"
+      (lambda ()
+        ;; `parser-reset!` restores every field to its DECLARED initial, so
+        ;; the mode field goes back to zero -- and the next feed re-enters the
+        ;; machine's entry, which is the ask chain, and sets it again. The
+        ;; chain's position is what makes that true: inside the message loop
+        ;; it would be re-asked per message, and after `start` it would never
+        ;; be re-asked at all.
+        (let* ((r (make-trace-recorder))
+               (p (make-parser machine
+                               (trace-recorder-bindings r '(request version) #f) #f))
+               (bv (string->utf8 "GET / HTTP/5.6\r\n\r\n"))
+               (read-flags (lambda () (parser-field-ref p 'lenient-flags))))
+          (check-equal "nothing is set before the first feed" (read-flags) 0)
+          (parser-feed! p bv 0 (bytevector-length bv))
+          (check-equal "the ask set it" (read-flags) 16)
+          (parser-reset! p)
+          (check-equal "the reset cleared it" (read-flags) 0)
+          (let ((res (parser-feed! p bv 0 (bytevector-length bv))))
+            (check-equal "and the re-ask set it again" (read-flags) 16)
+            ;; The half that matters to an embedder: the second parse is
+            ;; still lenient, so `HTTP/5.6` does not become an error.
+            (check "the reset parser is still lenient"
+                   (not (eq? (parser-result-status res) 'error)))))))))
 
 (harness-finish)
