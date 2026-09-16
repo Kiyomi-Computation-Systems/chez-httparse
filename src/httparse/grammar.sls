@@ -1329,8 +1329,17 @@
         (list (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'expect-lf 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-no-crlf 'advance) #f))
+                              (make-edge 'lenient-lf-request-line 'advance) #f))
         (make-edge 'e-no-crlf 'reexecute) 'e-eof-none #f)
+      ;; THE TENTH SITE, and the only one whose strict error is not a
+      ;; `Missing expected CR`. A request line ending in a bare LF is
+      ;; `Expected CRLF after version`, the same reason its lone-CR sibling
+      ;; gives -- which is why the two sit on the same node and why this one
+      ;; was missed until `request/invalid.md#22` named it: the failure read
+      ;; as the OPTIONAL_LF_AFTER_CR fork already in place, and it was the
+      ;; other flag's arm of the same node.
+      (lenient-fork 'lenient-lf-request-line 'optional-cr-before-lf
+                    'headers-start 'e-no-crlf)
       (make-byte-dispatch-node 'expect-lf
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'headers-start 'advance) #f))
@@ -1417,7 +1426,13 @@
         '() (make-edge 'res-line-almost-done 'advance) 'e-eof-none #f)
       (make-span-end-node 'res-status-close-lf 'status-span 'res-status-skip-lf #f)
       (make-byte-dispatch-node 'res-status-skip-lf
-        '() (make-edge 'e-cr-after-status 'advance) 'e-eof-none #f)
+        '() (make-edge 'lenient-lf-status 'advance) 'e-eof-none #f)
+      ;; OPTIONAL_CR_BEFORE_LF, and every one of its ten sites is the same
+      ;; sentence: a bare LF is taken as the line ending CRLF would have
+      ;; been. The LENIENT TARGET IS WHEREVER THE CR ARM GOES ONCE THE LINE
+      ;; ENDING IS CONSUMED -- which is not always the CR arm's own target,
+      ;; because some of these sites eat the LF and some peek it.
+      (lenient-fork 'lenient-lf-status 'optional-cr-before-lf 'status-complete 'e-cr-after-status)
 
       ;; `status complete` fires PAST the LF, which is why the CR arm above
       ;; carries no event of its own: a status line that never reaches its LF
@@ -1469,7 +1484,7 @@
         (list (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'headers-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-bad-header-field-char 'advance) #f)
+                              (make-edge 'lenient-lf-field-start 'advance) #f)
               (make-byte-case (make-exact-byte-matcher COLON)
                               (make-edge 'e-bad-header-token 'reexecute) #f))
         (make-edge 'header-field-open 'reexecute) 'e-eof-none #f)
@@ -1603,7 +1618,7 @@
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'value-discard-ws-cr 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-bad-header-value-char 'advance) #f))
+                              (make-edge 'lenient-lf-discard-ws 'advance) #f))
         (make-edge 'value-open 'reexecute) 'e-eof-none #f)
 
       (make-byte-dispatch-node 'value-discard-ws-cr
@@ -1891,7 +1906,8 @@
       (make-span-end-node 'value-close-lenient-lf 'header-value-span
                           'value-almost-done #f)
       (make-span-end-node 'value-close 'header-value-span 'eat-cr #f)
-      (make-span-end-node 'value-close-no-cr 'header-value-span 'e-cr-after-value #f)
+      (make-span-end-node 'value-close-no-cr 'header-value-span 'lenient-lf-value #f)
+      (lenient-fork 'lenient-lf-value 'optional-cr-before-lf 'value-almost-done 'e-cr-after-value)
       (make-span-end-node 'value-close-bad 'header-value-span 'e-bad-header-value-char #f)
       (make-byte-dispatch-node 'eat-cr
         (list (make-byte-case (make-exact-byte-matcher CR)
@@ -2231,7 +2247,7 @@
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'chunk-size-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-cr-after-chunk-size 'advance) #f)
+                              (make-edge 'lenient-lf-chunk-size 'advance) #f)
               (make-byte-case (make-exact-byte-matcher SEMICOLON)
                               (make-edge 'chunk-extensions 'advance) #f))
         (make-edge 'e-bad-chunk-size 'reexecute) 'e-eof-none #f)
@@ -2270,7 +2286,7 @@
       ;; encoding.md#29 records off=84 for five bytes of data ending at 84.
       (make-sequence-dispatch-node 'chunk-data-almost-done
         (list (make-sequence-case (list CR LF) 'chunk-complete #f)
-              (make-sequence-case (list LF) 'e-cr-after-chunk-data #f))
+              (make-sequence-case (list LF) 'lenient-lf-chunk-data #f))
         (make-edge 'lenient-crlf-after-chunk 'reexecute) 'e-eof-none #f)
       ;; OPTIONAL_CRLF_AFTER_CHUNK, and it is the whole flag: a chunk's data
       ;; may be followed by NEITHER a CR nor an LF, and the next chunk header
@@ -2361,7 +2377,7 @@
       (ev 'chunk-ext-name-done-cr 'on-chunk-extension-name-complete
           'chunk-size-almost-done)
       (ev 'chunk-ext-name-done-lf 'on-chunk-extension-name-complete
-          'e-cr-after-chunk-ext-name)
+          'lenient-lf-ext-name)
 
       ;; A DOUBLE QUOTE IS PART OF THE VALUE, not a wrapper around it. It is
       ;; MATCHED -- consumed with the span still open -- so a quoted value's
@@ -2389,7 +2405,7 @@
       (ev 'chunk-ext-value-done-cr 'on-chunk-extension-value-complete
           'chunk-size-almost-done)
       (ev 'chunk-ext-value-done-lf 'on-chunk-extension-value-complete
-          'e-cr-after-chunk-ext-value)
+          'lenient-lf-ext-value)
 
       ;; Inside the quotes. The closing quote is MATCHED and the span ends
       ;; after it; a backslash escapes the NEXT byte whatever it is, so the
@@ -2413,7 +2429,7 @@
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'chunk-size-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-cr-after-chunk-ext-value 'reexecute) #f))
+                              (make-edge 'lenient-lf-ext-quoted 'reexecute) #f))
         (make-edge 'e-bad-chunk-ext-quote-value 'reexecute) 'e-eof-none #f)
       (make-byte-dispatch-node 'chunk-ext-quoted-pair
         (list (make-byte-case (make-byte-set-matcher httparse-header-bytes)
@@ -2550,6 +2566,33 @@
       ;; connection quietly swallows everything that follows.
       (lenient-fork 'lenient-data-after-close 'data-after-close
                     'closed 'e-data-after-close)
+
+      ;; The other eight OPTIONAL_CR_BEFORE_LF forks. They are gathered here
+      ;; rather than each beside its site because they say the same thing
+      ;; eight times, and reading them together is how one notices that the
+      ;; chunk-size arm rejoins `chunk-size-almost-done` -- a node that then
+      ;; wants an LF it has already eaten. That is upstream's shape, not a
+      ;; slip: with this flag ALONE a bare LF after a chunk size still fails,
+      ;; at `Expected LF after chunk size`, and it takes OPTIONAL_LF_AFTER_CR
+      ;; as well to parse. `lenient_all` sets both, which is the only
+      ;; configuration in the corpus that reaches it.
+      (lenient-fork 'lenient-lf-chunk-size 'optional-cr-before-lf
+                    'chunk-size-almost-done 'e-cr-after-chunk-size)
+      (lenient-fork 'lenient-lf-chunk-data 'optional-cr-before-lf
+                    'chunk-complete 'e-cr-after-chunk-data)
+      (lenient-fork 'lenient-lf-ext-name 'optional-cr-before-lf
+                    'chunk-size-almost-done 'e-cr-after-chunk-ext-name)
+      (lenient-fork 'lenient-lf-ext-value 'optional-cr-before-lf
+                    'chunk-size-almost-done 'e-cr-after-chunk-ext-value)
+      (lenient-fork 'lenient-lf-ext-quoted 'optional-cr-before-lf
+                    'chunk-size-almost-done 'e-cr-after-chunk-ext-value)
+      ;; The two that are NOT `Missing expected CR` errors: a bare LF where a
+      ;; field name would start ends the header section, and a bare LF in the
+      ;; whitespace before a value ends an empty one.
+      (lenient-fork 'lenient-lf-field-start 'optional-cr-before-lf
+                    'check-trailing 'e-bad-header-field-char)
+      (lenient-fork 'lenient-lf-discard-ws 'optional-cr-before-lf
+                    'value-discard-lws 'e-bad-header-value-char)
 
       ;; --- errors, one node per span state ------------------------------------
       ;; Reached from the table's no-match, where the method span IS open.

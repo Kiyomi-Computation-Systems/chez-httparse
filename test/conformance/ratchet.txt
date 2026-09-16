@@ -83,7 +83,7 @@ passing  request/invalid.md#18
 passing  request/invalid.md#19
 passing  request/invalid.md#20
 passing  request/invalid.md#21
-deferred request/invalid.md#22                           lenient
+passing  request/invalid.md#22
 passing  request/invalid.md#23
 passing  request/invalid.md#24
 passing  request/lenient-header-value-relaxed.md#1
@@ -226,9 +226,9 @@ passing  response/invalid.md#13
 passing  response/invalid.md#14
 passing  response/invalid.md#15
 passing  response/invalid.md#16
-deferred response/invalid.md#17                          lenient
+passing  response/invalid.md#17
 passing  response/invalid.md#18
-deferred response/invalid.md#19                          lenient
+passing  response/invalid.md#19
 passing  response/lenient-version.md#1
 passing  response/pausing.md#1
 passing  response/pausing.md#2
@@ -253,7 +253,7 @@ passing  response/sample.md#8
 passing  response/sample.md#9
 passing  response/sample.md#10
 passing  response/sample.md#11
-deferred response/sample.md#12                           lenient
+passing  response/sample.md#12
 passing  response/sample.md#13
 passing  response/sample.md#14
 passing  response/sample.md#15

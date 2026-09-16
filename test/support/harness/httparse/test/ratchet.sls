@@ -47,7 +47,7 @@
   ;; it arrives only when all nine do.
   (define ratchet-implemented-lenient '(version headers optional-lf-after-cr optional-crlf-after-chunk
       header-value-relaxed keep-alive chunked-length transfer-encoding
-      data-after-close spaces-after-chunk-size))
+      data-after-close spaces-after-chunk-size optional-cr-before-lf))
 
   (define (ratchet-fixture-class f)
     (if (or (eq? (fixture-kind f) 'url)

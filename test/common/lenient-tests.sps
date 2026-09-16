@@ -202,6 +202,35 @@
                        "off=28 headers complete method=1 v=1/1 flags=0 content_length=0"
                        "off=28 message complete"))))))
 
+(harness-group "OPTIONAL_CR_BEFORE_LF, at the one site no fixture reaches"
+  (lambda ()
+    ;; Ten sites, and the same sweep that found LENIENT_HEADERS' gap found
+    ;; this one: nine broke two lanes each when disabled, and this broke
+    ;; nothing. Measured against a live llhttp at `v9.4.3-1-gee51043` -- the
+    ;; strict half from the plain `http-request-c`, the lenient half from a
+    ;; build carrying
+    ;; `-DLLPARSE__TEST_INIT=llhttp__test_init_request_lenient_optional_cr_before_lf`
+    ;; -- both at scan size 24.
+    (harness-case "a bare LF where a value would start is an error when strict"
+      (lambda ()
+        (check-equal "the oracle's last line"
+                     (list-tail (trace '(request) "GET / HTTP/1.1\r\nHost:\n\r\n") 11)
+                     '("off=22 error code=10 reason=\"Invalid header value char\""))))
+    (harness-case "and ends an EMPTY value when the flag is on"
+      (lambda ()
+        ;; The value is announced as an empty span, not skipped -- which is
+        ;; `checkEmptyHeaderValue`'s doing and not this flag's, and is the
+        ;; part a fork pointed at the wrong target would lose.
+        (check-equal "the oracle's own trace"
+                     (list-tail (trace '(request optional-cr-before-lf)
+                                       "GET / HTTP/1.1\r\nHost:\n\r\n") 9)
+                     '("off=16 len=4 span[header_field]=\"Host\""
+                       "off=21 header_field complete"
+                       "off=22 len=0 span[header_value]=\"\""
+                       "off=22 header_value complete"
+                       "off=24 headers complete method=1 v=1/1 flags=0 content_length=0"
+                       "off=24 message complete"))))))
+
 ;;; This one is not about a trace. It is the property the fourth upstream
 ;;; brief now cites, and a brief that cites a measurement this tree does not
 ;;; keep is a claim with nothing behind it.
