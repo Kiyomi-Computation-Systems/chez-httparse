@@ -235,7 +235,7 @@
   (lambda ()
     (harness-case "every declared callback is bound, and the type is bound too"
       (lambda ()
-        (let ((bs (trace-recorder-bindings (make-trace-recorder) 'request #f)))
+        (let ((bs (trace-recorder-bindings (make-trace-recorder) '(request) #f)))
           (check-equal "one per row, plus the decision"
                        (length bs) (+ 1 (length adapter-trace-names)))
           (check "the message type is bound"
@@ -248,18 +248,70 @@
         ;; would print `method=0` for all 66 of them.
         (for-each
          (lambda (want)
-           (let* ((bs (trace-recorder-bindings (make-trace-recorder) want #f))
+           (let* ((bs (trace-recorder-bindings (make-trace-recorder) (list want) #f))
                   (f (cadr (assq adapter-message-type-callback bs))))
              (check-equal (symbol->string want) (f #f #f) want)))
          adapter-message-types)))
     (harness-case "a kind that is neither is refused, not assumed"
       (lambda ()
         (check "url" (refuses? (lambda () (trace-recorder-bindings
-                                           (make-trace-recorder) 'url #f))))
+                                           (make-trace-recorder) '(url) #f))))
         (check "none" (refuses? (lambda () (trace-recorder-bindings
-                                            (make-trace-recorder) 'none #f))))
+                                            (make-trace-recorder) '(none) #f))))
         (check "a string" (refuses? (lambda () (trace-recorder-bindings
-                                                (make-trace-recorder) "request" #f))))))))
+                                                (make-trace-recorder) "request" #f))))
+        (check "a bare symbol, where an init is a list"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) 'request #f))))
+        (check "the empty init"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) '() #f))))))))
+
+;;; THE INIT IS ONE ARGUMENT BECAUSE UPSTREAM SETS BOTH HALVES IN ONE
+;;; FUNCTION. `llhttp__test_init_request_lenient_version` writes `s->type` and
+;;; then `s->lenient_flags`, so a harness that took them separately could
+;;; describe a hook that does not exist.
+(harness-group "the lenient flags an init may name"
+  (lambda ()
+    (harness-case "eleven, in llhttp's own bit order"
+      (lambda ()
+        ;; `LENIENT_FLAGS` in src/llhttp/constants.ts, bits 0 through 10.
+        (check-equal "count" (length adapter-lenient-flags) 11)
+        (check-equal "the first and the last"
+                     (list (car adapter-lenient-flags)
+                           (list-ref adapter-lenient-flags 10))
+                     '(headers header-value-relaxed))))
+    (harness-case "a flag upstream does not declare is refused"
+      (lambda ()
+        ;; The no-default discipline again: a typo would otherwise bind
+        ;; nothing, and the fixture would parse strictly and fail with a diff
+        ;; that names the version rather than the binding.
+        (check "not a flag"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) '(request lenient) #f))))
+        (check "a near miss"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) '(request versions) #f))))
+        (check "upstream's spelling, which is not ours"
+               (refuses? (lambda () (trace-recorder-bindings
+                                     (make-trace-recorder) '(request lenient_version) #f))))))
+    (harness-case "only the named flags are bound"
+      (lambda ()
+        ;; An unbound optional callback takes the machine's declared default,
+        ;; which is the strict answer. Binding all eleven and answering `no`
+        ;; would look the same from outside and would leave that default
+        ;; unexercised by all 216 strict fixtures.
+        (let ((strict (trace-recorder-bindings (make-trace-recorder) '(request) #f))
+              (lenient (trace-recorder-bindings (make-trace-recorder)
+                                                '(request version) #f)))
+          (check "strict binds no lenient callback"
+                 (not (assq 'on-lenient-version strict)))
+          (check "lenient binds exactly the one named"
+                 (and (assq 'on-lenient-version lenient) #t))
+          (check "and not its neighbours"
+                 (not (assq 'on-lenient-headers lenient)))
+          (check-equal "one more binding than strict"
+                       (- (length lenient) (length strict)) 1))))))
 
 ;;; THE HARNESS MODE IS THE THIRD REQUIRED ARGUMENT, and it is ONE argument
 ;;; rather than two because upstream makes the two exclusive in the C
@@ -315,33 +367,33 @@
         ;; trace for a fixture that must pause.
         (check "not a point"
                (refuses? (lambda () (trace-recorder-bindings
-                                     (make-trace-recorder) 'request
+                                     (make-trace-recorder) '(request)
                                      '(pause "on_nothing_at_all")))))
         (check "a span, which upstream never pauses in"
                (refuses? (lambda () (trace-recorder-bindings
-                                     (make-trace-recorder) 'request
+                                     (make-trace-recorder) '(request)
                                      '(pause "on_method")))))
         (check "our spelling, which is not upstream's"
                (refuses? (lambda () (trace-recorder-bindings
-                                     (make-trace-recorder) 'request
+                                     (make-trace-recorder) '(request)
                                      '(pause "on-message-begin")))))))
     (harness-case "a mode that is neither shape is refused"
       (lambda ()
         (check "a bare symbol" (refuses? (lambda ()
                                            (trace-recorder-bindings
-                                            (make-trace-recorder) 'request 'pause))))
+                                            (make-trace-recorder) '(request) 'pause))))
         (check "true" (refuses? (lambda () (trace-recorder-bindings
-                                            (make-trace-recorder) 'request #t))))
+                                            (make-trace-recorder) '(request) #t))))
         (check "an unknown word" (refuses? (lambda ()
                                              (trace-recorder-bindings
-                                              (make-trace-recorder) 'request
+                                              (make-trace-recorder) '(request)
                                               '(lenient)))))
         (check "a pause naming nothing"
                (refuses? (lambda () (trace-recorder-bindings
-                                     (make-trace-recorder) 'request '(pause)))))
+                                     (make-trace-recorder) '(request) '(pause)))))
         (check "a pause naming two"
                (refuses? (lambda () (trace-recorder-bindings
-                                     (make-trace-recorder) 'request
+                                     (make-trace-recorder) '(request)
                                      '(pause "on_message_begin" "on_reset")))))))))
 
 ;;; THE EMBEDDER'S PAUSE AND THE MACHINE'S ARE DIFFERENT LINES, and the
@@ -355,7 +407,7 @@
     (harness-case "it renders as the bare word, at the offset given"
       (lambda ()
         (let ((r (make-trace-recorder)))
-          (trace-recorder-bindings r 'request '(pause "on_message_begin"))
+          (trace-recorder-bindings r '(request) '(pause "on_message_begin"))
           (trace-recorder-note-requested-pause! r 32)
           (check-equal "the line"
                        (map utf8->string (trace-format (trace-recorder-events r)))
@@ -366,7 +418,7 @@
         ;; reasonless pause anywhere would print `pause` and a parser stopping
         ;; where llhttp does not would render a trace that looks deliberate.
         (let ((r (make-trace-recorder)))
-          (trace-recorder-bindings r 'request #f)
+          (trace-recorder-bindings r '(request) #f)
           (check "unarmed"
                  (refuses? (lambda () (trace-recorder-note-requested-pause! r 0)))))))
     (harness-case "a recorder that was never bound is refused too"

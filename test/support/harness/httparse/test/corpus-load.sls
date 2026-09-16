@@ -32,9 +32,62 @@
           fixture-meta-ref
           expectation? expectation-pattern? expectation-text
           corpus-load-error? corpus-load-error-detail
+          fixture-init-words fixture-lenient-flags
           ;; exported so the loader's own tests can judge them alone
           corpus-split-lines corpus-parse-meta)
   (import (rnrs))
+
+  ;; fixture-init-words : Fixture -> (Listof Symbol)
+  ;; A fixture's `type` meta, split on hyphens. That string names the INIT
+  ;; HOOK upstream compiles in -- `-DLLPARSE__TEST_INIT=llhttp__test_init_
+  ;; request_lenient_version` -- so its first word is the message kind and
+  ;; the rest, after a `lenient` marker, name the flags that hook sets.
+  (define (fixture-init-words f)
+    (let ((type (fixture-meta-ref f 'type #f)))
+      (if (not (string? type))
+          '()
+          (let ((n (string-length type)))
+            (let loop ((i 0) (start 0) (acc '()))
+              (cond ((= i n)
+                     (reverse (cons (string->symbol (substring type start n)) acc)))
+                    ((char=? (string-ref type i) #\-)
+                     (loop (+ i 1) (+ i 1)
+                           (cons (string->symbol (substring type start i)) acc)))
+                    (else (loop (+ i 1) start acc))))))))
+
+  ;; THE NINE `lenient_all` SETS, read out of
+  ;; `llhttp__test_init_request_lenient_all`. It does NOT set
+  ;; `spaces-after-chunk-size` or `header-value-relaxed`, which is why those
+  ;; two have hooks of their own.
+  (define corpus-lenient-all
+    '(headers chunked-length keep-alive transfer-encoding version
+      data-after-close optional-lf-after-cr optional-cr-before-lf
+      optional-crlf-after-chunk))
+
+  ;; fixture-lenient-flags : Fixture -> (Listof Symbol)
+  ;; The lenient flags a fixture's init hook sets: empty for a strict one, one
+  ;; name for a single hook, and nine for `lenient-all`. EXPANDED HERE rather
+  ;; than by each caller, because SCOPE and RENAMING both need the same nine,
+  ;; and two copies of a list read out of someone else's C are two chances to
+  ;; mistype it.
+  ;;
+  ;; The flag's own name CONTAINS hyphens (`lenient-optional-lf-after-cr`), so
+  ;; the words after `lenient` are rejoined rather than read one at a time.
+  (define (fixture-lenient-flags f)
+    (let ((ws (fixture-init-words f)))
+      (if (not (and (pair? ws) (pair? (cdr ws)) (eq? (cadr ws) 'lenient)
+                    (pair? (cddr ws))))
+          '()
+          (let ((name (string->symbol
+                       (let join ((ns (cddr ws)) (acc ""))
+                         (if (null? ns)
+                             acc
+                             (join (cdr ns)
+                                   (if (string=? acc "")
+                                       (symbol->string (car ns))
+                                       (string-append acc "-"
+                                                      (symbol->string (car ns))))))))))
+            (if (eq? name 'all) corpus-lenient-all (list name))))))
 
   (define-condition-type &corpus-load &error
     make-corpus-load-error corpus-load-error? (detail corpus-load-error-detail))

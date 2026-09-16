@@ -23,20 +23,20 @@
 passing  request/connection.md#1
 passing  request/connection.md#2
 passing  request/connection.md#3
-deferred request/connection.md#4                         lenient
+passing  request/connection.md#4
 passing  request/connection.md#5
 passing  request/connection.md#6
 passing  request/connection.md#7
 passing  request/connection.md#8
 passing  request/connection.md#9
 passing  request/connection.md#10
-deferred request/connection.md#11                        lenient
+passing  request/connection.md#11
 passing  request/connection.md#12
-deferred request/connection.md#13                        lenient
+passing  request/connection.md#13
 passing  request/connection.md#14
-deferred request/connection.md#15                        lenient
+passing  request/connection.md#15
 passing  request/connection.md#16
-deferred request/connection.md#17                        lenient
+passing  request/connection.md#17
 passing  request/connection.md#18
 passing  request/connection.md#19
 passing  request/connection.md#20
@@ -47,8 +47,8 @@ passing  request/content-length.md#3
 passing  request/content-length.md#4
 passing  request/content-length.md#5
 passing  request/content-length.md#6
-deferred request/content-length.md#7                     lenient
-deferred request/content-length.md#8                     lenient
+passing  request/content-length.md#7
+passing  request/content-length.md#8
 passing  request/content-length.md#9
 passing  request/content-length.md#10
 passing  request/content-length.md#11
@@ -58,7 +58,7 @@ passing  request/content-length.md#14
 passing  request/content-length.md#15
 passing  request/content-length.md#16
 passing  request/content-length.md#17
-deferred request/content-length.md#18                    lenient
+passing  request/content-length.md#18
 passing  request/finish.md#1
 passing  request/finish.md#2
 passing  request/finish.md#3
@@ -69,7 +69,7 @@ passing  request/invalid.md#4
 passing  request/invalid.md#5
 passing  request/invalid.md#6
 passing  request/invalid.md#7
-deferred request/invalid.md#8                            lenient
+passing  request/invalid.md#8
 passing  request/invalid.md#9
 passing  request/invalid.md#10
 passing  request/invalid.md#11
@@ -83,19 +83,19 @@ passing  request/invalid.md#18
 passing  request/invalid.md#19
 passing  request/invalid.md#20
 passing  request/invalid.md#21
-deferred request/invalid.md#22                           lenient
+passing  request/invalid.md#22
 passing  request/invalid.md#23
-deferred request/invalid.md#24                           lenient
-deferred request/lenient-header-value-relaxed.md#1       lenient
+passing  request/invalid.md#24
+passing  request/lenient-header-value-relaxed.md#1
 passing  request/lenient-header-value-relaxed.md#2
-deferred request/lenient-header-value-relaxed.md#3       lenient
-deferred request/lenient-header-value-relaxed.md#4       lenient
-deferred request/lenient-header-value-relaxed.md#5       lenient
-deferred request/lenient-headers.md#1                    lenient
-deferred request/lenient-headers.md#2                    lenient
+passing  request/lenient-header-value-relaxed.md#3
+passing  request/lenient-header-value-relaxed.md#4
+passing  request/lenient-header-value-relaxed.md#5
+passing  request/lenient-headers.md#1
+passing  request/lenient-headers.md#2
 passing  request/lenient-headers.md#3
-deferred request/lenient-headers.md#4                    lenient
-deferred request/lenient-version.md#1                    lenient
+passing  request/lenient-headers.md#4
+passing  request/lenient-version.md#1
 passing  request/method.md#1
 passing  request/method.md#2
 passing  request/method.md#3
@@ -136,14 +136,14 @@ passing  request/sample.md#7
 passing  request/sample.md#8
 passing  request/sample.md#9
 passing  request/sample.md#10
-deferred request/sample.md#11                            lenient
+passing  request/sample.md#11
 passing  request/sample.md#12
 passing  request/sample.md#13
-deferred request/sample.md#14                            lenient
+passing  request/sample.md#14
 passing  request/sample.md#15
 passing  request/sample.md#16
 passing  request/sample.md#17
-deferred request/sample.md#18                            lenient
+passing  request/sample.md#18
 passing  request/transfer-encoding.md#1
 passing  request/transfer-encoding.md#2
 passing  request/transfer-encoding.md#3
@@ -158,24 +158,24 @@ passing  request/transfer-encoding.md#11
 passing  request/transfer-encoding.md#12
 passing  request/transfer-encoding.md#13
 passing  request/transfer-encoding.md#14
-deferred request/transfer-encoding.md#15                 lenient
+passing  request/transfer-encoding.md#15
 passing  request/transfer-encoding.md#16
 passing  request/transfer-encoding.md#17
 passing  request/transfer-encoding.md#18
-deferred request/transfer-encoding.md#19                 lenient
-deferred request/transfer-encoding.md#20                 lenient
+passing  request/transfer-encoding.md#19
+passing  request/transfer-encoding.md#20
 passing  request/transfer-encoding.md#21
 passing  request/transfer-encoding.md#22
 passing  request/transfer-encoding.md#23
 passing  request/transfer-encoding.md#24
 passing  request/transfer-encoding.md#25
-deferred request/transfer-encoding.md#26                 lenient
+passing  request/transfer-encoding.md#26
 passing  request/transfer-encoding.md#27
-deferred request/transfer-encoding.md#28                 lenient
+passing  request/transfer-encoding.md#28
 passing  request/transfer-encoding.md#29
-deferred request/transfer-encoding.md#30                 lenient
+passing  request/transfer-encoding.md#30
 passing  request/transfer-encoding.md#31
-deferred request/transfer-encoding.md#32                 lenient
+passing  request/transfer-encoding.md#32
 passing  request/uri.md#1
 passing  request/uri.md#2
 passing  request/uri.md#3
@@ -193,9 +193,9 @@ passing  response/connection.md#3
 passing  response/connection.md#4
 passing  response/connection.md#5
 passing  response/connection.md#6
-deferred response/connection.md#7                        lenient
+passing  response/connection.md#7
 passing  response/connection.md#8
-deferred response/connection.md#9                        lenient
+passing  response/connection.md#9
 passing  response/connection.md#10
 passing  response/connection.md#11
 passing  response/connection.md#12
@@ -218,7 +218,7 @@ passing  response/invalid.md#5
 passing  response/invalid.md#6
 passing  response/invalid.md#7
 passing  response/invalid.md#8
-deferred response/invalid.md#9                           lenient
+passing  response/invalid.md#9
 passing  response/invalid.md#10
 passing  response/invalid.md#11
 passing  response/invalid.md#12
@@ -226,10 +226,10 @@ passing  response/invalid.md#13
 passing  response/invalid.md#14
 passing  response/invalid.md#15
 passing  response/invalid.md#16
-deferred response/invalid.md#17                          lenient
+passing  response/invalid.md#17
 passing  response/invalid.md#18
-deferred response/invalid.md#19                          lenient
-deferred response/lenient-version.md#1                   lenient
+passing  response/invalid.md#19
+passing  response/lenient-version.md#1
 passing  response/pausing.md#1
 passing  response/pausing.md#2
 passing  response/pausing.md#3
@@ -253,7 +253,7 @@ passing  response/sample.md#8
 passing  response/sample.md#9
 passing  response/sample.md#10
 passing  response/sample.md#11
-deferred response/sample.md#12                           lenient
+passing  response/sample.md#12
 passing  response/sample.md#13
 passing  response/sample.md#14
 passing  response/sample.md#15
@@ -272,7 +272,7 @@ passing  response/transfer-encoding.md#7
 passing  response/transfer-encoding.md#8
 passing  response/transfer-encoding.md#9
 passing  response/transfer-encoding.md#10
-deferred response/transfer-encoding.md#11                lenient
+passing  response/transfer-encoding.md#11
 deferred url.md#1                                        url-sub-parser
 deferred url.md#2                                        url-sub-parser
 deferred url.md#3                                        url-sub-parser

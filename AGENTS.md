@@ -346,6 +346,52 @@ fixture's own numbers. M4 did this for the two upgrade arms — an upgrade with 
 body reads it, one without does not — and the mutation that collapses them
 survives without that case. It was written because the survivor pointed at it.
 
+## A generated parser has two halves, and only one of them greps
+
+M10 wired eleven lenient flags by finding every `testLenientFlags` in
+`src/llhttp/*.ts`. Four fixtures across two different flags then failed at the
+same line, on a site that grep cannot reach:
+
+```c
+/* llhttp__after_headers_complete, src/native/http.c */
+} else if (parser->flags & F_TRANSFER_ENCODING) {
+  if (parser->type == HTTP_REQUEST &&
+      (parser->lenient_flags & LENIENT_CHUNKED_LENGTH) == 0 &&
+      (parser->lenient_flags & LENIENT_TRANSFER_ENCODING) == 0) {
+```
+
+llhttp is a generated state machine PLUS a hand-written C runtime, and both
+read the same fields. A mode, a flag, a counter — anything the grammar exposes
+— can be consulted in either half. So when enumerating where something is
+read, enumerate `src/native/*.c` too, and expect the C to state conditions the
+grammar cannot (this one is a conjunction over two flags; a branch key could
+not carry it).
+
+The same milestone found the other half of this: two different flags can meet
+on ONE node under ONE reason. A request line ending in a bare LF and one
+ending in a lone CR are both `Expected CRLF after version`, from the same node
+— so a failure at that node looks like the fork already sitting there, and is
+the other flag's arm. A shared reason is not evidence of a shared cause.
+
+## Disable the feature and count the red lanes
+
+A fixture passing is not evidence that the code written for it ran. M9 and M10
+both used the same cheap check: point each new branch at a flag nothing sets,
+rebuild, and count the failing lanes. A site that breaks nothing is a site the
+corpus does not reach.
+
+M9 had one such site of six; M10 had two of thirty-two. In every case the gap
+was real and invisible any other way — the fixture that would have covered
+M9's was deferred behind a different flag, and M10's needed a byte no recorded
+trace contains. Both now carry cases measured against purpose-built oracle
+binaries, and re-disabling either fails its lane.
+
+Two cautions. The mutation has to leave a machine that could have RUN: moving
+a node off the entry produced twenty-two `unreachable-node` diagnostics, which
+is a structural refusal and not a witness. And the sweep answers "is this
+reached", not "is this right" — a site the corpus reaches can still be reached
+for the wrong reason.
+
 ## A dependency that shipped does not un-block anything by itself
 
 M4 measured nine request fixtures as blocked upstream: a generator pause
@@ -409,6 +455,10 @@ None is obvious from reading the code.
 * R6RS keeps `string-set!` out of `(rnrs)`; it lives in
   `(rnrs mutable-strings)`. A hex encoder built with `make-string` and
   `string-set!` fails at library load, not at the call.
+* R6RS forbids the `|...|` symbol-escape syntax, and Chez says so only when
+  it READS the file — so a lane whose source lane passes can still fail at
+  the aot compile, which is the first thing to read the program twice. The
+  error is `symbol escape syntax is not allowed in #!r6rs mode`.
 * `(verify-machine m)` **returns a verdict; it does not raise one.** A script
   that calls it and then prints "verified" has checked nothing — M7 wrote that
   script, believed it, and was corrected by the emitter, which reads

@@ -35,7 +35,7 @@
 ;; that is the whole of what `on-message-type` does.
 (define (trace-as kind input)
   (let* ((r (make-trace-recorder))
-         (p (make-parser machine (trace-recorder-bindings r kind #f) #f))
+         (p (make-parser machine (trace-recorder-bindings r (list kind) #f) #f))
          (bv (string->utf8 input))
          (refused
           (call/cc

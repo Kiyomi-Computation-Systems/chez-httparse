@@ -77,6 +77,54 @@ costs is a callback invocation per message where llhttp has a field load, and a
 binding the embedder must supply for something that is a constant for the life
 of the parser.
 
+**What it costs at ELEVEN modes, measured at M10.** The table above prices one
+mode. llhttp's `lenient_flags` is an `i16` with eleven independent bits, and an
+embedder turns on any subset of them:
+
+```c
+/* llhttp test/fixtures/extra.c */
+void llhttp__test_init_request_lenient_all(llparse_t* s) {
+  llhttp__test_init_request(s);
+  s->lenient_flags |=
+    LENIENT_HEADERS | LENIENT_CHUNKED_LENGTH | LENIENT_KEEP_ALIVE | ...;
+}
+```
+
+A branch key cannot carry a subset — there are 2048 of them — and a loop that
+asked repeatedly is a zero-progress cycle the verifier refuses outright. So
+the decision-callback workaround does not generalise to a set; it multiplies.
+The consumer now declares **eleven optional decision callbacks and
+twenty-two nodes ahead of its entry state**, asked once per parser, to encode
+one integer the embedder already knows.
+
+Two things make that bearable and are worth keeping in any design that
+replaces it.
+
+**Optional callbacks with a declared `default-branch` cost an embedder that
+wants none of the modes nothing at all.** It binds no lenient callback, and
+the 216 strict fixtures in this consumer's corpus then exercise the DEFAULT
+path rather than a binding that answers "no" — so a default that stopped
+meaning strict breaks 216 lanes at once instead of nothing.
+
+**Putting the chain at the ENTRY rather than inside the message loop survives
+`parser-reset!` for free, which was not obvious and is measured rather than
+assumed.** A reset restores the declared initials, so the mode field goes back
+to zero — and then the next feed re-enters the entry, re-asks, and sets it
+again:
+
+```
+(before-any-feed lenient-flags 0)     ; the asks have not run
+(after-feed      lenient-flags 16)    ; LENIENT_VERSION
+(after-reset     lenient-flags 0)     ; declared initial restored
+(after-second-feed lenient-flags 16)  ; re-asked, and re-set
+```
+
+That is worth naming because an initial-values argument to `make-parser` does
+NOT get it for free: it would have to decide, deliberately, whether a reset
+restores the declared initials or the ones the embedder gave. The callback
+chain answers that question by construction — the embedder is asked again —
+and a replacement should be at least as hard to get wrong.
+
 ## 3. What the shape probably is not
 
 Two designs look obvious and both have a problem this consumer can already see.

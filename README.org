@@ -11,12 +11,11 @@ byte, at every chunk size.
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
-*Status: v0.1 released; pausing and =skipBody= on =main=.* Strict-mode
-request and response parsing: 216 of the 253 HTTP fixtures in llhttp's
-corpus, with the remaining 37 and the 21 URL fixtures enumerated rather than
-omitted. Lenient modes and the URL sub-parser are deferred, each to its own
-milestone, and each already vendored and counted. See
-[[file:docs/conformance.org][docs/conformance.org]].
+*Status: v0.1 released; everything since on =main=.* Request and response
+parsing, strict and lenient: *all 253* HTTP fixtures in llhttp's corpus, at
+every chunk size from 1 to the input length. The 21 URL fixtures are a
+separate parser, deferred to its own milestone and already vendored and
+counted. See [[file:docs/conformance.org][docs/conformance.org]].
 
 * What it is
 

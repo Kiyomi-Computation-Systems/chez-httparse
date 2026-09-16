@@ -1228,6 +1228,26 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- Lenient modes (M10) ----------------------------------------------------
+#
+# The eleven questions the embedder is asked once, ahead of `start`.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.lenient.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/lenient-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_CONFORMANCE}
+            ${HTTPARSE_ADAPTER}
+            ${HTTPARSE_DRIVE}
+            "${CMAKE_CURRENT_LIST_DIR}/common/lenient-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- Skip body (M9) ---------------------------------------------------------
 #
 # The one callback whose return value upstream reads. Needs HTTPARSE_DRIVE for

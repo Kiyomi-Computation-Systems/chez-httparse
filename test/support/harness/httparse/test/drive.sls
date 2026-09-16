@@ -92,7 +92,7 @@
               (raise e)))
         (lambda ()
           (let* ((r (make-trace-recorder))
-                 (p (make-parser machine (trace-recorder-bindings r kind #f) #f)))
+                 (p (make-parser machine (trace-recorder-bindings r (list kind) #f) #f)))
             (let loop ((bounds (corpus-chunk-bounds (bytevector-length bv) size))
                        (result #f))
               (cond

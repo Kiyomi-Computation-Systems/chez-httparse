@@ -125,6 +125,11 @@
   (define httparse-header-bytes
     (append '(9 32) (range 33 126) (range 128 255)))
 
+  ;; llhttp's RELAXED_HEADER_CHARS: HEADER_CHARS plus the C0 controls and DEL,
+  ;; which is every byte EXCEPT NUL, CR and LF. Its own comment says so.
+  (define httparse-relaxed-header-bytes
+    (append (range 1 9) '(11 12) (range 14 255)))
+
   (define COMMA 44)
   (define SP 32)
   (define CR 13)
@@ -318,6 +323,87 @@
   (define F-SKIP-BODY 64)
   (define F-TRANSFER-ENCODING 512)
 
+  ;; llhttp's LENIENT_FLAGS, its own `i16 lenient_flags` and NOT part of
+  ;; `flags`: the restart between two messages stores zero over `flags`, and a
+  ;; mode the embedder chose must survive that. Upstream keeps them apart for
+  ;; the same reason.
+  ;;
+  ;; EACH IS A SEPARATE QUESTION THE EMBEDDER IS ASKED, because a parser here
+  ;; cannot be started in a mode -- `make-parser` fills every field from the
+  ;; machine's declarations and `parser-field-ref` has no mutating sibling.
+  ;; That gap is this project's fourth upstream brief, which priced the
+  ;; workaround at three nodes for ONE mode. Eleven independent modes is what
+  ;; that price looks like multiplied: eleven optional decision callbacks and
+  ;; twenty-two nodes, where llhttp has one integer an embedder writes.
+  ;;
+  ;; The order is llhttp's bit order, and the list is the single source for
+  ;; the constants, the declarations, the ask chain and the adapter's names --
+  ;; so a flag cannot be declared and then never asked.
+  (define httparse-lenient-flags
+    '((headers                   1)
+      (chunked-length            2)
+      (keep-alive                4)
+      (transfer-encoding         8)
+      (version                  16)
+      (data-after-close         32)
+      (optional-lf-after-cr     64)
+      (optional-crlf-after-chunk 128)
+      (optional-cr-before-lf    256)
+      (spaces-after-chunk-size  512)
+      (header-value-relaxed    1024)))
+
+  (define (lenient-bit name)
+    (let ((row (assq name httparse-lenient-flags)))
+      (unless row (assertion-violation 'lenient-bit "no such lenient flag" name))
+      (cadr row)))
+  (define (lenient-callback-name name)
+    (string->symbol (string-append "on-lenient-" (symbol->string name))))
+  (define (lenient-ask-name name)
+    (string->symbol (string-append "lenient-ask-" (symbol->string name))))
+  (define (lenient-set-name name)
+    (string->symbol (string-append "lenient-set-" (symbol->string name))))
+
+  ;; The chain: ask, maybe set, ask the next, and fall into `start` at the
+  ;; end. It is the machine's ENTRY, so it runs once per parser -- the message
+  ;; loop re-enters at `start`, below the chain, exactly as llhttp's init hook
+  ;; runs once and its restart does not.
+  (define (lenient-entry)
+    (let ((names (map car httparse-lenient-flags)))
+      (let loop ((ns names) (acc '()))
+        (if (null? ns)
+            (reverse acc)
+            (let* ((name (car ns))
+                   (next (if (null? (cdr ns)) 'start (lenient-ask-name (cadr ns)))))
+              (loop (cdr ns)
+                    (cons (make-field-action-node
+                           (lenient-set-name name) 'set-mask
+                           (list 'lenient-flags (lenient-bit name)) next #f #f)
+                          (cons (make-callback-node
+                                 (lenient-ask-name name) (lenient-callback-name name)
+                                 next
+                                 (list (list 'yes (lenient-set-name name))
+                                       (list 'no next))
+                                 next #f)
+                                acc))))))))
+
+  ;; lenient-fork : Symbol Symbol NodeName NodeName -> FieldBranchNode
+  ;; llhttp's `testLenientFlags(FLAG, {1: lenient}, strict)`, which is a mask
+  ;; test and nothing else. Every leniency in the grammar is one of these, so
+  ;; the flag is read in exactly one shape.
+  (define (lenient-fork name flag lenient strict)
+    (make-field-branch-node name 'mask-any (list 'lenient-flags (lenient-bit flag))
+                            lenient strict #f))
+
+  (define (lenient-declarations)
+    (map (lambda (row)
+           ;; OPTIONAL, defaulting to `no`, and that default is llhttp's:
+           ;; every lenient flag starts clear and an embedder turns it on.
+           ;; Optional also means the 216 fixtures that are strict, and every
+           ;; embedder written before this, supply nothing and change nothing.
+           (make-callback-declaration (lenient-callback-name (car row)) 'decision #f
+                                      '(yes no) 'no #f))
+         httparse-lenient-flags))
+
   ;; llhttp's TYPE. It is not derived from the input: the EMBEDDER sets it
   ;; before the first byte, and llhttp's own fixture harness does exactly that
   ;; -- `llhttp__test_init_response` is one line, `s->type = HTTP_RESPONSE`.
@@ -481,31 +567,27 @@
                             (make-edge minor 'advance) #f))
       (make-edge 'version-close-expected-dot 'reexecute) 'e-eof-version #f))
 
-  ;; `ok` is the minor digits this major accepts. Every other DIGIT is a
-  ;; well-formed version llhttp rejects as a pair, and a non-digit is a
-  ;; malformed minor -- and the two land at different offsets, because the pair
-  ;; error fires after its digit is consumed and the malformed one before.
-  ;;
-  ;; THE ACCEPTED DIGITS ARE NOW ONE CASE EACH, not one byte-set case, because
-  ;; each has to store its own value on the way through: `headers complete`
-  ;; prints `v=%d/%d`. The rejected ones stay a single set -- a version that
-  ;; fails never reaches the line that would print it.
-  (define (version-minor-node name ok)
-    (let ((bad (other-digits ok)))
-      (make-byte-dispatch-node name
-        (append
-         (map (lambda (d)
-                (make-byte-case (make-exact-byte-matcher (digit d))
-                                (make-edge (version-minor-store-name d) 'advance) #f))
-              ok)
-         (if (null? bad) '()
-             (list (make-byte-case (make-byte-set-matcher (map digit bad))
-                                   (make-edge 'version-close-bad-version 'advance) #f))))
-        (make-edge 'version-close-bad-minor 'reexecute) 'e-eof-version #f)))
+  ;; STORE FIRST, CHECK AFTER -- which is llhttp's shape and was not this
+  ;; grammar's. Both digits are stored whatever they are, and the PAIR is
+  ;; judged by a separate chain afterwards (`checkVersion`). The older shape
+  ;; fused the two: only a digit belonging to an accepted pair had a store
+  ;; node, and every other digit fell into a subgraph that existed to fail. It
+  ;; produced the same three errors at the same three offsets, and it could
+  ;; not produce `v=5/6` -- so the moment a lenient parse had to PRINT a
+  ;; version it rejects, the fusion had to come apart.
+  (define all-digits '(0 1 2 3 4 5 6 7 8 9))
 
-  ;; The four accepted pairs are 0.9, 1.0, 1.1 and 2.0, so three majors and
-  ;; three minors are storable; the sets are derived from the pairs rather than
-  ;; written out, so adding a pair cannot forget its store node.
+  (define (version-minor-node name)
+    (make-byte-dispatch-node name
+      (map (lambda (d)
+             (make-byte-case (make-exact-byte-matcher (digit d))
+                             (make-edge (version-minor-store-name d) 'advance) #f))
+           all-digits)
+      (make-edge 'version-close-bad-minor 'reexecute) 'e-eof-version #f))
+
+  ;; The four accepted pairs are 0.9, 1.0, 1.1 and 2.0. The CHECK is derived
+  ;; from this list rather than written out, so adding a pair cannot forget to
+  ;; accept it.
   (define httparse-version-pairs '((0 . 9) (1 . 0) (1 . 1) (2 . 0)))
   (define (distinct ns)
     (let loop ((ns ns) (acc '()))
@@ -513,7 +595,6 @@
             ((member (car ns) acc) (loop (cdr ns) acc))
             (else (loop (cdr ns) (cons (car ns) acc))))))
   (define version-majors (distinct (map car httparse-version-pairs)))
-  (define version-minors (distinct (map cdr httparse-version-pairs)))
   (define (version-minors-for major)
     (list-sort < (map cdr (filter (lambda (p) (= (car p) major))
                                   httparse-version-pairs))))
@@ -526,30 +607,80 @@
      (map (lambda (d)
             (make-field-action-node (version-major-store-name d) 'store
                                     (list 'http-major d)
-                                    (version-dot-name d) #f #f))
-          version-majors)
+                                    'version-dot #f #f))
+          all-digits)
      (map (lambda (d)
             (make-field-action-node (version-minor-store-name d) 'store
                                     (list 'http-minor d)
-                                    'version-close #f #f))
-          version-minors)))
-  (define (version-dot-name d)
-    (string->symbol (string-append "version-dot-" (number->string d))))
-  (define (version-minor-name d)
-    (string->symbol (string-append "version-minor-" (number->string d))))
+                                    'version-check #f #f))
+          all-digits)))
 
-  ;; Every node the version pair needs, generated from the pair list: a store
-  ;; per storable digit, a dot node and a minor node per accepted major, and
-  ;; the `other` pair that exists only to fail.
+  ;; The pair check: one branch per accepted MAJOR, and under each, one per
+  ;; minor that major accepts. A major with no row, or a minor its major does
+  ;; not accept, falls through to the span end that reports `Invalid HTTP
+  ;; version` -- which fires having consumed the minor digit, where the
+  ;; malformed-minor error fires before it. That offset difference is the
+  ;; reason the two are separate errors and not one.
+  ;; THE CHAIN'S HEAD IS THE ENTRY, rather than an extra node in front of it:
+  ;; a node that asked the first major's question again would be unreachable
+  ;; the moment the chain asked it too, which is what the verifier said.
+  (define (version-check-major-name d)
+    (if (= d (car version-majors))
+        'version-check-strict
+        (string->symbol (string-append "version-check-major-" (number->string d)))))
+  (define (version-check-minor-name major d)
+    (string->symbol (string-append "version-check-" (number->string major)
+                                   "-" (number->string d))))
+  (define (version-check-nodes)
+    (let* ((majors version-majors)
+           (major-chain
+            (let loop ((ms majors) (acc '()))
+              (if (null? ms)
+                  (reverse acc)
+                  (let* ((d (car ms))
+                         (next (if (null? (cdr ms))
+                                   'version-close-bad-version
+                                   (version-check-major-name (cadr ms)))))
+                    (loop (cdr ms)
+                          (cons (make-field-branch-node
+                                 (version-check-major-name d) 'equal
+                                 (list 'http-major d)
+                                 (version-check-minor-name d (car (version-minors-for d)))
+                                 next #f)
+                                acc))))))
+           (minor-chains
+            (apply append
+                   (map (lambda (major)
+                          (let loop ((ns (version-minors-for major)) (acc '()))
+                            (if (null? ns)
+                                (reverse acc)
+                                (let* ((d (car ns))
+                                       (next (if (null? (cdr ns))
+                                                 'version-close-bad-version
+                                                 (version-check-minor-name
+                                                  major (cadr ns)))))
+                                  (loop (cdr ns)
+                                        (cons (make-field-branch-node
+                                               (version-check-minor-name major d) 'equal
+                                               (list 'http-minor d)
+                                               'version-close next #f)
+                                              acc))))))
+                        majors))))
+      (append major-chain minor-chains)))
+
+  ;; Every node the version pair needs: a store per digit, the one dot node,
+  ;; the one minor node, and the pair check.
   (define (version-nodes)
     (append
      (version-store-nodes)
-     (map (lambda (d) (version-dot-node (version-dot-name d) (version-minor-name d)))
-          version-majors)
-     (map (lambda (d) (version-minor-node (version-minor-name d) (version-minors-for d)))
-          version-majors)
-     (list (version-dot-node 'version-dot-other 'version-minor-other)
-           (version-minor-node 'version-minor-other '()))))
+     (list (version-dot-node 'version-dot 'version-minor)
+           (version-minor-node 'version-minor)
+           ;; `checkVersion` TESTS THE FLAG FIRST and accepts the pair
+           ;; unexamined when it is set -- llhttp's own order, and the reason
+           ;; the digits had to be stored before they were judged.
+           (lenient-fork 'version-check 'version
+                         'version-close 'version-check-strict))
+     (version-check-nodes)))
 
   ;; llhttp's `llhttp_message_needs_eof`, which is a pure question over the
   ;; parser's state and is asked from TWO places: the body decision, where a
@@ -610,14 +741,15 @@
 
   (define (make-message-machine)
     (make-machine
-     'httparse-message 'start
+     'httparse-message (lenient-ask-name (car (car httparse-lenient-flags)))
      ;; THE STATE `headers complete` PRINTS, plus the one that routes the
      ;; protocol check. llhttp's own callback reads `s->method, s->http_major,
      ;; s->http_minor, s->flags, s->content_length` and prints them, so these
      ;; four are named after its fields and the adapter reads them the same way
      ;; (decision 0014). `flags` needs ten bits -- TRANSFER_ENCODING is 1 << 9
      ;; -- and `content-length` is llhttp's uint64.
-     (list (make-uint-field 'method-protocols 8 0 #f)
+     (list (make-uint-field 'lenient-flags 16 0 #f)
+           (make-uint-field 'method-protocols 8 0 #f)
            (make-uint-field 'method 8 0 #f)
            ;; llhttp's `i8 type`, and its `i16 status_code`. The first is set
            ;; by the embedder through `on-message-type` below; the second is
@@ -647,7 +779,8 @@
            ;; a restart from a first start. It is what makes `reset` fire
            ;; between two messages and not before the first.
            (make-uint-field 'initial-message-completed 8 0 #f))
-     (list (make-callback-declaration 'on-reset 'event #t '() #f #f)
+     (append
+      (list (make-callback-declaration 'on-reset 'event #t '() #f #f)
            (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
            ;; THE ONE CALLBACK THAT ANSWERS RATHER THAN REPORTS, and the only
            ;; DECISION callback in this grammar. llhttp reads a field an
@@ -687,6 +820,7 @@
            (make-callback-declaration 'on-chunk-extension-value-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-chunk-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-message-complete 'event #t '() #f #f))
+      (lenient-declarations))
      (list (make-span-declaration 'method-span 'on-method-data #f #f)
            (make-span-declaration 'url-span 'on-url-data #f #f)
            (make-span-declaration 'protocol-span 'on-protocol-data #f #f)
@@ -877,6 +1011,12 @@
            (make-error-declaration 'upgrade-paused 'paused-upgrade
                                    "Pause on CONNECT/Upgrade" #f))
      (append
+      ;; --- the modes, asked once ----------------------------------------------
+      ;; The machine's ENTRY, ahead of `start`, because llhttp's init hook runs
+      ;; before the first byte. The restart between messages re-enters at
+      ;; `start`, below this, so the embedder is asked once per parser and not
+      ;; once per message.
+      (lenient-entry)
       (list
       ;; --- the first byte -----------------------------------------------------
       ;; A dispatch rather than a callback node: the first byte must be
@@ -1135,15 +1275,15 @@
       ;;   HTTP/5.6    span[version]="5.6"   error@14   Invalid HTTP version
       ;;   HTTP/1.x    span[version]="1."               Invalid minor version
       (make-span-start-node 'version-open 'version-span 'version-major #f)
+      ;; EVERY DIGIT IS STORED, including the ones no accepted pair contains:
+      ;; a lenient parse has to PRINT `v=5/6`, and a value never stored cannot
+      ;; be printed. Whether the pair is acceptable is the check's question,
+      ;; not this node's.
       (make-byte-dispatch-node 'version-major
-        (append
-         (map (lambda (d)
-                (make-byte-case (make-exact-byte-matcher (digit d))
-                                (make-edge (version-major-store-name d) 'advance) #f))
-              version-majors)
-         (list (make-byte-case
-                (make-byte-set-matcher (map digit (other-digits version-majors)))
-                (make-edge 'version-dot-other 'advance) #f)))
+        (map (lambda (d)
+               (make-byte-case (make-exact-byte-matcher (digit d))
+                               (make-edge (version-major-store-name d) 'advance) #f))
+             all-digits)
         (make-edge 'version-close-bad-major 'reexecute) 'e-eof-version #f))
       (version-nodes)
       (list
@@ -1188,12 +1328,27 @@
         (list (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'expect-lf 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-no-crlf 'advance) #f))
+                              (make-edge 'lenient-lf-request-line 'advance) #f))
         (make-edge 'e-no-crlf 'reexecute) 'e-eof-none #f)
+      ;; THE TENTH SITE, and the only one whose strict error is not a
+      ;; `Missing expected CR`. A request line ending in a bare LF is
+      ;; `Expected CRLF after version`, the same reason its lone-CR sibling
+      ;; gives -- which is why the two sit on the same node and why this one
+      ;; was missed until `request/invalid.md#22` named it: the failure read
+      ;; as the OPTIONAL_LF_AFTER_CR fork already in place, and it was the
+      ;; other flag's arm of the same node.
+      (lenient-fork 'lenient-lf-request-line 'optional-cr-before-lf
+                    'headers-start 'e-no-crlf)
       (make-byte-dispatch-node 'expect-lf
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'headers-start 'advance) #f))
-        (make-edge 'e-lf-after-cr 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-lf-after-version 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_LF_AFTER_CR, first of four: the CR ending a REQUEST line
+      ;; stands on its own. The LF is unconsumed either way, so the lenient
+      ;; arm re-executes the header section's first byte against whatever
+      ;; followed the CR.
+      (lenient-fork 'lenient-lf-after-version 'optional-lf-after-cr
+                    'headers-start 'e-lf-after-cr)
 
       ;; --- the status line ----------------------------------------------------
       ;;
@@ -1270,7 +1425,13 @@
         '() (make-edge 'res-line-almost-done 'advance) 'e-eof-none #f)
       (make-span-end-node 'res-status-close-lf 'status-span 'res-status-skip-lf #f)
       (make-byte-dispatch-node 'res-status-skip-lf
-        '() (make-edge 'e-cr-after-status 'advance) 'e-eof-none #f)
+        '() (make-edge 'lenient-lf-status 'advance) 'e-eof-none #f)
+      ;; OPTIONAL_CR_BEFORE_LF, and every one of its ten sites is the same
+      ;; sentence: a bare LF is taken as the line ending CRLF would have
+      ;; been. The LENIENT TARGET IS WHEREVER THE CR ARM GOES ONCE THE LINE
+      ;; ENDING IS CONSUMED -- which is not always the CR arm's own target,
+      ;; because some of these sites eat the LF and some peek it.
+      (lenient-fork 'lenient-lf-status 'optional-cr-before-lf 'status-complete 'e-cr-after-status)
 
       ;; `status complete` fires PAST the LF, which is why the CR arm above
       ;; carries no event of its own: a status line that never reaches its LF
@@ -1278,7 +1439,14 @@
       (make-byte-dispatch-node 'res-line-almost-done
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'status-complete 'advance) #f))
-        (make-edge 'e-lf-after-cr-strict 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-lf-after-status 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_LF_AFTER_CR, second: the same for a RESPONSE's status line.
+      ;; Its strict error carries a DIFFERENT reason from the request's --
+      ;; "Expected LF after CR" against "Expected CRLF after version" -- which
+      ;; is why the two are separate declarations and why one fork cannot
+      ;; serve both.
+      (lenient-fork 'lenient-lf-after-status 'optional-lf-after-cr
+                    'status-complete 'e-lf-after-cr-strict)
       (ev 'status-complete 'on-status-complete 'headers-start)
 
       ;; --- the header section -------------------------------------------------
@@ -1299,8 +1467,14 @@
       ;; 16. The same trap as the bare LF after the version.
       (make-byte-dispatch-node 'headers-start
         (list (make-byte-case (make-exact-byte-matcher SP)
-                              (make-edge 'e-unexpected-space 'advance) #f))
+                              (make-edge 'lenient-headers-start 'advance) #f))
         (make-edge 'header-field-start 'reexecute) 'e-eof-none #f)
+      ;; LENIENT_HEADERS, first of six. The space is consumed either way --
+      ;; llhttp `.match`es it INTO the test -- so the lenient arm resumes at
+      ;; `header-field-start` having eaten it, which is why a lenient parse of
+      ;; ` Host: x` reports the field at 1 and not at 0.
+      (lenient-fork 'lenient-headers-start 'headers
+                    'header-field-start 'e-unexpected-space)
 
       ;; Three ways a field can fail to start, each with its own reason: a bare
       ;; LF is `Invalid header field char`, a leading colon is `Invalid header
@@ -1309,7 +1483,7 @@
         (list (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'headers-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-bad-header-field-char 'advance) #f)
+                              (make-edge 'lenient-lf-field-start 'advance) #f)
               (make-byte-case (make-exact-byte-matcher COLON)
                               (make-edge 'e-bad-header-token 'reexecute) #f))
         (make-edge 'header-field-open 'reexecute) 'e-eof-none #f)
@@ -1348,7 +1522,31 @@
       ;; Two fixtures turn on the pair.
       (make-byte-dispatch-node 'header-field-colon
         (list (make-byte-case (make-exact-byte-matcher SP)
-                              (make-edge 'field-close-before-space 'reexecute) #f)
+                              (make-edge 'lenient-field-colon 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher COLON)
+                              (make-edge 'header-field-close 'reexecute) #f))
+        (make-edge 'header-state-general 'reexecute) 'e-eof-header-field #f)
+      ;; LENIENT_HEADERS, second. ONLY ON THIS PATH: the general-header route
+      ;; has no lenient arm at all, so `Foo : x` is `Invalid header token`
+      ;; whatever the flags say, while `Connection : x` is accepted. That
+      ;; asymmetry is llhttp's -- `header_field_general_otherwise` carries no
+      ;; flag test -- and it is the reason these two errors have separate
+      ;; declarations.
+      (lenient-fork 'lenient-field-colon 'headers
+                    'field-colon-discard-ws 'field-close-before-space)
+      ;; UPSTREAM LOOPS BACK HERE AND THIS CANNOT. llhttp's
+      ;; `header_field_colon_discard_ws` eats spaces and then re-enters
+      ;; `header_field_colon`, which is a cycle whose every edge is a peek --
+      ;; safe at runtime, because the node it returns to only takes its space
+      ;; arm on a space and this one only returns on a non-space, but the
+      ;; verifier reasons over the GRAPH and refuses it as a zero-progress
+      ;; cycle. So the two arms that can follow the spaces are inlined here
+      ;; instead: a colon closes the field, and anything else is the general
+      ;; header `header_field_colon` would have fallen through to. Same
+      ;; answers, no back edge.
+      (make-byte-dispatch-node 'field-colon-discard-ws
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'field-colon-discard-ws 'advance) #f)
               (make-byte-case (make-exact-byte-matcher COLON)
                               (make-edge 'header-field-close 'reexecute) #f))
         (make-edge 'header-state-general 'reexecute) 'e-eof-header-field #f)
@@ -1393,13 +1591,23 @@
                               'check-te-conflict 'after-field-complete-cl #f)
       (make-field-branch-node 'check-te-conflict 'mask-any
                               (list 'flags F-CONTENT-LENGTH)
-                              'e-te-with-content-length 'value-discard-ws #f)
+                              'lenient-te-with-cl 'value-discard-ws #f)
       (make-field-branch-node 'after-field-complete-cl 'equal
                               (list 'header-state HS-CONTENT-LENGTH)
                               'check-cl-conflict 'value-discard-ws #f)
       (make-field-branch-node 'check-cl-conflict 'mask-any
                               (list 'flags F-TRANSFER-ENCODING)
-                              'e-cl-with-te 'value-discard-ws #f)
+                              'lenient-cl-with-te 'value-discard-ws #f)
+      ;; CHUNKED_LENGTH, and it is BOTH of upstream's sites: the flag turns
+      ;; off the refusal of `Content-Length` beside `Transfer-Encoding`,
+      ;; whichever order they arrived in. Two errors, two reasons, two forks
+      ;; -- llhttp's `checkInvalidTransferEncoding` and
+      ;; `checkInvalidContentLength` are separate functions for the same
+      ;; reason decision 0013 makes them separate declarations.
+      (lenient-fork 'lenient-te-with-cl 'chunked-length
+                    'value-discard-ws 'e-te-with-content-length)
+      (lenient-fork 'lenient-cl-with-te 'chunked-length
+                    'value-discard-ws 'e-cl-with-te)
 
       ;; --- the value ----------------------------------------------------------
       ;; Leading OWS is discarded and is not part of the span.
@@ -1409,21 +1617,29 @@
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'value-discard-ws-cr 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-bad-header-value-char 'advance) #f))
+                              (make-edge 'lenient-lf-discard-ws 'advance) #f))
         (make-edge 'value-open 'reexecute) 'e-eof-none #f)
 
       (make-byte-dispatch-node 'value-discard-ws-cr
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'value-discard-lws 'advance) #f))
-        (make-edge 'e-lf-after-cr-strict 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-discard-ws-cr 'reexecute) 'e-eof-none #f)
+      ;; LENIENT_HEADERS, third: a CR with no LF after it, in the whitespace
+      ;; before a value.
+      (lenient-fork 'lenient-discard-ws-cr 'headers
+                    'value-discard-lws 'e-lf-after-cr-strict)
 
       ;; Obs-fold, first site: a continuation line after an EMPTY value. The
       ;; whitespace is CONSUMED before it fails (llhttp `.match`es it), unlike
       ;; the second site below, which peeks.
       (make-byte-dispatch-node 'value-discard-lws
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
-                              (make-edge 'e-bad-header-value-char 'advance) #f))
+                              (make-edge 'lenient-discard-lws 'advance) #f))
         (make-edge 'value-empty-check 'reexecute) 'e-eof-none #f)
+      ;; LENIENT_HEADERS, fourth: the folded line is taken as more leading
+      ;; whitespace, so the value that finally arrives is the folded one.
+      (lenient-fork 'lenient-discard-lws 'headers
+                    'value-discard-ws 'e-bad-header-value-char)
 
       ;; llhttp's `checkEmptyHeaderValue`: an empty value is announced as an
       ;; empty span for a general header and is an ERROR for the two framing
@@ -1483,12 +1699,25 @@
       (make-field-branch-node 'te-check-chunked 'mask-any (list 'flags F-CHUNKED)
                               'te-restart-type 'te-set-flag #f)
       (make-field-branch-node 'te-restart-type 'equal (list 'type TYPE-REQUEST)
-                              'te-after-chunked 'te-set-flag #f)
+                              'lenient-request-te 'te-set-flag #f)
+      ;; TRANSFER_ENCODING: a REQUEST whose transfer coding does not end in
+      ;; `chunked` is refused, and this flag accepts it. A response is not
+      ;; refused in the first place -- it reads to end of input instead --
+      ;; which is why the fork sits under the type test and not above it.
+      (lenient-fork 'lenient-request-te 'transfer-encoding
+                    'te-set-flag 'te-after-chunked)
       (make-span-end-node 'te-after-chunked 'header-value-span 'te-eat-one #f)
       (make-byte-dispatch-node 'te-eat-one
         '() (make-edge 'e-bad-te-value 'advance) 'e-eof-none #f)
+      ;; THE SECOND OF THE TWO SITES that share the one refusal, and so the
+      ;; second that the flag has to reach. Missing it left one fixture
+      ;; reporting `span[header_value]="chunked"` where the oracle records
+      ;; `"chunked, deflate"` -- the span ended at the comma because the
+      ;; error path closed it.
       (make-field-branch-node 'te-comma-type 'equal (list 'type TYPE-REQUEST)
-                              'te-after-chunked 'te-chunked #f)
+                              'lenient-comma-te 'te-chunked #f)
+      (lenient-fork 'lenient-comma-te 'transfer-encoding
+                    'te-chunked 'te-after-chunked)
 
       ;; The CHUNKED bit is CLEARED on the way in and set again only by
       ;; `setHeaderFlags` at the end of a value that really was `chunked`, so a
@@ -1626,9 +1855,58 @@
                               (make-edge 'value-close 'reexecute) #f)
               (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'value-close-no-cr 'reexecute) #f))
+        (make-edge 'lenient-value-char 'reexecute) 'e-eof-header-value #f)
+      ;; LENIENT_HEADERS, fifth: the value accepts ANYTHING until the line
+      ;; ends. llhttp asks HEADERS first and HEADER_VALUE_RELAXED second, so
+      ;; the strict arm here is where that second flag's fork will go.
+      (lenient-fork 'lenient-value-char 'headers
+                    'value-lenient 'lenient-value-relaxed)
+      ;; HEADER_VALUE_RELAXED, asked only when HEADERS was not -- upstream
+      ;; nests the two tests, and the comment beside them says why: HEADERS
+      ;; "accepts anything in values, drops some other header validation
+      ;; too", where this one "accepts only specific extra (common but
+      ;; discouraged) chars".
+      (lenient-fork 'lenient-value-relaxed 'header-value-relaxed
+                    'value-relaxed 'value-close-bad)
+      ;; `header_value_relaxed`, with ONE DELIBERATE DIFFERENCE, marked here
+      ;; because it is a divergence and not a transcription.
+      ;;
+      ;; Upstream's node is `.match(RELAXED_HEADER_CHARS, itself)
+      ;; .otherwise(header_value_otherwise)`, and `header_value_otherwise`
+      ;; falls back here for any byte that is not CR or LF. RELAXED covers
+      ;; every byte but NUL, CR and LF -- so a NUL in a header value under
+      ;; this flag alone walks relaxed -> otherwise -> relaxed forever, with
+      ;; no byte consumed. This generator's verifier refuses that outright as
+      ;; a zero-progress cycle, and is right to.
+      ;;
+      ;; So the three bytes upstream leaves to the fall-back are handled here
+      ;; instead: CR and LF exactly as `after-value` handles them, and NUL as
+      ;; the `Invalid header value char` the strict parser would have given.
+      ;; NO ORACLE CAN SETTLE WHICH IS RIGHT: the fixture binary takes its
+      ;; input as argv, so a NUL cannot be fed to it at all.
+      (make-byte-dispatch-node 'value-relaxed
+        (list (make-byte-case (make-byte-set-matcher httparse-relaxed-header-bytes)
+                              (make-edge 'value-relaxed 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'value-close 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'value-close-no-cr 'reexecute) #f))
         (make-edge 'value-close-bad 'reexecute) 'e-eof-header-value #f)
+      ;; `header_value_lenient`. Its LF arm does NOT consult
+      ;; OPTIONAL_CR_BEFORE_LF -- once a value is lenient a bare LF ends it,
+      ;; where `header_value_otherwise` would have asked. Faithful to
+      ;; upstream, and not obvious from either node alone.
+      (make-byte-dispatch-node 'value-lenient
+        (list (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'value-close 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'value-close-lenient-lf 'reexecute) #f))
+        (make-edge 'value-lenient 'advance) 'e-eof-header-value #f)
+      (make-span-end-node 'value-close-lenient-lf 'header-value-span
+                          'value-almost-done #f)
       (make-span-end-node 'value-close 'header-value-span 'eat-cr #f)
-      (make-span-end-node 'value-close-no-cr 'header-value-span 'e-cr-after-value #f)
+      (make-span-end-node 'value-close-no-cr 'header-value-span 'lenient-lf-value #f)
+      (lenient-fork 'lenient-lf-value 'optional-cr-before-lf 'value-almost-done 'e-cr-after-value)
       (make-span-end-node 'value-close-bad 'header-value-span 'e-bad-header-value-char #f)
       (make-byte-dispatch-node 'eat-cr
         (list (make-byte-case (make-exact-byte-matcher CR)
@@ -1644,8 +1922,23 @@
       ;; llhttp's reason differs from the empty-value one.
       (make-byte-dispatch-node 'value-lws
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
-                              (make-edge 'e-ws-after-value 'reexecute) #f))
-        (make-edge (set-header-flags-entry "shf-complete") 'reexecute) 'e-eof-none #f))
+                              (make-edge 'lenient-value-lws 'reexecute) #f))
+        (make-edge (set-header-flags-entry "shf-complete") 'reexecute) 'e-eof-none #f)
+      ;; LENIENT_HEADERS, sixth: the continuation line becomes MORE VALUE.
+      ;; The whitespace is peeked, so the re-opened span starts at it and the
+      ;; folded value carries the fold's own spaces -- which is what the
+      ;; recorded traces show.
+      (lenient-fork 'lenient-value-lws 'headers 'value-lws-fold 'e-ws-after-value)
+      ;; AND A CHUNKED TRANSFER-ENCODING IS FORGOTTEN ACROSS THE FOLD. llhttp
+      ;; loads `header_state` here and resets it for
+      ;; `TRANSFER_ENCODING_CHUNKED` alone, so `Transfer-Encoding: chunked`
+      ;; continued on a folded line stops being chunked. Nothing else about
+      ;; the fold depends on the state, and no other state is reset.
+      (make-field-branch-node 'value-lws-fold 'equal
+                              (list 'header-state HS-TRANSFER-ENCODING-CHUNKED)
+                              'value-lws-reset-state 'value-open #f)
+      (make-field-action-node 'value-lws-reset-state 'store
+                              (list 'header-state HS-GENERAL) 'value-open #f #f))
       (set-header-flags-nodes "shf-complete" 'value-complete)
       (set-header-flags-nodes "shf-comma" 'conn-value)
       (list
@@ -1660,7 +1953,13 @@
       (make-byte-dispatch-node 'headers-almost-done
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'check-trailing 'advance) #f))
-        (make-edge 'e-lf-after-headers 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-lf-after-headers 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_LF_AFTER_CR, third: the CR of the blank line that ends the
+      ;; header section. The lenient arm joins `check-trailing`, so a message
+      ;; whose headers end `\r` alone still decides trailer-versus-body the
+      ;; same way.
+      (lenient-fork 'lenient-lf-after-headers 'optional-lf-after-cr
+                    'check-trailing 'e-lf-after-headers)
       (make-field-branch-node 'check-trailing 'mask-any (list 'flags F-TRAILING)
                               'trailer-chunk-complete 'before-headers-complete #f)
       ;; The zero chunk's own `chunk complete`, fired after its trailers rather
@@ -1832,7 +2131,24 @@
       (make-field-branch-node 'after-headers-te 'mask-any (list 'flags F-TRANSFER-ENCODING)
                               'ahc-coding-type 'after-headers-cl #f)
       (make-field-branch-node 'ahc-coding-type 'equal (list 'type TYPE-REQUEST)
-                              'e-request-invalid-te 'body-eof #f)
+                              'lenient-request-coding 'body-eof #f)
+      ;; TWO FLAGS SUPPRESS THIS ONE REFUSAL, and the test is in llhttp's C
+      ;; rather than its grammar -- `llhttp__after_headers_complete` reads
+      ;;
+      ;;   type == HTTP_REQUEST &&
+      ;;   (lenient_flags & LENIENT_CHUNKED_LENGTH) == 0 &&
+      ;;   (lenient_flags & LENIENT_TRANSFER_ENCODING) == 0
+      ;;
+      ;; so EITHER flag is enough. Grepping `src/llhttp/*.ts` for the flag
+      ;; names does not find it, which is how four fixtures across two
+      ;; different flags came to fail at the same line.
+      ;;
+      ;; A response is not refused here at all: it reads to end of input,
+      ;; which is the `body-eof` arm above.
+      (lenient-fork 'lenient-request-coding 'chunked-length
+                    'body-eof 'lenient-request-coding-te)
+      (lenient-fork 'lenient-request-coding-te 'transfer-encoding
+                    'body-eof 'e-request-invalid-te)
       (make-field-branch-node 'after-headers-cl 'mask-any (list 'flags F-CONTENT-LENGTH)
                               'body-length-check (needs-eof-entry "ahc-eof") #f)
       (make-field-branch-node 'body-length-check 'nonzero (list 'content-length)
@@ -1918,13 +2234,19 @@
       ;; strict mode refuses, so its error is one PAST the space --
       ;; request/transfer-encoding.md#31 records off=51 for a space at 50 --
       ;; while the catch-all does not consume and reports AT the byte.
+      ;; SPACES_AFTER_CHUNK_SIZE: whitespace between the size and its line
+      ;; ending. The space is consumed either way, and the lenient arm
+      ;; re-enters this node -- so a run of them is eaten one at a time,
+      ;; which is upstream's shape and terminates because each pass advances.
+      (lenient-fork 'lenient-chunk-size-space 'spaces-after-chunk-size
+                    'chunk-size-otherwise 'e-bad-chunk-size)
       (make-byte-dispatch-node 'chunk-size-otherwise
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
-                              (make-edge 'e-bad-chunk-size 'advance) #f)
+                              (make-edge 'lenient-chunk-size-space 'advance) #f)
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'chunk-size-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-cr-after-chunk-size 'advance) #f)
+                              (make-edge 'lenient-lf-chunk-size 'advance) #f)
               (make-byte-case (make-exact-byte-matcher SEMICOLON)
                               (make-edge 'chunk-extensions 'advance) #f))
         (make-edge 'e-bad-chunk-size 'reexecute) 'e-eof-none #f)
@@ -1932,7 +2254,10 @@
       (make-byte-dispatch-node 'chunk-size-almost-done
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'chunk-size-header 'advance) #f))
-        (make-edge 'e-lf-after-chunk-size 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-lf-after-chunk-size 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_LF_AFTER_CR, fourth: after a chunk size.
+      (lenient-fork 'lenient-lf-after-chunk-size 'optional-lf-after-cr
+                    'chunk-size-header 'e-lf-after-chunk-size)
 
       ;; llhttp's `chunk_size_almost_done_lf`. The callback fires with the size
       ;; still whole: the consume below decrements the same field as it goes.
@@ -1960,8 +2285,15 @@
       ;; encoding.md#29 records off=84 for five bytes of data ending at 84.
       (make-sequence-dispatch-node 'chunk-data-almost-done
         (list (make-sequence-case (list CR LF) 'chunk-complete #f)
-              (make-sequence-case (list LF) 'e-cr-after-chunk-data #f))
-        (make-edge 'e-lf-after-chunk-data 'reexecute) 'e-eof-none #f)
+              (make-sequence-case (list LF) 'lenient-lf-chunk-data #f))
+        (make-edge 'lenient-crlf-after-chunk 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_CRLF_AFTER_CHUNK, and it is the whole flag: a chunk's data
+      ;; may be followed by NEITHER a CR nor an LF, and the next chunk header
+      ;; begins immediately. Its sibling flag OPTIONAL_CR_BEFORE_LF covers
+      ;; the bare-LF case on the arm above; this one covers neither-of-them,
+      ;; which is why the two are separate flags and not one.
+      (lenient-fork 'lenient-crlf-after-chunk 'optional-crlf-after-chunk
+                    'chunk-complete 'e-lf-after-chunk-data)
 
       (ev 'chunk-complete 'on-chunk-complete 'chunk-size-start)
 
@@ -2044,7 +2376,7 @@
       (ev 'chunk-ext-name-done-cr 'on-chunk-extension-name-complete
           'chunk-size-almost-done)
       (ev 'chunk-ext-name-done-lf 'on-chunk-extension-name-complete
-          'e-cr-after-chunk-ext-name)
+          'lenient-lf-ext-name)
 
       ;; A DOUBLE QUOTE IS PART OF THE VALUE, not a wrapper around it. It is
       ;; MATCHED -- consumed with the span still open -- so a quoted value's
@@ -2072,7 +2404,7 @@
       (ev 'chunk-ext-value-done-cr 'on-chunk-extension-value-complete
           'chunk-size-almost-done)
       (ev 'chunk-ext-value-done-lf 'on-chunk-extension-value-complete
-          'e-cr-after-chunk-ext-value)
+          'lenient-lf-ext-value)
 
       ;; Inside the quotes. The closing quote is MATCHED and the span ends
       ;; after it; a backslash escapes the NEXT byte whatever it is, so the
@@ -2096,7 +2428,7 @@
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'chunk-size-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-cr-after-chunk-ext-value 'reexecute) #f))
+                              (make-edge 'lenient-lf-ext-quoted 'reexecute) #f))
         (make-edge 'e-bad-chunk-ext-quote-value 'reexecute) 'e-eof-none #f)
       (make-byte-dispatch-node 'chunk-ext-quoted-pair
         (list (make-byte-case (make-byte-set-matcher httparse-header-bytes)
@@ -2207,7 +2539,14 @@
                               'start #f #f)
 
       (make-field-action-node 'amc-close 'store (list 'finish FINISH-SAFE)
-                              'closed-clear-flags #f #f)
+                              'lenient-keep-alive #f #f)
+      ;; KEEP_ALIVE: a connection that should close is reused anyway. The
+      ;; `finish` store happens FIRST either way -- upstream writes
+      ;; `update('finish', FINISH.SAFE, lenientClose)` -- so a lenient parse
+      ;; and a strict one agree about that field and differ only in where
+      ;; they go next.
+      (lenient-fork 'lenient-keep-alive 'keep-alive
+                    'restart-clear-flags 'closed-clear-flags)
       (make-field-action-node 'closed-clear-flags 'store (list 'flags 0)
                               'closed #f #f)
 
@@ -2219,7 +2558,40 @@
       (make-byte-dispatch-node 'closed
         (list (make-byte-case (make-byte-set-matcher (list CR LF))
                               (make-edge 'closed 'advance) #f))
-        (make-edge 'e-data-after-close 'advance) 'clean-eof #f)
+        (make-edge 'lenient-data-after-close 'advance) 'clean-eof #f)
+      ;; DATA_AFTER_CLOSE: the byte is discarded instead of refused. It is
+      ;; CONSUMED either way -- upstream `skipTo`s into the test -- so the
+      ;; lenient arm returns to `closed` having eaten it, and a closed
+      ;; connection quietly swallows everything that follows.
+      (lenient-fork 'lenient-data-after-close 'data-after-close
+                    'closed 'e-data-after-close)
+
+      ;; The other eight OPTIONAL_CR_BEFORE_LF forks. They are gathered here
+      ;; rather than each beside its site because they say the same thing
+      ;; eight times, and reading them together is how one notices that the
+      ;; chunk-size arm rejoins `chunk-size-almost-done` -- a node that then
+      ;; wants an LF it has already eaten. That is upstream's shape, not a
+      ;; slip: with this flag ALONE a bare LF after a chunk size still fails,
+      ;; at `Expected LF after chunk size`, and it takes OPTIONAL_LF_AFTER_CR
+      ;; as well to parse. `lenient_all` sets both, which is the only
+      ;; configuration in the corpus that reaches it.
+      (lenient-fork 'lenient-lf-chunk-size 'optional-cr-before-lf
+                    'chunk-size-almost-done 'e-cr-after-chunk-size)
+      (lenient-fork 'lenient-lf-chunk-data 'optional-cr-before-lf
+                    'chunk-complete 'e-cr-after-chunk-data)
+      (lenient-fork 'lenient-lf-ext-name 'optional-cr-before-lf
+                    'chunk-size-almost-done 'e-cr-after-chunk-ext-name)
+      (lenient-fork 'lenient-lf-ext-value 'optional-cr-before-lf
+                    'chunk-size-almost-done 'e-cr-after-chunk-ext-value)
+      (lenient-fork 'lenient-lf-ext-quoted 'optional-cr-before-lf
+                    'chunk-size-almost-done 'e-cr-after-chunk-ext-value)
+      ;; The two that are NOT `Missing expected CR` errors: a bare LF where a
+      ;; field name would start ends the header section, and a bare LF in the
+      ;; whitespace before a value ends an empty one.
+      (lenient-fork 'lenient-lf-field-start 'optional-cr-before-lf
+                    'check-trailing 'e-bad-header-field-char)
+      (lenient-fork 'lenient-lf-discard-ws 'optional-cr-before-lf
+                    'value-discard-lws 'e-bad-header-value-char)
 
       ;; --- errors, one node per span state ------------------------------------
       ;; Reached from the table's no-match, where the method span IS open.
