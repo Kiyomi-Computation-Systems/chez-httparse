@@ -86,11 +86,11 @@ passing  request/invalid.md#21
 deferred request/invalid.md#22                           lenient
 passing  request/invalid.md#23
 passing  request/invalid.md#24
-deferred request/lenient-header-value-relaxed.md#1       lenient
+passing  request/lenient-header-value-relaxed.md#1
 passing  request/lenient-header-value-relaxed.md#2
-deferred request/lenient-header-value-relaxed.md#3       lenient
-deferred request/lenient-header-value-relaxed.md#4       lenient
-deferred request/lenient-header-value-relaxed.md#5       lenient
+passing  request/lenient-header-value-relaxed.md#3
+passing  request/lenient-header-value-relaxed.md#4
+passing  request/lenient-header-value-relaxed.md#5
 passing  request/lenient-headers.md#1
 passing  request/lenient-headers.md#2
 passing  request/lenient-headers.md#3

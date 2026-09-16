@@ -125,6 +125,11 @@
   (define httparse-header-bytes
     (append '(9 32) (range 33 126) (range 128 255)))
 
+  ;; llhttp's RELAXED_HEADER_CHARS: HEADER_CHARS plus the C0 controls and DEL,
+  ;; which is every byte EXCEPT NUL, CR and LF. Its own comment says so.
+  (define httparse-relaxed-header-bytes
+    (append (range 1 9) '(11 12) (range 14 255)))
+
   (define COMMA 44)
   (define SP 32)
   (define CR 13)
@@ -1818,7 +1823,38 @@
       ;; ends. llhttp asks HEADERS first and HEADER_VALUE_RELAXED second, so
       ;; the strict arm here is where that second flag's fork will go.
       (lenient-fork 'lenient-value-char 'headers
-                    'value-lenient 'value-close-bad)
+                    'value-lenient 'lenient-value-relaxed)
+      ;; HEADER_VALUE_RELAXED, asked only when HEADERS was not -- upstream
+      ;; nests the two tests, and the comment beside them says why: HEADERS
+      ;; "accepts anything in values, drops some other header validation
+      ;; too", where this one "accepts only specific extra (common but
+      ;; discouraged) chars".
+      (lenient-fork 'lenient-value-relaxed 'header-value-relaxed
+                    'value-relaxed 'value-close-bad)
+      ;; `header_value_relaxed`, with ONE DELIBERATE DIFFERENCE, marked here
+      ;; because it is a divergence and not a transcription.
+      ;;
+      ;; Upstream's node is `.match(RELAXED_HEADER_CHARS, itself)
+      ;; .otherwise(header_value_otherwise)`, and `header_value_otherwise`
+      ;; falls back here for any byte that is not CR or LF. RELAXED covers
+      ;; every byte but NUL, CR and LF -- so a NUL in a header value under
+      ;; this flag alone walks relaxed -> otherwise -> relaxed forever, with
+      ;; no byte consumed. This generator's verifier refuses that outright as
+      ;; a zero-progress cycle, and is right to.
+      ;;
+      ;; So the three bytes upstream leaves to the fall-back are handled here
+      ;; instead: CR and LF exactly as `after-value` handles them, and NUL as
+      ;; the `Invalid header value char` the strict parser would have given.
+      ;; NO ORACLE CAN SETTLE WHICH IS RIGHT: the fixture binary takes its
+      ;; input as argv, so a NUL cannot be fed to it at all.
+      (make-byte-dispatch-node 'value-relaxed
+        (list (make-byte-case (make-byte-set-matcher httparse-relaxed-header-bytes)
+                              (make-edge 'value-relaxed 'advance) #f)
+              (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'value-close 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'value-close-no-cr 'reexecute) #f))
+        (make-edge 'value-close-bad 'reexecute) 'e-eof-header-value #f)
       ;; `header_value_lenient`. Its LF arm does NOT consult
       ;; OPTIONAL_CR_BEFORE_LF -- once a value is lenient a bare LF ends it,
       ;; where `header_value_otherwise` would have asked. Faithful to

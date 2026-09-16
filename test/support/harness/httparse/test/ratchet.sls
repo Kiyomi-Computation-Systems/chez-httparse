@@ -45,7 +45,8 @@
   ;; re-classed in the same reviewed diff, and no fixture can drift in ahead
   ;; of the behaviour it needs. `all` is the hook that sets nine at once, so
   ;; it arrives only when all nine do.
-  (define ratchet-implemented-lenient '(version headers optional-lf-after-cr optional-crlf-after-chunk))
+  (define ratchet-implemented-lenient '(version headers optional-lf-after-cr optional-crlf-after-chunk
+      header-value-relaxed))
 
   (define (ratchet-fixture-class f)
     (if (or (eq? (fixture-kind f) 'url)
