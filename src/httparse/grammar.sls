@@ -381,6 +381,14 @@
                                  next #f)
                                 acc))))))))
 
+  ;; lenient-fork : Symbol Symbol NodeName NodeName -> FieldBranchNode
+  ;; llhttp's `testLenientFlags(FLAG, {1: lenient}, strict)`, which is a mask
+  ;; test and nothing else. Every leniency in the grammar is one of these, so
+  ;; the flag is read in exactly one shape.
+  (define (lenient-fork name flag lenient strict)
+    (make-field-branch-node name 'mask-any (list 'lenient-flags (lenient-bit flag))
+                            lenient strict #f))
+
   (define (lenient-declarations)
     (map (lambda (row)
            ;; OPTIONAL, defaulting to `no`, and that default is llhttp's:
@@ -1427,8 +1435,14 @@
       ;; 16. The same trap as the bare LF after the version.
       (make-byte-dispatch-node 'headers-start
         (list (make-byte-case (make-exact-byte-matcher SP)
-                              (make-edge 'e-unexpected-space 'advance) #f))
+                              (make-edge 'lenient-headers-start 'advance) #f))
         (make-edge 'header-field-start 'reexecute) 'e-eof-none #f)
+      ;; LENIENT_HEADERS, first of six. The space is consumed either way --
+      ;; llhttp `.match`es it INTO the test -- so the lenient arm resumes at
+      ;; `header-field-start` having eaten it, which is why a lenient parse of
+      ;; ` Host: x` reports the field at 1 and not at 0.
+      (lenient-fork 'lenient-headers-start 'headers
+                    'header-field-start 'e-unexpected-space)
 
       ;; Three ways a field can fail to start, each with its own reason: a bare
       ;; LF is `Invalid header field char`, a leading colon is `Invalid header
@@ -1476,7 +1490,31 @@
       ;; Two fixtures turn on the pair.
       (make-byte-dispatch-node 'header-field-colon
         (list (make-byte-case (make-exact-byte-matcher SP)
-                              (make-edge 'field-close-before-space 'reexecute) #f)
+                              (make-edge 'lenient-field-colon 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher COLON)
+                              (make-edge 'header-field-close 'reexecute) #f))
+        (make-edge 'header-state-general 'reexecute) 'e-eof-header-field #f)
+      ;; LENIENT_HEADERS, second. ONLY ON THIS PATH: the general-header route
+      ;; has no lenient arm at all, so `Foo : x` is `Invalid header token`
+      ;; whatever the flags say, while `Connection : x` is accepted. That
+      ;; asymmetry is llhttp's -- `header_field_general_otherwise` carries no
+      ;; flag test -- and it is the reason these two errors have separate
+      ;; declarations.
+      (lenient-fork 'lenient-field-colon 'headers
+                    'field-colon-discard-ws 'field-close-before-space)
+      ;; UPSTREAM LOOPS BACK HERE AND THIS CANNOT. llhttp's
+      ;; `header_field_colon_discard_ws` eats spaces and then re-enters
+      ;; `header_field_colon`, which is a cycle whose every edge is a peek --
+      ;; safe at runtime, because the node it returns to only takes its space
+      ;; arm on a space and this one only returns on a non-space, but the
+      ;; verifier reasons over the GRAPH and refuses it as a zero-progress
+      ;; cycle. So the two arms that can follow the spaces are inlined here
+      ;; instead: a colon closes the field, and anything else is the general
+      ;; header `header_field_colon` would have fallen through to. Same
+      ;; answers, no back edge.
+      (make-byte-dispatch-node 'field-colon-discard-ws
+        (list (make-byte-case (make-exact-byte-matcher SP)
+                              (make-edge 'field-colon-discard-ws 'advance) #f)
               (make-byte-case (make-exact-byte-matcher COLON)
                               (make-edge 'header-field-close 'reexecute) #f))
         (make-edge 'header-state-general 'reexecute) 'e-eof-header-field #f)
@@ -1543,15 +1581,23 @@
       (make-byte-dispatch-node 'value-discard-ws-cr
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'value-discard-lws 'advance) #f))
-        (make-edge 'e-lf-after-cr-strict 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-discard-ws-cr 'reexecute) 'e-eof-none #f)
+      ;; LENIENT_HEADERS, third: a CR with no LF after it, in the whitespace
+      ;; before a value.
+      (lenient-fork 'lenient-discard-ws-cr 'headers
+                    'value-discard-lws 'e-lf-after-cr-strict)
 
       ;; Obs-fold, first site: a continuation line after an EMPTY value. The
       ;; whitespace is CONSUMED before it fails (llhttp `.match`es it), unlike
       ;; the second site below, which peeks.
       (make-byte-dispatch-node 'value-discard-lws
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
-                              (make-edge 'e-bad-header-value-char 'advance) #f))
+                              (make-edge 'lenient-discard-lws 'advance) #f))
         (make-edge 'value-empty-check 'reexecute) 'e-eof-none #f)
+      ;; LENIENT_HEADERS, fourth: the folded line is taken as more leading
+      ;; whitespace, so the value that finally arrives is the folded one.
+      (lenient-fork 'lenient-discard-lws 'headers
+                    'value-discard-ws 'e-bad-header-value-char)
 
       ;; llhttp's `checkEmptyHeaderValue`: an empty value is announced as an
       ;; empty span for a general header and is an ERROR for the two framing
@@ -1754,7 +1800,24 @@
                               (make-edge 'value-close 'reexecute) #f)
               (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'value-close-no-cr 'reexecute) #f))
-        (make-edge 'value-close-bad 'reexecute) 'e-eof-header-value #f)
+        (make-edge 'lenient-value-char 'reexecute) 'e-eof-header-value #f)
+      ;; LENIENT_HEADERS, fifth: the value accepts ANYTHING until the line
+      ;; ends. llhttp asks HEADERS first and HEADER_VALUE_RELAXED second, so
+      ;; the strict arm here is where that second flag's fork will go.
+      (lenient-fork 'lenient-value-char 'headers
+                    'value-lenient 'value-close-bad)
+      ;; `header_value_lenient`. Its LF arm does NOT consult
+      ;; OPTIONAL_CR_BEFORE_LF -- once a value is lenient a bare LF ends it,
+      ;; where `header_value_otherwise` would have asked. Faithful to
+      ;; upstream, and not obvious from either node alone.
+      (make-byte-dispatch-node 'value-lenient
+        (list (make-byte-case (make-exact-byte-matcher CR)
+                              (make-edge 'value-close 'reexecute) #f)
+              (make-byte-case (make-exact-byte-matcher LF)
+                              (make-edge 'value-close-lenient-lf 'reexecute) #f))
+        (make-edge 'value-lenient 'advance) 'e-eof-header-value #f)
+      (make-span-end-node 'value-close-lenient-lf 'header-value-span
+                          'value-almost-done #f)
       (make-span-end-node 'value-close 'header-value-span 'eat-cr #f)
       (make-span-end-node 'value-close-no-cr 'header-value-span 'e-cr-after-value #f)
       (make-span-end-node 'value-close-bad 'header-value-span 'e-bad-header-value-char #f)
@@ -1772,8 +1835,23 @@
       ;; llhttp's reason differs from the empty-value one.
       (make-byte-dispatch-node 'value-lws
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
-                              (make-edge 'e-ws-after-value 'reexecute) #f))
-        (make-edge (set-header-flags-entry "shf-complete") 'reexecute) 'e-eof-none #f))
+                              (make-edge 'lenient-value-lws 'reexecute) #f))
+        (make-edge (set-header-flags-entry "shf-complete") 'reexecute) 'e-eof-none #f)
+      ;; LENIENT_HEADERS, sixth: the continuation line becomes MORE VALUE.
+      ;; The whitespace is peeked, so the re-opened span starts at it and the
+      ;; folded value carries the fold's own spaces -- which is what the
+      ;; recorded traces show.
+      (lenient-fork 'lenient-value-lws 'headers 'value-lws-fold 'e-ws-after-value)
+      ;; AND A CHUNKED TRANSFER-ENCODING IS FORGOTTEN ACROSS THE FOLD. llhttp
+      ;; loads `header_state` here and resets it for
+      ;; `TRANSFER_ENCODING_CHUNKED` alone, so `Transfer-Encoding: chunked`
+      ;; continued on a folded line stops being chunked. Nothing else about
+      ;; the fold depends on the state, and no other state is reset.
+      (make-field-branch-node 'value-lws-fold 'equal
+                              (list 'header-state HS-TRANSFER-ENCODING-CHUNKED)
+                              'value-lws-reset-state 'value-open #f)
+      (make-field-action-node 'value-lws-reset-state 'store
+                              (list 'header-state HS-GENERAL) 'value-open #f #f))
       (set-header-flags-nodes "shf-complete" 'value-complete)
       (set-header-flags-nodes "shf-comma" 'conn-value)
       (list

@@ -32,11 +32,11 @@ passing  request/connection.md#9
 passing  request/connection.md#10
 deferred request/connection.md#11                        lenient
 passing  request/connection.md#12
-deferred request/connection.md#13                        lenient
+passing  request/connection.md#13
 passing  request/connection.md#14
-deferred request/connection.md#15                        lenient
+passing  request/connection.md#15
 passing  request/connection.md#16
-deferred request/connection.md#17                        lenient
+passing  request/connection.md#17
 passing  request/connection.md#18
 passing  request/connection.md#19
 passing  request/connection.md#20
@@ -47,7 +47,7 @@ passing  request/content-length.md#3
 passing  request/content-length.md#4
 passing  request/content-length.md#5
 passing  request/content-length.md#6
-deferred request/content-length.md#7                     lenient
+passing  request/content-length.md#7
 deferred request/content-length.md#8                     lenient
 passing  request/content-length.md#9
 passing  request/content-length.md#10
@@ -85,16 +85,16 @@ passing  request/invalid.md#20
 passing  request/invalid.md#21
 deferred request/invalid.md#22                           lenient
 passing  request/invalid.md#23
-deferred request/invalid.md#24                           lenient
+passing  request/invalid.md#24
 deferred request/lenient-header-value-relaxed.md#1       lenient
 passing  request/lenient-header-value-relaxed.md#2
 deferred request/lenient-header-value-relaxed.md#3       lenient
 deferred request/lenient-header-value-relaxed.md#4       lenient
 deferred request/lenient-header-value-relaxed.md#5       lenient
-deferred request/lenient-headers.md#1                    lenient
-deferred request/lenient-headers.md#2                    lenient
+passing  request/lenient-headers.md#1
+passing  request/lenient-headers.md#2
 passing  request/lenient-headers.md#3
-deferred request/lenient-headers.md#4                    lenient
+passing  request/lenient-headers.md#4
 passing  request/lenient-version.md#1
 passing  request/method.md#1
 passing  request/method.md#2
@@ -136,14 +136,14 @@ passing  request/sample.md#7
 passing  request/sample.md#8
 passing  request/sample.md#9
 passing  request/sample.md#10
-deferred request/sample.md#11                            lenient
+passing  request/sample.md#11
 passing  request/sample.md#12
 passing  request/sample.md#13
 deferred request/sample.md#14                            lenient
 passing  request/sample.md#15
 passing  request/sample.md#16
 passing  request/sample.md#17
-deferred request/sample.md#18                            lenient
+passing  request/sample.md#18
 passing  request/transfer-encoding.md#1
 passing  request/transfer-encoding.md#2
 passing  request/transfer-encoding.md#3
@@ -169,7 +169,7 @@ passing  request/transfer-encoding.md#22
 passing  request/transfer-encoding.md#23
 passing  request/transfer-encoding.md#24
 passing  request/transfer-encoding.md#25
-deferred request/transfer-encoding.md#26                 lenient
+passing  request/transfer-encoding.md#26
 passing  request/transfer-encoding.md#27
 deferred request/transfer-encoding.md#28                 lenient
 passing  request/transfer-encoding.md#29
@@ -272,7 +272,7 @@ passing  response/transfer-encoding.md#7
 passing  response/transfer-encoding.md#8
 passing  response/transfer-encoding.md#9
 passing  response/transfer-encoding.md#10
-deferred response/transfer-encoding.md#11                lenient
+passing  response/transfer-encoding.md#11
 deferred url.md#1                                        url-sub-parser
 deferred url.md#2                                        url-sub-parser
 deferred url.md#3                                        url-sub-parser

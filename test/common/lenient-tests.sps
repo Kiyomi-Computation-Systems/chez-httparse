@@ -162,6 +162,46 @@
                      (list-tail (trace '(request) "GET / HTTP/5.6\r\n") 8)
                      '("off=14 error code=9 reason=\"Invalid HTTP version\""))))))
 
+(harness-group "LENIENT_HEADERS, at the one site no fixture reaches"
+  (lambda ()
+    ;; FIVE OF THE SIX SITES ARE COVERED BY THE CORPUS and were found to be
+    ;; by disabling each in turn: only this one broke nothing. The fixture
+    ;; that would reach it -- request/invalid.md#22, "Spaces before headers"
+    ;; -- is typed `request-lenient-all` and stays deferred until all nine of
+    ;; those flags land. So both halves below were measured against a LIVE
+    ;; llhttp at `v9.4.3-1-gee51043`: the strict one from the plain
+    ;; `http-request-c`, the lenient one from a binary built with
+    ;; `-DLLPARSE__TEST_INIT=llhttp__test_init_request_lenient_headers`, both
+    ;; at scan size 28.
+    (harness-case "a space before the first header is an error when strict"
+      (lambda ()
+        (check-equal "the oracle's last line"
+                     (list-tail (trace '(request) "GET / HTTP/1.1\r\n Host: x\r\n\r\n") 9)
+                     '("off=17 error code=30 reason=\"Unexpected space after start line\""))))
+    (harness-case "and is consumed, not skipped, when the flag is on"
+      (lambda ()
+        ;; THE SPACE IS EATEN EITHER WAY -- llhttp `.match`es it INTO the
+        ;; flag test, and a match consumes. So the field span starts at 17
+        ;; and not at 16, which is the half a peek-based implementation would
+        ;; get wrong while still accepting the message.
+        (check-equal "the oracle's own trace"
+                     (trace '(request headers) "GET / HTTP/1.1\r\n Host: x\r\n\r\n")
+                     '("off=0 message begin"
+                       "off=0 len=3 span[method]=\"GET\""
+                       "off=3 method complete"
+                       "off=4 len=1 span[url]=\"/\""
+                       "off=6 url complete"
+                       "off=6 len=4 span[protocol]=\"HTTP\""
+                       "off=10 protocol complete"
+                       "off=11 len=3 span[version]=\"1.1\""
+                       "off=14 version complete"
+                       "off=17 len=4 span[header_field]=\"Host\""
+                       "off=22 header_field complete"
+                       "off=23 len=1 span[header_value]=\"x\""
+                       "off=26 header_value complete"
+                       "off=28 headers complete method=1 v=1/1 flags=0 content_length=0"
+                       "off=28 message complete"))))))
+
 ;;; This one is not about a trace. It is the property the fourth upstream
 ;;; brief now cites, and a brief that cites a measurement this tree does not
 ;;; keep is a claim with nothing behind it.
