@@ -1955,3 +1955,87 @@ and M11 — the URL sub-parser, 21 fixtures — is the only milestone still
 deferred. It is a second machine rather than more of this one, and it is now
 the only outstanding piece; the fourth brief is discharged and no upstream gap
 is open.
+
+## 2026-09-16 — M11: the url sub-parser, and the end of the ladder
+
+Squash-merged as `a103143` (PR #20), three commits. Ratchet **274 passing /
+0 not-yet / 0 DEFERRED** — the manifest's deferral list is empty for the first
+time since decision 0009 wrote it with 84 entries, and Gate 0's milestone
+ladder is complete. Decision
+[0022](../../.plans/decisions/0022-the-url-sub-parser-is-a-second-machine.md).
+
+**A second machine, not more of the first.** `url.md`'s fixtures carry no HTTP
+framing: upstream's `test/md-test.ts` calls `buildURL()` — `llhttp.URL(p,
+true)` with both exits looped back to its own entry — and passes no `-D` at
+all. So `(httparse url-grammar)` is a new builder emitting a new artifact, and
+the conformance driver resolves a machine PER FIXTURE from the kind the input
+fence already gives it. The HTTP parser is untouched and keeps its single
+`span[url]`.
+
+**THE MACHINE WAS RIGHT ON ITS FIRST BUILD** — all 21 fixtures matched
+byte-for-byte through a scratch driver before any harness existed. That is not
+a claim about care; it is a property of the generator. `schema:/path` must
+report at 8 rather than 7 because a failed `//` match keeps the `/` it already
+consumed, and the sequence-dispatch reference says exactly that in as many
+words. The fixture and the runtime agreed by construction rather than by
+transcription being lucky. **When the dependency documents a cursor rule, read
+it before writing the node, not after the fixture disagrees.**
+
+**What the milestone did NOT do, re-measured rather than assumed.** The
+`url-machine` divergence class is UNCHANGED at 45: `agreed=1097
+url-machine=45 late-complete=4 early-complete=0 unclassified=0`. The HTTP
+parser still carries its request target as one opaque span. The machine is
+built the way llhttp's `url` BINARY runs it — standalone, over a bare URL —
+and wiring it into the HTTP parse means joining at `entry.normal` and giving
+up the single `span[url]` every `uri.md` fixture is written against.
+
+**"The url sub-parser is done" and "the url divergence is closed" are
+different sentences**, and the milestone's name invites reading the first as
+the second. It got a heading in the decision record, in the plan and in
+`conformance.org` for that reason. A capability that EXISTS is not a
+capability that is IN THE PATH, and only the differential can say which
+happened. This is the sibling of M9's lesson — there, a capability the tree
+already had was recorded as absent; here, one the tree just gained could
+easily be recorded as wired in.
+
+**Three transcription traps, each pinned by something that is not an
+argument.** The offset-8 sequence mismatch above; a tab refused one byte PAST
+itself (upstream's `private node(name)` matches rather than peeks); and a host
+ending at `?` KEEPING the `?` — `.match('?', spanEnd('host', …))` advances
+before the span end runs. Reading llhttp's source lets you argue the third
+either way, and no fixture has one, so it was measured against a
+purpose-built url oracle and transcribed rather than repaired.
+
+**The exits are graph the corpus cannot reach.** Not one of the 21 inputs
+contains a space, CR or LF, and every node inside a URL has an edge for each.
+Omitting them would make a space an ERROR where llhttp ends the URL — a
+behaviour difference, not an omission. Built, and covered by six
+oracle-measured cases: a space starts ANOTHER URL, and what follows is judged
+from scratch (`http://host.com xyz` reports `xyz` as a *schema* span).
+
+**Watched it fail three ways before believing it.** Removing the `?`
+self-loop in a query reddens `url.md#9` and `#12`; consuming the `/` before a
+path instead of peeking reddens eleven; peeking tab instead of consuming turns
+both control-character cases red at offset 4 rather than 5.
+
+Verified on MERGED main: `make clean` then `make test-all` green at **86 of
+86**, full chunk-size scan included, ratchet 274/274, and the opt-in
+differential re-run at the numbers above. Reconfigured back to the default
+preset afterwards.
+
+CI: the billing refusal, `steps=0` with the annotation naming it. The
+correction recorded at the pin move held up — this PR's run took 2 seconds and
+merged main's took 3, where the previous one took 42. **The duration is
+scheduling latency and is not the signal; the annotation is.**
+
+**What is left of Gate 0.** The ladder is done and no upstream gap is open.
+Two pieces are named in the records rather than deferred, because neither is a
+fixture anyone is waiting on:
+
+- **Wiring the url machine into the HTTP request target**, which is what would
+  close those 45 comparisons. It costs the single `span[url]` that every
+  `uri.md` fixture is written against, so it is a corpus-visible change and
+  needs its own decision.
+- **A URL input generator for the live differential**, which today covers
+  `request` and `response` only. M8's experience says generated input finds
+  what fixtures do not — the keyword-table divergence was found nowhere else.
