@@ -1311,6 +1311,27 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- The url sub-parser (M11) -----------------------------------------------
+#
+# One case per distinct SHAPE, plus the exits `url.md` cannot reach: none of
+# its 21 inputs holds a space, a CR or an LF, and upstream gives every node
+# inside a URL an edge for each. Those expectations come from a purpose-built
+# url oracle, never from this parser.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.url.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/url-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GRAMMAR}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/url-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- The documented example -------------------------------------------------
 #
 # README.org shows this code. It runs here so the README cannot drift: a
