@@ -111,20 +111,27 @@
                                     (not (eq? derived declared))))
                                 (entries)))
                        0))))
-    (harness-case "21 fixtures are deferred and 253 are in scope"
+    (harness-case "every fixture the corpus ships is in scope, and none is deferred"
       (lambda ()
-        ;; Decision 0009's bar was 84 and 190. M9 moved the 24 `pausing` and
-        ;; 2 `skipBody` fixtures across; M10 moves the lenient ones a FLAG at
-        ;; a time, so these two numbers change together once per slice and
-        ;; every change is a reviewed diff rather than a drift.
+        ;; Decision 0009's bar was 84 deferred and 190 in scope. M9 moved the
+        ;; 24 `pausing` and 2 `skipBody` fixtures across, M10 moved the 37
+        ;; lenient ones a FLAG at a time, and M11 moved the last 21 -- the url
+        ;; sub-parser, which is a second machine rather than more of the
+        ;; first. So the deferral list is now EMPTY, and this case says so as
+        ;; a number rather than by not existing.
+        ;;
+        ;; A REFRESH THAT ADDED A FIXTURE WOULD FAIL HERE, which is the point
+        ;; of keeping the total written down: upstream growing its corpus is
+        ;; news, and `ratchet-fixture-class` would silently call the new one
+        ;; in-scope and pass it to the driver.
         (let ((es (entries)))
           (check-equal "deferred"
                        (length (filter (lambda (e) (eq? (ratchet-entry-status e) 'deferred)) es))
-                       21)
+                       0)
           (check-equal "in scope"
                        (length (filter (lambda (e) (memq (ratchet-entry-status e)
                                                          '(passing not-yet))) es))
-                       253))))
+                       274))))
     (harness-case "no deferred entry is missing its reason word"
       (lambda ()
         (check-equal "reasonless deferrals"

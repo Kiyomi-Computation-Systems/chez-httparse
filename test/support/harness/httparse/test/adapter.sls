@@ -22,6 +22,7 @@
           adapter-count-field adapter-finish-states adapter-finish-statuses
           adapter-message-types
           adapter-pause-points adapter-lenient-flags adapter-parser-inits
+          adapter-url-trace-names trace-recorder-url-bindings
           adapter-event-for adapter-error-event adapter-finish-event
           make-trace-recorder trace-recorder-bindings trace-recorder-events
           trace-recorder-note-error! trace-recorder-note-paused!
@@ -83,6 +84,24 @@
       (on-chunk-extension-value-complete event "chunk_extension_value complete")
       (on-chunk-complete         event      "chunk complete")
       (on-message-complete       event      "message complete")))
+
+  ;; THE URL SUB-PARSER'S OWN TABLE, and a separate one on purpose. It is a
+  ;; different machine with a disjoint callback set, and `url.md` is what its
+  ;; binary prints: five spans, no events at all, and no state line -- so a
+  ;; row of this table has nothing to say about a row of the one above, and
+  ;; the totality check each gets ("one binding per row, and nothing else")
+  ;; is only meaningful per machine.
+  ;;
+  ;; THE NAMES ARE DOTTED because llhttp's are: its separate-span build names
+  ;; the callbacks `llhttp__on_url_schema` and the fixture prints
+  ;; `span[url.schema]`. Nothing here composes that string from parts -- it is
+  ;; a rename like every other row.
+  (define adapter-url-trace-names
+    '((on-url-schema-data   span "url.schema")
+      (on-url-host-data     span "url.host")
+      (on-url-path-data     span "url.path")
+      (on-url-query-data    span "url.query")
+      (on-url-fragment-data span "url.fragment")))
 
   ;; The fields a state line reads. llhttp's own callback reads SIX and
   ;; prints five of them: `s->type` chooses the line, and then either
@@ -184,8 +203,12 @@
   ;; the parser's own field values for a state-line callback and #f otherwise.
   ;; Both are REQUIRED arguments: an argument a caller must pass is a check,
   ;; and an omitted one would be a default.
+  ;; Both tables, because a recorder drives one machine or the other and the
+  ;; callback names are disjoint. Still NO DEFAULT: a name in neither table
+  ;; raises.
   (define (adapter-event-for callback offset bytes fields)
-    (let ((row (assq callback adapter-trace-names)))
+    (let ((row (or (assq callback adapter-trace-names)
+                   (assq callback adapter-url-trace-names))))
       (unless row
         (adapter-refuse 'adapter-event-for
           (string-append "no trace name for callback " (symbol->string callback))))
@@ -460,6 +483,33 @@
                                  r (make-trace-mark (parser-stream-offset p) "skip body")))
                               answer))))))
            adapter-trace-names)))
+
+  ;; trace-recorder-url-bindings : Recorder -> (Listof (List Symbol Procedure))
+  ;; The URL sub-parser's bindings. Five spans and nothing else -- no mode, no
+  ;; harness mode, no decision: `test/md-test.ts` builds the url binary with no
+  ;; `-D` at all, so there is nothing for a fixture's meta to select.
+  ;;
+  ;; A SPAN FRAGMENT IS RECORDED THE SAME WAY IT IS FOR THE MESSAGE PARSER,
+  ;; through the same `adapter-event-for`, so the two machines cannot drift in
+  ;; how an offset or a length is computed. That matters more here than it
+  ;; looks: every one of `url.md`'s expectations is a span line, so the
+  ;; offset arithmetic IS the milestone.
+  (define (trace-recorder-url-bindings r)
+    (map (lambda (row)
+           (let ((callback (car row)))
+             (unless (eq? (cadr row) 'span)
+               (adapter-refuse 'trace-recorder-url-bindings
+                 "the url parser declares span callbacks and nothing else"))
+             (list callback
+                   (lambda (p ctx bv from to)
+                     (let* ((len (- to from))
+                            (b (make-bytevector len)))
+                       (bytevector-copy! bv from b 0 len)
+                       (recorder-push!
+                        r (adapter-event-for callback
+                                             (- (parser-stream-offset p) len) b #f)))
+                     callback-continue))))
+         adapter-url-trace-names))
 
   ;; trace-recorder-note-requested-pause! : Recorder Nat -> Void
   ;; `off=N pause`, the line upstream's driver prints when a callback answers

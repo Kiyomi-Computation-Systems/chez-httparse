@@ -10,10 +10,15 @@ llhttp's own recorded test corpus. v0.1 is strict-mode request and response
 parsing: 190 of the 253 upstream HTTP fixtures ([0009](decisions/0009-v01-is-strict-request-and-response-parsing.md)).
 
 Slice 1 ported the harness and build layer, and this plan covered everything
-from there to the release. `src/` now holds the grammar,
-`httparse/grammar.sls`, and the parser emitted from it,
-`generated/httparse-message.sls`. Each milestone below carries its own
-status, and what is still deferred is listed after them.
+from there to the release. `src/` now holds two grammars --
+`httparse/grammar.sls` and `httparse/url-grammar.sls` -- and the two parsers
+emitted from them, `generated/httparse-message.sls` and
+`generated/httparse-url.sls`. Each milestone below carries its own status.
+
+**Nothing is deferred any more.** The ladder is complete and the ratchet
+stands at **274 of 274** -- every HTTP fixture and every URL fixture llhttp
+ships, bit-exact at every chunk size
+([0022](decisions/0022-the-url-sub-parser-is-a-second-machine.md)).
 
 ## The shape of the work
 
@@ -514,10 +519,51 @@ byte consumed; the verifier refuses that shape, so NUL takes the strict
 parser's error instead. The oracle takes its input as argv, so no NUL can be
 fed to it either way.
 
+### M11 — the url sub-parser — DONE
+
+The last 21 fixtures, and A SECOND MACHINE rather than more of the first.
+Ratchet **274 passing / 0 not-yet / 0 deferred**; the deferral list is empty
+for the first time since [0009](decisions/0009-v01-is-strict-request-and-response-parsing.md)
+wrote it with 84 entries. Decision
+[0022](decisions/0022-the-url-sub-parser-is-a-second-machine.md).
+
+**`url.md`'s fixtures carry no HTTP framing.** Upstream's `test/md-test.ts`
+calls `buildURL()` -- `new llhttp.URL(p, true)`, both exits looped back to its
+own entry -- and passes no `-D` at all. So the driver resolves a machine PER
+FIXTURE from the kind the input fence already gives it, and both executor
+lanes cover both machines.
+
+**Three transcription traps, each pinned by something that is not an
+argument.** `schema:/path` reports at 8 and not 7, because a sequence match
+keeps the prefix bytes it consumed before the mismatch. A tab is refused one
+byte PAST itself, because upstream's node wrapper matches rather than peeks. A
+host that ends at a `?` KEEPS the `?`, because the match advances before the
+span end runs -- measured, since no fixture has one.
+
+**The exits are graph the corpus cannot reach.** Not one of the 21 inputs
+holds a space, a CR or an LF, and every node inside a URL has an edge for
+each. Built faithfully and measured against a purpose-built url oracle: a
+space does not end the parse but starts another URL, and what follows is
+judged from scratch.
+
+**AND IT DID NOT CLOSE THE `url-machine` DIVERGENCE.** Re-measured after the
+milestone and unchanged at **45 comparisons**: the HTTP parser still carries
+its request target as one opaque span. The machine is built the way llhttp's
+`url` BINARY runs it, standalone; putting it in the HTTP parse is separate
+work. The milestone's name invites the opposite reading, which is exactly why
+this sentence is here.
+
 ### Deferred
 
-**M11** the URL sub-parser (21 fixtures) — vendored and ratcheted from M1, so
-the deferral is a visible count rather than an absence.
+Nothing. The three milestones that carried deferrals -- M9's 26, M10's 37 and
+M11's 21 -- have all landed, and no upstream gap is open: the fourth brief was
+discharged at the `v0.5.0` pin move.
+
+**One asymmetry is worth knowing and is not a deferral.** The live
+generated-input differential covers `request` and `response` only; the url
+machine's evidence is its 21 fixtures at every chunk size, the executor
+differential, and six oracle-measured cases. A URL input generator would be
+separate work.
 
 ## Reachable ceilings, measured
 

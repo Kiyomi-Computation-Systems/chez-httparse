@@ -49,12 +49,14 @@
       header-value-relaxed keep-alive chunked-length transfer-encoding
       data-after-close spaces-after-chunk-size optional-cr-before-lf))
 
+  ;; M11 brought the url sub-parser in, so a url fixture is judged like any
+  ;; other. The kind still decides WHICH machine runs it -- that is the
+  ;; driver's business -- but it no longer decides whether it is gated.
   (define (ratchet-fixture-class f)
-    (if (or (eq? (fixture-kind f) 'url)
-            (not (for-all (lambda (flag) (memq flag ratchet-implemented-lenient))
-                          (fixture-lenient-flags f))))
-        'deferred
-        'in-scope))
+    (if (for-all (lambda (flag) (memq flag ratchet-implemented-lenient))
+                 (fixture-lenient-flags f))
+        'in-scope
+        'deferred))
 
   (define (whitespace? c)
     (or (char=? c #\space) (char=? c #\tab) (char=? c #\return) (char=? c #\linefeed)))

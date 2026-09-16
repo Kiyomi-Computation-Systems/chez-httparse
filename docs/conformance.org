@@ -1,18 +1,23 @@
 #+TITLE: What chez-httparse does, and what it does not
 #+OPTIONS: toc:2
 
-The claim this project makes is narrow and checkable: *strict-mode HTTP/1.x
-request and response parsing, byte-exact against llhttp's own recorded
-traces, for *all 253* HTTP fixtures in its conformance corpus.* The 21 URL
-fixtures are a separate parser and are enumerated below rather than omitted.
+The claim this project makes is narrow and checkable: *HTTP/1.x request and
+response parsing, byte-exact against llhttp's own recorded traces, for* all
+274 *fixtures in its conformance corpus — every HTTP fixture and every URL
+fixture it ships, at every chunk size.*
 
 v0.1 shipped 190 of them, strict-mode only. Pausing and =skipBody= (26) came
-in after it, then the eleven lenient flags (37). All of that is on =main=,
-unreleased.
+in after it, then the eleven lenient flags (37), then the url sub-parser (21).
+All of that is on =main=, unreleased.
 
 Strict is still the *default* and lenient is still opt-in; what changed since
 is only how you ask. The eleven flags are a bitset you hand =make-parser=,
 not eleven callbacks it asks you — see [[file:api.org][api.org]].
+
+*The 21 URL fixtures are a SECOND PARSER, and they pass.* They were listed
+here as out of scope until M11; what they exercise is
+=(generated httparse-url)=, whose five separate spans exist only in llhttp's
+own url binary. The HTTP parser's request-target is still one =span[url]=.
 
 A compatibility claim that names what it does not do is the only kind worth
 publishing.
@@ -44,16 +49,16 @@ The result is a *ratchet*: a manifest naming every fixture and its status. It
 fails both when a passing fixture breaks and when a deferred one starts
 passing, so a change in either direction is a reviewed diff.
 
-* The 21 still out
+* Nothing is out
 
-| Deferred       | Fixtures | Why                                               |
-|----------------+----------+---------------------------------------------------|
-| URL sub-parser |       21 | =url.md= only; the target is one opaque span here |
+Every fixture the corpus ships is gated and passing: *274 of 274*. The
+deferral column that stood here through eleven milestones is empty, and the
+ratchet asserts the emptiness as a number rather than by no longer having a
+row.
 
-It is a milestone of its own, and every one of its fixtures is already
-vendored and already in the ratchet — so the deferral is a visible count
-rather than an absence, and the day one is picked up its corpus is present,
-checksummed, and failing for the right reason.
+*That is a statement about FIXTURES, not about every difference from llhttp.*
+The three measured divergences below are found by generated input the corpus
+does not contain, and one of them is still open — read on.
 
 * Divergences from llhttp, measured
 
@@ -77,8 +82,19 @@ llhttp: off=9 error code=7 reason="Unexpected char in url schema"
 ours:   parses to completion
 #+end_example
 
-This is the deferred URL sub-parser, and it is the largest of the three by a
-wide margin.
+*M11 DID NOT CLOSE THIS, and it is worth saying so plainly because the name
+invites the opposite reading.* M11 built the URL machine and passed all 21
+=url.md= fixtures — but as llhttp's =url= binary runs it: standalone, over a
+bare URL, looping its exits back to its own entry. Wiring it INTO the HTTP
+parse is different work again. llhttp joins it at =entry.normal= /
+=entry.connect= and leaves it at =toHTTP= / =toHTTP09=, and the request-target
+span would stop being the one opaque =span[url]= every =uri.md= fixture is
+written against.
+
+So the count is unchanged by M11 and was re-measured after it: *45
+comparisons*, still the largest of the three by a wide margin. A milestone
+that makes a capability exist is not the same as one that puts it in the
+path, and only the differential can tell you which happened.
 
 ** A completion event at the exact end of the input
 

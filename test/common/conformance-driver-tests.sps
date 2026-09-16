@@ -36,7 +36,9 @@
         (httparse test adapter)
         (httparse test drive)
         (httparse grammar)
+        (httparse url-grammar)
         (generated httparse-message)
+        (generated httparse-url)
         (byte-machine verify)
         (byte-machine interpret)
         (byte-machine runtime))
@@ -78,9 +80,26 @@
 ;; The committed artifact, run as itself. The interpreter is built beside it
 ;; from the same grammar and is compared against it below, never substituted
 ;; for it.
-(define generated httparse-message-machine)
-(define interpreted
+;; TWO MACHINES, AND THE FIXTURE SAYS WHICH. `url.md`'s 21 fixtures are typed
+;; by their input fence (```url rather than ```http) and upstream runs them
+;; against a different binary -- `test/md-test.ts` calls `buildURL()` and
+;; passes no `-D` at all. So this driver resolves a machine per fixture rather
+;; than holding one.
+(define (url-fixture? f) (eq? (fixture-kind f) 'url))
+
+(define interpreted-message
   (make-interpreted-machine (verify-machine (make-message-machine))))
+(define interpreted-url
+  (make-interpreted-machine (verify-machine (make-url-machine))))
+
+;; lane is 'generated (the committed artifact) or 'interpreted (the reference
+;; executor). Both lanes cover both machines, so the executor differential
+;; below judges the url parser exactly as it judges the message parser.
+(define (machine-for lane f)
+  (case lane
+    ((generated) (if (url-fixture? f) httparse-url-machine httparse-message-machine))
+    ((interpreted) (if (url-fixture? f) interpreted-url interpreted-message))
+    (else (assertion-violation 'conformance-driver "no such lane" lane))))
 
 ;; llhttp's own harness asks for a finish LINE only for the `*-finish` fixture
 ;; types (test/fixtures/index.ts, which defines `LLPARSE__TEST_FINISH` for
@@ -150,15 +169,22 @@
                  (else (loop (+ i 1))))))
         'none)))
 
-;; run-at : Machine Fixture Bytevector Nat -> (Listof Bytevector)
+;; run-at : Symbol Fixture Bytevector Nat -> (Listof Bytevector)
 ;; The trace one executor produces for one chunk size.
-(define (run-at machine f bv size)
-  (let* ((r (make-trace-recorder))
-         (p (make-parser machine
-                         (trace-recorder-bindings r (fixture-init f)
-                                                  (fixture-harness-mode f))
-                         #f
-                         (adapter-parser-inits (fixture-init f))))
+;;
+;; A URL FIXTURE BINDS FIVE SPANS AND NOTHING ELSE, and passes no field
+;; initials: that machine declares no settable field, because its binary has
+;; no mode to be in.
+(define (run-at lane f bv size)
+  (let* ((machine (machine-for lane f))
+         (r (make-trace-recorder))
+         (p (if (url-fixture? f)
+                (make-parser machine (trace-recorder-url-bindings r) #f)
+                (make-parser machine
+                             (trace-recorder-bindings r (fixture-init f)
+                                                      (fixture-harness-mode f))
+                             #f
+                             (adapter-parser-inits (fixture-init f)))))
          (len (bytevector-length bv)))
     (let loop ((bounds (corpus-chunk-bounds len size)) (result #f))
       (cond
@@ -175,7 +201,7 @@
           ;; The adapter refuses an outcome it has no row for, here as
           ;; everywhere else -- so a `*-finish` fixture that did not parse
           ;; cleanly is a FAILING FIXTURE and not a crashed lane.
-          (when (finishing? f)
+          (when (and (not (url-fixture? f)) (finishing? f))
             (trace-recorder-note-finish!
              r p (and final (parser-result-status final))))
           (trace-format (trace-recorder-events r))))
@@ -206,7 +232,7 @@
                              (k (string-append "adapter refused: " (adapter-error-detail e)))
                              (raise e)))
                        (lambda ()
-                         (let ((d (trace-compare expected (run-at generated f bv (car sizes)))))
+                         (let ((d (trace-compare expected (run-at 'generated f bv (car sizes)))))
                            (and d
                                 (string-append
                                  "line " (number->string (mismatch-index d))
@@ -243,12 +269,12 @@
 ;; already replays the passing ones at every size against the artifact.
 ;; A refusal is an OUTCOME, not a crash: the two executors must agree about
 ;; that too, so it is captured as a value and compared like any other.
-(define (outcome machine f bv n)
+(define (outcome lane f bv n)
   (call/cc
    (lambda (k)
      (with-exception-handler
       (lambda (e) (if (adapter-error? e) (k (list 'refused (adapter-error-detail e))) (raise e)))
-      (lambda () (run-at machine f bv n))))))
+      (lambda () (run-at lane f bv n))))))
 
 (define (executors-disagree)
   (filter
@@ -256,7 +282,7 @@
      (let* ((f (fixture-of id))
             (bv (corpus-decode-input (fixture-input-text f)))
             (n (max 1 (bytevector-length bv))))
-       (not (equal? (outcome generated f bv n) (outcome interpreted f bv n)))))
+       (not (equal? (outcome 'generated f bv n) (outcome 'interpreted f bv n)))))
    (map car results)))
 
 (harness-begin "conformance.message")
