@@ -905,6 +905,25 @@ httparse_add_scheme_lane(
   TIMEOUT 180
   LABELS unit)
 
+# --- The mode tables --------------------------------------------------------
+#
+# Pure data with real invariants: distinct bits, llhttp's order, and every
+# combination representable in the width the grammar declares the field at.
+# It has its own lane because three consumers read it and none of them would
+# notice a table that drifted -- a duplicated bit makes two flags one flag,
+# and every fixture typed for either still passes.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.modes.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/modes-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_MODES}
+            "${CMAKE_CURRENT_LIST_DIR}/common/modes-tests.sps"
+    TIMEOUT 120
+    LABELS unit)
+endforeach()
+
 # --- The grammar (M2) -------------------------------------------------------
 
 # Two files: the grammar imports (httparse modes), so a lane that has one
