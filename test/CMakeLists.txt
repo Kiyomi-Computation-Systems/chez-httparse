@@ -926,10 +926,14 @@ endforeach()
 
 # --- The grammar (M2) -------------------------------------------------------
 
-# Two files: the grammar imports (httparse modes), so a lane that has one
-# and not the other would compile against a stale table.
+# Three files: the grammar imports (httparse modes), so a lane that has one
+# and not the other would compile against a stale table. The url sub-parser's
+# grammar rides along rather than getting a variable of its own -- it is a
+# second machine in the same build-time layer, and every lane that needs one
+# builder needs the other.
 set(HTTPARSE_GRAMMAR ${HTTPARSE_MODES}
-                     "${CMAKE_SOURCE_DIR}/src/httparse/grammar.sls")
+                     "${CMAKE_SOURCE_DIR}/src/httparse/grammar.sls"
+                     "${CMAKE_SOURCE_DIR}/src/httparse/url-grammar.sls")
 
 httparse_add_scheme_lane(
   NAME httparse.unit.request-line.chez.source
@@ -1081,8 +1085,15 @@ endforeach()
 # a diff and loadable without a generator. The lane re-emits and compares bytes,
 # so a grammar edit not followed by `make parser-refresh` reddens rather than
 # shipping an artifact that no longer describes its source.
-set(HTTPARSE_GENERATED_PARSER
+# TWO artifacts since M11: the message parser and the url sub-parser. Both are
+# emitted by one script and both are checked by one lane, so neither can be
+# refreshed while the other silently goes stale.
+set(HTTPARSE_GENERATED_MESSAGE_PARSER
     "${CMAKE_SOURCE_DIR}/src/generated/httparse-message.sls")
+set(HTTPARSE_GENERATED_URL_PARSER
+    "${CMAKE_SOURCE_DIR}/src/generated/httparse-url.sls")
+set(HTTPARSE_GENERATED_PARSER ${HTTPARSE_GENERATED_MESSAGE_PARSER}
+                              ${HTTPARSE_GENERATED_URL_PARSER})
 
 httparse_add_scheme_lane(
   NAME httparse.determinism.generated-artifact.chez.source
@@ -1093,7 +1104,8 @@ httparse_add_scheme_lane(
           ${HTTPARSE_GRAMMAR}
           ${HTTPARSE_GENERATED_PARSER}
           "${CMAKE_CURRENT_LIST_DIR}/common/generated-artifact-tests.sps"
-  ENVIRONMENT "HTTPARSE_GENERATED_PARSER=${HTTPARSE_GENERATED_PARSER}"
+  ENVIRONMENT "HTTPARSE_GENERATED_PARSER=${HTTPARSE_GENERATED_MESSAGE_PARSER}"
+              "HTTPARSE_GENERATED_URL_PARSER=${HTTPARSE_GENERATED_URL_PARSER}"
   TIMEOUT 180
   LABELS determinism)
 

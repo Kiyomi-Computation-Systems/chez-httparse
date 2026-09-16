@@ -1,10 +1,15 @@
-;;; The checked-in generated parser is fresh, deterministic, and self-contained.
+;;; The checked-in generated parsers are fresh, deterministic, self-contained.
 ;;;
-;;; `src/generated/httparse-message.sls` is a DERIVED artifact: emitted
-;;; from `(httparse grammar)` by `tools/emit-message.ss` and committed so
-;;; that what this project ships is reviewable as a diff and loadable without a
+;;; `src/generated/httparse-message.sls` and `src/generated/httparse-url.sls`
+;;; are DERIVED artifacts: emitted from `(httparse grammar)` and
+;;; `(httparse url-grammar)` by `tools/emit-machine.ss` and committed so that
+;;; what this project ships is reviewable as a diff and loadable without a
 ;;; generator. A derived file in the tree is a file that can silently stop
 ;;; describing its source, so this lane re-emits and compares BYTES.
+;;;
+;;; BOTH ARE CHECKED IN ONE LANE on purpose: one `make parser-refresh` writes
+;;; both, so a lane per artifact would let a refresh that only reached one of
+;;; them pass half the time.
 ;;;
 ;;; It is deliberately not a test of the parser's behaviour. The artifact's own
 ;;; code is exercised by the conformance lanes, which run IT rather than a
@@ -14,9 +19,11 @@
 (import (rnrs)
         (httparse test harness)
         (httparse grammar)
+        (httparse url-grammar)
         (byte-machine compile))
 
 (define artifact-path (adapter-environment-variable "HTTPARSE_GENERATED_PARSER"))
+(define url-artifact-path (adapter-environment-variable "HTTPARSE_GENERATED_URL_PARSER"))
 
 (define (read-bytes path)
   (call-with-port (open-file-input-port path) get-bytevector-all))
@@ -25,9 +32,15 @@
   (render-machine (compile-machine (make-message-machine) '())
                   'httparse-message-machine))
 
+(define (emit-url)
+  (render-machine (compile-machine (make-url-machine) '())
+                  'httparse-url-machine))
+
 (define committed (read-bytes artifact-path))
+(define url-committed (read-bytes url-artifact-path))
 
 (define (text) (utf8->string committed))
+(define (url-text) (utf8->string url-committed))
 
 (define (find-substring s sub)
   (let ((n (string-length s)) (m (string-length sub)))
@@ -84,5 +97,44 @@
         (let ((s (text)))
           (check "library name" (find-substring s "(library (generated httparse-message)"))
           (check "export" (find-substring s "(export httparse-message-machine)")))))))
+
+(harness-group "and so does the url sub-parser's"
+  (lambda ()
+    (harness-case "re-emitting reproduces it byte for byte"
+      (lambda ()
+        ;; If this fails the url grammar moved and the artifact did not:
+        ;;   make parser-refresh
+        (check-equal "bytes" (emit-url) url-committed)))
+    (harness-case "emission is deterministic across two runs in one process"
+      (lambda ()
+        (check-equal "two renders" (emit-url) (emit-url))))
+    (harness-case "it imports the runtime and nothing above it"
+      (lambda ()
+        (let ((s (url-text)))
+          (check "imports the runtime" (find-substring s "(byte-machine runtime)"))
+          (check "not the builder" (not (find-substring s "(byte-machine graph)")))
+          (check "not the compiler" (not (find-substring s "(byte-machine compile)")))
+          (check "not the verifier" (not (find-substring s "(byte-machine verify)")))
+          (check "not the interpreter" (not (find-substring s "(byte-machine interpret)"))))))
+    (harness-case "it names the same ABI as its sibling"
+      (lambda ()
+        ;; One pin, one ABI. Two artifacts emitted at two versions would be a
+        ;; build that ran the emitter twice against two trees.
+        (check-equal "abi"
+                     (integer-after (url-text) "(byte-machine-make-compiled-machine ")
+                     8)))
+    (harness-case "it is a DIFFERENT library, not a second copy of the first"
+      (lambda ()
+        (let ((s (url-text)))
+          (check "library name" (find-substring s "(library (generated httparse-url)"))
+          (check "export" (find-substring s "(export httparse-url-machine)"))
+          ;; The two machines share no state and no callback. A url artifact
+          ;; naming a message callback would mean the emitter was handed the
+          ;; wrong builder -- which a byte comparison alone would not say,
+          ;; since it would then match its own re-emission perfectly.
+          (check "no message callback"
+                 (not (find-substring s "on-header-field-data")))
+          (check "its own spans"
+                 (find-substring s "on-url-schema-data")))))))
 
 (harness-finish)
