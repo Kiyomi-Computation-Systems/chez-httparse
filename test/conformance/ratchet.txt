@@ -173,7 +173,7 @@ passing  request/transfer-encoding.md#26
 passing  request/transfer-encoding.md#27
 passing  request/transfer-encoding.md#28
 passing  request/transfer-encoding.md#29
-deferred request/transfer-encoding.md#30                 lenient
+passing  request/transfer-encoding.md#30
 passing  request/transfer-encoding.md#31
 deferred request/transfer-encoding.md#32                 lenient
 passing  request/uri.md#1

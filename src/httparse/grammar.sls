@@ -2189,7 +2189,14 @@
       (make-sequence-dispatch-node 'chunk-data-almost-done
         (list (make-sequence-case (list CR LF) 'chunk-complete #f)
               (make-sequence-case (list LF) 'e-cr-after-chunk-data #f))
-        (make-edge 'e-lf-after-chunk-data 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-crlf-after-chunk 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_CRLF_AFTER_CHUNK, and it is the whole flag: a chunk's data
+      ;; may be followed by NEITHER a CR nor an LF, and the next chunk header
+      ;; begins immediately. Its sibling flag OPTIONAL_CR_BEFORE_LF covers
+      ;; the bare-LF case on the arm above; this one covers neither-of-them,
+      ;; which is why the two are separate flags and not one.
+      (lenient-fork 'lenient-crlf-after-chunk 'optional-crlf-after-chunk
+                    'chunk-complete 'e-lf-after-chunk-data)
 
       (ev 'chunk-complete 'on-chunk-complete 'chunk-size-start)
 
