@@ -1832,3 +1832,36 @@ than the re-ask this tree relies on. THE PIN MOVE IS DELIBERATELY NOT IN THIS
 MILESTONE: a dependency bump folded into a behaviour milestone is a red lane
 nobody can attribute, and the 253-fixture ratchet can prove a behaviour-
 preserving refactor changed nothing only if it is the only thing in the diff.
+
+### M10 close-out
+
+Squash-merged as `cccae8e` (PR #18), ten commits. Local `main` caught up and
+clean; the branch deleted locally and on the remote, which is back to `main`
+alone.
+
+**A lane landed on main mid-milestone and the two composed.** PR #17 added
+`httparse.harness.plan-header-audit.cmake.direct` — a check that a milestone
+plan's header does not contradict its own ladder — while M10 was in flight,
+and M10's records edit that same header. The squash merge took main's
+generalised wording and M10's section below it, and the audit PASSES on merged
+main. Worth recording because the branch-vs-main diff was NOT empty at
+clean-up time: main was strictly ahead, and the three lines going the other way
+were #17's improvements the branch had never seen. A non-empty diff is not by
+itself a reason to keep a branch; the question is which side is behind.
+
+Verified on MERGED main rather than on the branch: `make clean` then
+`make test-all` green at **82 of 82**, and the opt-in differential re-run
+against the live oracle at **agreed=1097 url-machine=45 late-complete=4
+unclassified=0** — the two classes 0018 names, unchanged across an eleven-flag
+milestone. Reconfigured back to the default preset afterwards.
+
+CI on merged main: `linux-amd64 failure steps=0`, 09:42:56 -> 09:42:58, no
+logs. The billing refusal 0004 names, the fifth merge running.
+
+**What is left of Gate 0.** 253 of 274 fixtures pass. M11 — the URL
+sub-parser, 21 fixtures — is the only milestone still deferred, and it is a
+second machine rather than more of this one. The other outstanding piece is
+not a milestone at all: byte-machine `v0.5.0` answers the fourth brief, and
+moving the pin should DELETE eleven optional callbacks and twenty-two entry
+nodes in exchange for two settable fields. Its acceptance criterion is unusual
+and strong — 253 still pass, and the diff is smaller.
