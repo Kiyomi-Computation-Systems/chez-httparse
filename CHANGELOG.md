@@ -6,7 +6,40 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A host may hold two `@` if they are not adjacent**
+  ([0024](.plans/decisions/0024-the-url-input-generator-and-the-second-at.md)).
+  llhttp accepts `http://a@b@c/p` — the host is `a@b@c` — and refuses only
+  `a@@b` with `Double @ in url`. This parser refused the second `@` wherever
+  it fell.
+
+  Upstream builds `server` and `server_with_at` from one loop whose edges
+  name `server` explicitly rather than the loop variable, so the second node
+  is ONE BYTE WIDE: any ordinary host byte returns to the first and re-arms
+  `@`. `url.md`'s "Double `@`" fixture has its two adjacent, so neither the
+  corpus, nor the six oracle-measured cases, nor 274 replays at every chunk
+  size could tell the two rules apart.
+
+  **A target you used to see refused now parses.** Found by the new url kind
+  of the live differential, on its first sweep.
+
 ### Changed
+
+- **The live differential compares a third kind, and sweeps three seeds**
+  ([0024](.plans/decisions/0024-the-url-input-generator-and-the-second-at.md)).
+  `generate-urls` assembles urls from llhttp's own decision points, `url.md`
+  entire is a mutation base, and a third oracle binary is built the way
+  `test/md-test.ts`'s `buildURL()` builds it — the program `url.md` was
+  recorded from. `agreed` 1142 → **7730**, `unclassified=0`.
+
+  The message inputs are byte for byte what they were:
+  `HTTPARSE_DIFFERENTIAL_URL_CASES=0` reproduces `agreed=1142` exactly.
+
+  **The seed sweep is a measurement.** The bug above did not appear at the
+  default seed and did appear at three of the five tried, so the run is now
+  the seed it is given plus its two successors. A lane pinned to one seed can
+  be silently lucky, and its green reads as evidence.
 
 - **The request target is parsed, not just carried — and the parser is
   STRICTER for it**

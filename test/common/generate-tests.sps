@@ -208,4 +208,106 @@
           (check "base" (harness-string-contains? (gen-case-origin c) "base="))
           (check "at" (harness-string-contains? (gen-case-origin c) "@")))))))
 
+;;; THE URL GENERATOR IS A SECOND INSTRUMENT and is calibrated the same way.
+;;; It exists because the message generator reaches almost none of the url
+;;; sub-parser: a request target is one field out of ten and its pool is ten
+;;; fixed strings, so the machine spliced in by decision 0023 is exercised by
+;;; a handful of shapes and none of its error arms.
+(harness-group "a url run replays from its seed"
+  (lambda ()
+    (harness-case "the same seed produces the same cases, byte for byte"
+      (lambda ()
+        (check-equal "bytes"
+                     (map gen-case-bytes (generate-urls 7 20))
+                     (map gen-case-bytes (generate-urls 7 20)))
+        (check-equal "origins"
+                     (map gen-case-origin (generate-urls 7 20))
+                     (map gen-case-origin (generate-urls 7 20)))))
+    (harness-case "a different seed produces different cases"
+      (lambda ()
+        (check-not-equal "7 vs 8"
+                         (map gen-case-bytes (generate-urls 7 20))
+                         (map gen-case-bytes (generate-urls 8 20)))))
+    (harness-case "the count is the number of cases"
+      (lambda ()
+        (check-equal "0" (length (generate-urls 1 0)) 0)
+        (check-equal "37" (length (generate-urls 1 37)) 37)))
+    (harness-case "its output stays inside [1,127]"
+      (lambda ()
+        ;; Tab and form feed ARE emitted -- they are inside the range and they
+        ;; are the only way to reach `Invalid characters in url`. What is
+        ;; excluded is NUL and the high half, for the argv reason above.
+        (for-each
+         (lambda (seed)
+           (check (string-append "seed " (number->string seed))
+                  (all? (lambda (c) (generate-safe-bytes? (gen-case-bytes c)))
+                        (generate-urls seed 60))))
+         '(1 2 3 11 101 9973))))))
+
+(harness-group "what a url run contains"
+  (lambda ()
+    (harness-case "every case is a url and nothing else"
+      (lambda ()
+        ;; The kind picks the oracle binary and the machine on this side. A
+        ;; url case that called itself a request would compare two parsers
+        ;; that were never meant to agree.
+        (check "only url"
+               (all? (lambda (c) (eq? (gen-case-kind c) 'url))
+                     (generate-urls 5 60)))))
+    (harness-case "both forms appear"
+      (lambda ()
+        ;; `http://h/p` enters at the schema; `/p` enters at the path. They
+        ;; are different first edges out of `start` and neither implies the
+        ;; other.
+        ;; `forms=` is one letter per url in the input, so the FIRST letter
+        ;; is what these two look at -- enough to say both edges are reached
+        ;; without asserting a distribution the seed decides.
+        (let ((origins (map gen-case-origin (generate-urls 5 60))))
+          (check "absolute"
+                 (exists (lambda (o) (harness-string-contains? o "forms=a")) origins))
+          (check "relative"
+                 (exists (lambda (o) (harness-string-contains? o "forms=r")) origins)))))
+    (harness-case "every separator is reachable"
+      (lambda ()
+        ;; THE TEST BUILD LOOPS ITS EXITS BACK TO THE ENTRY, so what separates
+        ;; two urls is a graph edge and not punctuation. Each of these names a
+        ;; different one, and three of them are error arms.
+        (let ((origins (map gen-case-origin (generate-urls 5 300))))
+          (for-each
+           (lambda (name)
+             (check name
+                    (exists (lambda (o)
+                              (harness-string-contains? o (string-append "sep=" name)))
+                            origins)))
+           '("none" "space" "crlf" "lf" "cr" "tab" "ff")))))
+    (harness-case "some inputs hold more than one url"
+      (lambda ()
+        (let ((origins (map gen-case-origin (generate-urls 5 60))))
+          (check "one" (exists (lambda (o) (harness-string-contains? o "urls=1")) origins))
+          (check "several"
+                 (exists (lambda (o)
+                           (or (harness-string-contains? o "urls=2")
+                               (harness-string-contains? o "urls=3")))
+                         origins)))))
+    (harness-case "some cases are cut short and some are not"
+      (lambda ()
+        (let ((origins (map gen-case-origin (generate-urls 5 60))))
+          (check "a cut case"
+                 (exists (lambda (o) (harness-string-contains? o "cut=")) origins))
+          (check "an uncut case"
+                 (exists (lambda (o) (not (harness-string-contains? o "cut="))) origins)))))
+    (harness-case "an origin names the seed and the case"
+      (lambda ()
+        (let ((c (car (generate-urls 42 3))))
+          (check "seed" (harness-string-contains? (gen-case-origin c) "seed=42"))
+          (check "index" (harness-string-contains? (gen-case-origin c) "n=0")))))
+    (harness-case "no case is empty"
+      (lambda ()
+        ;; A zero-length url is a run that compares nothing, and the pools can
+        ;; produce one: an empty path, no query and no fragment. The generator
+        ;; must not emit it.
+        (check "every case has bytes"
+               (all? (lambda (c) (> (bytevector-length (gen-case-bytes c)) 0))
+                     (generate-urls 5 200)))))))
+
 (harness-finish)

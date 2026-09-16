@@ -20,6 +20,12 @@
 ;;; lane finds is version drift wearing a parser bug's clothes. So the first
 ;;; case compares the two and says which it is.
 ;;;
+;;; THERE ARE THREE KINDS AND THREE BINARIES. `request` and `response` are
+;;; two modes of llhttp's message parser; `url` is its URL sub-parser built
+;;; standalone, which decision 0022 makes a second machine on this side too.
+;;; The kind travels with the case and picks the binary over there and the
+;;; machine over here, so a url case is never asked of a message parser.
+;;;
 ;;; WHAT THIS LANE CANNOT SEE. Generated input is held to [1,127] because the
 ;;; oracle takes its input as an argv string: a NUL cannot reach it and a high
 ;;; byte reaches it UTF-8 encoded, which would put different bytes into the
@@ -31,7 +37,8 @@
         (httparse test generate)
         (httparse test drive)
         (httparse test oracle)
-        (generated httparse-message))
+        (generated httparse-message)
+        (generated httparse-url))
 
 (define (read-text path)
   (utf8->string (adapter-file-bytes path)))
@@ -52,7 +59,32 @@
   (let ((v (env "HTTPARSE_DIFFERENTIAL_CASES")))
     (or (and (string? v) (string->number v)) 60)))
 
-(define generated httparse-message-machine)
+;; Urls are SHORT, so the chunk ladder gives every size rather than the sparse
+;; one a 200-byte message gets -- a 20-byte url is 20 probes where a message
+;; is 9. The knob is separate so the two kinds can be dialled independently,
+;; and it defaults to the same number of cases.
+(define url-case-count
+  (let ((v (env "HTTPARSE_DIFFERENTIAL_URL_CASES")))
+    (or (and (string? v) (string->number v)) case-count)))
+
+;; THREE SEEDS, NOT ONE, AND THAT IS A MEASUREMENT RATHER THAN A PRECAUTION.
+;; The url kind's first find -- a host holding two `@` that are not adjacent,
+;; which llhttp accepts and this parser refused -- DID NOT APPEAR AT THE
+;; DEFAULT SEED. It appeared at three others out of five tried. A lane pinned
+;; to one seed is a lane that can be silently lucky, and a green run would
+;; have read as evidence.
+;;
+;; The sweep is the seed it was given and its two successors, so the run is
+;; still named by one number and any member replays alone by being named
+;; directly. `20260915 + 1` is one of the three that found it.
+(define seeds (list seed (+ seed 1) (+ seed 2)))
+
+;; TWO MACHINES, AND THE CASE'S KIND SAYS WHICH -- exactly as the conformance
+;; driver picks one per fixture. `url` is llhttp's URL sub-parser built
+;; standalone (decision 0022); it shares no callback and no field with the
+;; message parser, and the oracle side picks a different BINARY for it.
+(define (machine-for kind)
+  (if (eq? kind 'url) httparse-url-machine httparse-message-machine))
 
 ;; --- bases, as in the property lane ---------------------------------------
 
@@ -94,9 +126,34 @@
                                  acc)
                            acc))))))))
 
-(define cases
-  (append (generate-structured seed case-count)
-          (generate-mutants seed case-count bases)))
+;; The url bases are `url.md` entire. It is small enough not to need choosing
+;; from, and every one of its 21 inputs is a shape somebody thought worth
+;; recording -- which is exactly what a mutation wants under it.
+(define url-bases
+  (let inner ((fs (corpus-parse-file (read-text (string-append corpus-dir "/url.md"))))
+              (i 1) (acc '()))
+    (if (null? fs)
+        (reverse acc)
+        (let ((bv (corpus-decode-input (fixture-input-text (car fs)))))
+          (inner (cdr fs) (+ i 1)
+                 (if (generate-safe-bytes? bv)
+                     (cons (cons 'url
+                                 (cons (string-append "url.md#" (number->string i)) bv))
+                           acc)
+                     acc))))))
+
+;; THE URL CASES ARE A SEPARATE RUN, not more bases in the existing one. Added
+;; to `bases`, they would have changed every message mutant this lane has ever
+;; produced, and a new divergence would have had two possible causes. Kept
+;; apart, the request and response inputs are byte for byte what they were
+;; before the url kind existed, so anything new comes from the new kind.
+(define (cases-at s)
+  (append (generate-structured s case-count)
+          (generate-mutants s case-count bases)
+          (generate-urls s url-case-count)
+          (generate-mutants s url-case-count url-bases)))
+
+(define cases (apply append (map cases-at seeds)))
 
 ;; --- the batch the runner is given ----------------------------------------
 ;;
@@ -301,7 +358,8 @@
               (let* ((p (car ps))
                      (c (probe-case p))
                      (r (car rs))
-                     (mine (drive-trace generated (gen-case-kind c)
+                     (mine (drive-trace (machine-for (gen-case-kind c))
+                                        (gen-case-kind c)
                                         (gen-case-bytes c) (probe-size p))))
                 (cond
                  ((string? r)
@@ -369,7 +427,8 @@
           (map utf8->string (oracle-normalize (car rs)))))))
 
 (define (our-trace-of kind text size)
-  (let ((t (drive-trace generated (string->symbol kind) (string->utf8 text) size)))
+  (let* ((k (string->symbol kind))
+         (t (drive-trace (machine-for k) k (string->utf8 text) size)))
     (if (drive-refusal? t)
         (list (string-append "refused: " (drive-refusal-detail t)))
         (map utf8->string t))))
@@ -504,5 +563,71 @@
         (check-equal "crlf"
                      (our-trace-of "request" "\r\nGET / HTTP/1.1\r\n\r\n" 20)
                      (oracle-trace-of "request" "\r\nGET / HTTP/1.1\r\n\r\n" 20))))))
+
+;;; --- WHAT THE URL KIND BUYS -----------------------------------------------
+;;;
+;;; The url cases were added AFTER the request target got its machine, so
+;;; there was no divergence class here to anchor: all 1431 comparisons they
+;;; contribute agreed on their first run. What the three groups below pin is
+;;; the two ways that agreement could be worthless -- comparing the WRONG
+;;; PARSER, and comparing graph the corpus already covers.
+
+(harness-group "the url kind reaches a different binary and a different machine"
+  (lambda ()
+    (harness-case "the same bytes, read as a url and as a request, are two traces"
+      (lambda ()
+        ;; If `run-oracle.mjs` resolved `url` to a message binary, or this
+        ;; lane picked the message machine for a url case, every url
+        ;; comparison would still be internally consistent -- and the whole
+        ;; kind would be measuring the wrong parser twice, in agreement.
+        (let ((as-url (oracle-trace-of "url" "/p?q=1" 6))
+              (as-request (oracle-trace-of "request" "/p?q=1" 6)))
+          (check-equal "as a url" as-url
+                       '("off=0 len=2 span[url.path]=\"/p\""
+                         "off=3 len=3 span[url.query]=\"q=1\""))
+          (check-equal "as a request" as-request
+                       '("off=0 message begin"
+                         "off=0 error code=6 reason=\"Invalid method encountered\""))
+          (check-equal "this parser answers the url question" 
+                       (our-trace-of "url" "/p?q=1" 6) as-url)
+          (check-equal "and the request one, from the other machine"
+                       (our-trace-of "request" "/p?q=1" 6) as-request))))))
+
+(harness-group "the url exits, which no fixture in the corpus reaches"
+  (lambda ()
+    ;; NOT ONE OF `url.md`'S 21 INPUTS CONTAINS A SPACE, A CR OR AN LF, and
+    ;; upstream's test build loops both exits back to the entry. So this is
+    ;; graph the conformance lanes cannot execute at all, and generated input
+    ;; walks through it constantly -- `sep=` is one of seven edges per case.
+    (harness-case "a space ends one url and begins another"
+      (lambda ()
+        (check-equal "/path /next"
+                     (our-trace-of "url" "/path /next" 11)
+                     (oracle-trace-of "url" "/path /next" 11))))
+    (harness-case "a CR that brings no LF is Expected CRLF"
+      (lambda ()
+        (check-equal "/p#frag\\rX"
+                     (our-trace-of "url" "/p#frag\rX" 9)
+                     (oracle-trace-of "url" "/p#frag\rX" 9))))))
+
+(harness-group "the fragment arm that only this lane can see"
+  (lambda ()
+    ;; `#` AND `?` ARE ORDINARY INSIDE A FRAGMENT -- upstream's edge is
+    ;; `fragment.match(['?','#'], fragment)` -- and no fixture in `url.md`
+    ;; carries either. MEASURED: dropping `#` from that edge leaves all 86
+    ;; lanes green, `url.md`'s 21 at every chunk size included, and turns
+    ;; this lane's `unclassified` count from 0 to 48.
+    ;;
+    ;; So it is written down here as llhttp's own bytes rather than left to a
+    ;; count: this is the case the url kind was added for, and a lane that
+    ;; only ever printed `agreed=N` would not say which N.
+    (harness-case "a fragment runs through a second `#`"
+      (lambda ()
+        (let ((theirs (oracle-trace-of "url" "*?a&b=c#a#b" 11)))
+          (check-equal "llhttp" theirs
+                       '("off=0 len=1 span[url.path]=\"*\""
+                         "off=2 len=5 span[url.query]=\"a&b=c\""
+                         "off=8 len=3 span[url.fragment]=\"a#b\""))
+          (check-equal "ours" (our-trace-of "url" "*?a&b=c#a#b" 11) theirs))))))
 
 (harness-finish)

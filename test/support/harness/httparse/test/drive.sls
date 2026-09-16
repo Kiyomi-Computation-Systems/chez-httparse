@@ -77,6 +77,23 @@
               (loop (parser-result-next res)))
             res))))
 
+  ;; drive-parser : Machine Symbol Recorder -> Parser
+  ;; THE KIND CHOOSES THE BINDING LIST, because the two machines declare
+  ;; disjoint callbacks. A url parser bound with the message parser's rows
+  ;; would be handed names its machine never declares; a message parser bound
+  ;; with the url parser's rows would lose every event it has.
+  ;;
+  ;; IT ALSO CHOOSES WHETHER THERE ARE INITIALS AT ALL. `s->type` and
+  ;; `s->lenient_flags` are the message parser's fields, and llhttp's url
+  ;; binary is built with no `-D` and no init hook -- so a url parser is
+  ;; constructed with three arguments, which is the same thing said in the
+  ;; conformance driver for `url.md`'s fixtures.
+  (define (drive-parser machine kind r)
+    (if (eq? kind 'url)
+        (make-parser machine (trace-recorder-url-bindings r) #f)
+        (make-parser machine (trace-recorder-bindings r (list kind) #f) #f
+                     (adapter-parser-inits (list kind)))))
+
   ;; drive-trace : Machine Symbol Bytevector Nat -> (Listof Bytevector) or Refusal
   ;; The trace `machine` produces for `bv` fed in `size`-byte chunks, as the
   ;; parser kind `kind` (which the embedder supplies and a generated input
@@ -92,8 +109,7 @@
               (raise e)))
         (lambda ()
           (let* ((r (make-trace-recorder))
-                 (p (make-parser machine (trace-recorder-bindings r (list kind) #f) #f
-                                 (adapter-parser-inits (list kind)))))
+                 (p (drive-parser machine kind r)))
             (let loop ((bounds (corpus-chunk-bounds (bytevector-length bv) size))
                        (result #f))
               (cond

@@ -26,7 +26,7 @@
 (library (httparse test generate)
   (export make-gen-case gen-case? gen-case-kind gen-case-bytes gen-case-origin
           generate-safe-byte? generate-safe-bytes?
-          generate-structured generate-mutants
+          generate-structured generate-mutants generate-urls
           ;; exported so the mutation table is judged on exact bytes rather
           ;; than through a whole generated run
           generate-mutate generate-mutations
@@ -220,6 +220,129 @@
                                 " framing=" (symbol->string framing)
                                 (if truncate? (str " cut=" (num->string cut)) "")))
                           acc)))))))
+
+  ;; --- the url generator ----------------------------------------------------
+  ;;
+  ;; WHY A SECOND PRODUCER AND NOT A WIDER TARGET POOL. Decision 0022 makes
+  ;; the url sub-parser a SECOND MACHINE and decision 0023 splices it into the
+  ;; request target, so `generate-structured` does reach it -- through one
+  ;; field out of ten, from a pool of ten fixed strings, always followed by a
+  ;; space and a version. Its entry edges are covered and its error arms are
+  ;; not, because a message whose target is rejected never gets to the rest of
+  ;; the message and the generator has no reason to keep producing them.
+  ;;
+  ;; THE ORACLE FOR THIS KIND IS A DIFFERENT BINARY. `test/md-test.ts`'s
+  ;; `buildURL()` is `new llhttp.URL(p, true)` with BOTH EXITS LOOPED BACK TO
+  ;; THE ENTRY, which is the binary `url.md` was recorded from and the one
+  ;; `make-url-machine` is built for. The loop is why a separator below is a
+  ;; graph edge rather than a terminator: a space does not end the parse, it
+  ;; starts another url.
+  ;;
+  ;; THE POOLS ARE llhttp'S OWN DECISION POINTS, read off `src/llhttp/url.ts`
+  ;; -- wherever a node has more than one edge, both sides of it appear here.
+  ;; That is why the malformed spellings sit beside the well-formed ones:
+  ;; `:/`, `@@` and a byte URL_CHAR does not contain are the only way to reach
+  ;; the error arms, and an error arm is where an offset is easiest to get
+  ;; wrong. They are INPUTS, not expectations -- what the two parsers should
+  ;; print for them is the oracle's business.
+
+  (define url-schemas '("http" "https" "a" "HTTP" "x1" "a-b" "h2c"))
+
+  ;; `schema_delim` matches the PAIR `//`, so a mismatch after one byte leaves
+  ;; that byte consumed. That is the whole of `url.md`'s "Failing on broken
+  ;; schema", and the one offset in this machine a plausible implementation
+  ;; gets wrong while passing everything else.
+  (define url-delims '("://" ":/" ":" ":x/" "//"))
+
+  ;; `<` is in neither USERINFO_CHARS nor the bracket pair, so `host<com`
+  ;; reaches `Unexpected char in url server`; `a@b@c` reaches `Double @`.
+  (define url-authorities
+    '("host.com" "host.com:8080" "[1:2::3:4]" "[fe80::a%25eth0]:67"
+      "a:b@host.com" "a%20:b@host.com" "a!;-_!=+$@host.com" "a@b@c"
+      "" "host<com"))
+
+  ;; DEL and the C0 bytes are URL_CHAR's complement inside [1,127] once the
+  ;; separators are taken out, so they are how `Invalid char in url path`,
+  ;; `... url query` and `... url fragment start` are reached.
+  (define url-paths
+    '("" "/" "/p" "/p/q" "/a.b" "/%41" "/p(q)" "/p[q]" "/p|q" "*"
+      "/\x7f;" "/p\x01;q"))
+
+  (define url-queries '("" "?" "?q=1" "?a=1?b=2" "?x%20y" "?a&b=c" "?p\x7f;q"))
+
+  (define url-fragments '("" "#" "#f" "#a?b" "#a#b" "#f\x01;g"))
+
+  ;; What sits between two urls. The first four are the exits upstream builds;
+  ;; `cr` reaches `Expected CRLF` when no LF follows, and the last two reach
+  ;; `Invalid characters in url` through the wrapper every node carries.
+  (define url-separators
+    '((none . "") (space . " ") (crlf . "\r\n") (lf . "\n")
+      (cr . "\r") (tab . "\t") (ff . "\x0c;")))
+
+  ;; url-piece : PRNG -> (values String Char PRNG)
+  ;; One url and the letter its form is named by in the origin.
+  (define (url-piece s)
+    (let-values (((absolute? s) (chance s 1 2)))
+      (if absolute?
+          (let*-values (((sc s) (pick s url-schemas))
+                        ((d s) (pick s url-delims))
+                        ((a s) (pick s url-authorities))
+                        ((p s) (pick s url-paths))
+                        ((q s) (pick s url-queries))
+                        ((f s) (pick s url-fragments)))
+            (values (str sc d a p q f) #\a s))
+          (let*-values (((p s) (pick s url-paths))
+                        ((q s) (pick s url-queries))
+                        ((f s) (pick s url-fragments)))
+            (values (str p q f) #\r s)))))
+
+  ;; generate-urls : Nat Nat -> (Listof GenCase)
+  ;; `count` inputs from `seed`, every one of kind `url`. An input holds one
+  ;; to three urls joined by one separator, sometimes with that separator
+  ;; trailing, and roughly a sixth are cut short -- the same truncation arm
+  ;; the message generator has, and for the same reason.
+  ;;
+  ;; AN EMPTY INPUT IS NEVER EMITTED. Every pool has an empty member and a
+  ;; relative url is three of them, so the assembly can come out with no bytes
+  ;; at all; a zero-length case would compare nothing and read as a pass.
+  (define (generate-urls seed count)
+    (let loop ((i 0) (s (make-prng seed)) (acc '()))
+      (if (= i count)
+          (reverse acc)
+          (let*-values (((extra s) (prng-next s 3))
+                        ((sep s) (pick s url-separators))
+                        ((trailing? s) (chance s 1 3)))
+            (let build ((k 0) (s s) (parts '()) (forms '()))
+              (if (<= k extra)
+                  (let-values (((piece form s2) (url-piece s)))
+                    (build (+ k 1) s2 (cons piece parts) (cons form forms)))
+                  (let* ((sep-text (cdr sep))
+                         (joined (let join ((ps (reverse parts)) (out ""))
+                                   (cond ((null? ps) out)
+                                         ((string=? out "") (join (cdr ps) (car ps)))
+                                         (else (join (cdr ps) (str out sep-text (car ps)))))))
+                         (text (str joined (if trailing? sep-text "")))
+                         ;; The fallback is a url and not padding: `/` is the
+                         ;; shortest input that opens a span at all.
+                         (text (if (string=? text "") "/" text)))
+                    (let*-values (((cut? s) (chance s 1 6))
+                                  ((cut s) (if cut?
+                                               (prng-next s (string-length text))
+                                               (values (string-length text) s))))
+                      (let* ((kept (substring text 0 (max 1 cut)))
+                             (bv (string->utf8 kept)))
+                        (loop (+ i 1) s
+                              (cons (make-gen-case
+                                     'url bv
+                                     (str "url seed=" (num->string seed)
+                                          " n=" (num->string i)
+                                          " urls=" (num->string (+ extra 1))
+                                          " sep=" (symbol->string (car sep))
+                                          " forms=" (list->string (reverse forms))
+                                          (if (and cut? (< (max 1 cut) (string-length text)))
+                                              (str " cut=" (num->string (max 1 cut)))
+                                              "")))
+                                    acc)))))))))))
 
   ;; --- the mutation generator -----------------------------------------------
   ;;

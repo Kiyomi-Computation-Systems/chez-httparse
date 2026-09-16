@@ -1418,9 +1418,15 @@ if(HTTPARSE_LLHTTP_ROOT)
   # Built in the checkout's own directory so that `--import tsx` and every
   # bare import inside llhttp's harness resolve against its node_modules
   # rather than against this project, which has neither.
+  # THREE BINARIES, BECAUSE THERE ARE TWO PARSERS AND TWO MESSAGE KINDS.
+  # `url-url-c` is llhttp's URL sub-parser built standalone -- the program
+  # `url.md` was recorded from -- and it is listed here so that a checkout
+  # whose url build fails is a build error rather than a differential run
+  # that quietly compares only requests and responses.
   add_custom_command(
     OUTPUT "${HTTPARSE_ORACLE_BIN_DIR}/http-request-c"
            "${HTTPARSE_ORACLE_BIN_DIR}/http-response-c"
+           "${HTTPARSE_ORACLE_BIN_DIR}/url-url-c"
            "${HTTPARSE_ORACLE_BIN_DIR}/VERSION"
     COMMAND "${HTTPARSE_NODE_EXECUTABLE}" --import tsx
             "${HTTPARSE_ORACLE_BUILD}" "${HTTPARSE_LLHTTP_ROOT}"
@@ -1432,6 +1438,7 @@ if(HTTPARSE_LLHTTP_ROOT)
   add_custom_target(httparse_llhttp_oracle ALL
     DEPENDS "${HTTPARSE_ORACLE_BIN_DIR}/http-request-c"
             "${HTTPARSE_ORACLE_BIN_DIR}/http-response-c"
+            "${HTTPARSE_ORACLE_BIN_DIR}/url-url-c"
             "${HTTPARSE_ORACLE_BIN_DIR}/VERSION")
 
   httparse_add_scheme_lane(

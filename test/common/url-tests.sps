@@ -209,4 +209,46 @@
         (check-equal "trace" (trace "@nope")
                      '("off=0 error code=7 reason=\"Unexpected start char in url\""))))))
 
+;;; A DIVERGENCE THE LIVE DIFFERENTIAL FOUND, at three seeds out of four and
+;;; never at the default one. `url.md`'s "Double `@`" fixture is `a:b@@host`
+;;; -- the two are ADJACENT -- so the corpus cannot tell "no second `@`" from
+;;; "no `@` straight after an `@`", and this parser had the first.
+;;;
+;;; Upstream builds `server` and `server_with_at` from one loop, and the edges
+;;; inside that loop name `server` EXPLICITLY rather than the loop variable:
+;;;
+;;;     .match(USERINFO_CHARS, server)
+;;;     .match([ '[', ']' ], server)
+;;;
+;;; so any ordinary host byte sends `server_with_at` BACK to `server`, which
+;;; re-arms the `@` edge. Only `@@` reaches `Double @ in url`. Reading that
+;;; loop as "the same node twice, minus one edge" is the mistake, and it is
+;;; the kind of mistake only an oracle catches.
+(harness-group "the second `@`, measured against a url oracle"
+  (lambda ()
+    (harness-case "two `@` separated by a host byte are both accepted"
+      (lambda ()
+        ;; oracle: the whole of `url.md#15` with one byte inserted between the
+        ;; two `@`, which is the mutant the differential reduced to.
+        (check-equal "trace" (trace "http://a:b@f@hostname:443/")
+                     '("off=0 len=4 span[url.schema]=\"http\""
+                       "off=7 len=18 span[url.host]=\"a:b@f@hostname:443\""
+                       "off=25 len=1 span[url.path]=\"/\""))))
+    (harness-case "a bracket resets it as well as a userinfo byte"
+      (lambda ()
+        ;; oracle: `[` and `]` take the same edge back to `server`, so this is
+        ;; what says the fix moved BOTH and not just the one the witness used.
+        (check-equal "trace" (trace "a://a@[b]@c/")
+                     '("off=0 len=1 span[url.schema]=\"a\""
+                       "off=4 len=7 span[url.host]=\"a@[b]@c\""
+                       "off=11 len=1 span[url.path]=\"/\""))))
+    (harness-case "and adjacent ones are still Double @"
+      (lambda ()
+        ;; The half `url.md` does record, restated here beside its neighbour:
+        ;; a fix that simply deleted the error edge would pass the two cases
+        ;; above and this is what stops it.
+        (check-equal "trace" (trace "a://a@@b/p")
+                     '("off=0 len=1 span[url.schema]=\"a\""
+                       "off=7 error code=7 reason=\"Double @ in url\""))))))
+
 (harness-finish)
