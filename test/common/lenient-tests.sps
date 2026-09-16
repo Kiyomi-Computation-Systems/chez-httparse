@@ -1,4 +1,4 @@
-;;; Lenient modes: the eleven questions the embedder is asked once.
+;;; Lenient modes: the bitset the embedder writes before the first byte.
 ;;;
 ;;; Upstream decides these before the first byte. `test/md-test.ts` turns a
 ;;; fixture's type into `-DLLPARSE__TEST_INIT=llhttp__test_init_<type>`, and
@@ -9,17 +9,20 @@
 ;;;     s->lenient_flags |= LENIENT_VERSION;
 ;;;   }
 ;;;
-;;; A PARSER HERE CANNOT BE STARTED IN A MODE. `make-parser` fills every field
-;;; from the machine's declarations and `parser-field-ref` has no mutating
-;;; sibling, so each flag arrives as an OPTIONAL decision callback the machine
-;;; asks before `start`. Unbound means the declared default, which is strict —
-;;; which is why the 216 strict fixtures need no lenient binding at all, and
-;;; why a default that stopped meaning strict would break all of them.
+;;; SO DOES THIS PARSER, SINCE THE GENERATOR GREW SETTABLE FIELDS at the pin
+;;; this tree targets: `lenient-flags` is a settable field and
+;;; `make-parser`'s fourth argument writes it, which is the same one-integer
+;;; surface llhttp has. It was eleven optional decision callbacks and a
+;;; twenty-two-node ask chain ahead of `start` until the runtime could start
+;;; a parser in a mode -- the subject of this project's fourth upstream
+;;; brief, now answered.
 ;;;
-;;; THE ASKS RUN ONCE PER PARSER, NOT ONCE PER MESSAGE. They are the machine's
-;;; ENTRY, ahead of `start`; the restart between two messages re-enters at
-;;; `start`, below them. No fixture pipelines a lenient message, so the case
-;;; that says so is here rather than in the corpus.
+;;; THE MODE IS SET ONCE PER PARSER, NOT ONCE PER MESSAGE, and that is now
+;;; structural rather than positional: a field initial is written at
+;;; CONSTRUCTION, so there is no chain for a restart to re-enter or skip. The
+;;; restart stores zero over `flags` and `lenient-flags` is a separate field,
+;;; which is why the mode survives it. No fixture pipelines a lenient message,
+;;; so the case that says so is here rather than in the corpus.
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)
@@ -36,7 +39,8 @@
 ;; trace : Init String -> (Listof String)
 (define (trace init input)
   (let* ((r (make-trace-recorder))
-         (p (make-parser machine (trace-recorder-bindings r init #f) #f))
+         (p (make-parser machine (trace-recorder-bindings r init #f) #f
+                         (adapter-parser-inits init)))
          (bv (string->utf8 input))
          (refused
           (call/cc
@@ -123,24 +127,28 @@
                        (list-tail ls (- (length ls) 2))
                        '("off=36 headers complete method=1 v=5/6 flags=0 content_length=0"
                          "off=36 message complete")))))
-    (harness-case "the embedder is asked once, however many messages arrive"
+    (harness-case "the mode outlives every restart on one parser"
       (lambda ()
-        ;; THE CLAIM THE FOURTH UPSTREAM BRIEF MAKES, as a count rather than
-        ;; a comment. The asks are idempotent, so a chain that ran per message
-        ;; would produce IDENTICAL traces -- the only thing that changes is
-        ;; how often the embedder is asked, and nothing but a count can see
-        ;; it. Moving the chain into the restart is caught here and nowhere
-        ;; else.
-        (let* ((asked 0)
-               (r (make-trace-recorder))
-               (bindings
-                (cons (list 'on-lenient-version
-                            (lambda (p ctx) (set! asked (+ asked 1)) 'yes))
-                      (trace-recorder-bindings r '(request) #f)))
-               (p (make-parser machine bindings #f))
+        ;; THE CLAIM THE FOURTH UPSTREAM BRIEF MADE, kept as a measurement now
+        ;; that the brief is answered. Under the ask chain this was a COUNT --
+        ;; the asks were idempotent, so a chain that ran per message produced
+        ;; an identical trace and only a counting binding could see the
+        ;; difference. There is no callback to count any more, and the
+        ;; property is read straight off the field instead: three messages on
+        ;; one parser, two restarts between them, and the bitset the embedder
+        ;; wrote is still there at the end.
+        ;;
+        ;; It can still regress. The restart stores zero over `flags`, and
+        ;; `lenient-flags` is a SEPARATE field for exactly this reason; a
+        ;; grammar that folded the two together would clear the mode on the
+        ;; first restart and this case is what would say so.
+        (let* ((r (make-trace-recorder))
+               (p (make-parser machine (trace-recorder-bindings r '(request) #f) #f
+                               (adapter-parser-inits '(request version))))
                (bv (string->utf8 (string-append "GET / HTTP/5.6\r\n\r\n"
                                                 "GET / HTTP/5.6\r\n\r\n"
                                                 "GET / HTTP/5.6\r\n\r\n"))))
+          (check-equal "set before a byte is read" (parser-field-ref p 'lenient-flags) 16)
           (parser-feed! p bv 0 (bytevector-length bv))
           (check-equal "three messages parsed"
                        (length (filter (lambda (l)
@@ -151,14 +159,23 @@
                                        (map utf8->string
                                             (trace-format (trace-recorder-events r)))))
                        3)
-          (check-equal "asked once" asked 1))))
-    (harness-case "no lenient binding at all is the strict parser"
+          (check-equal "and still set after two restarts"
+                       (parser-field-ref p 'lenient-flags) 16))))
+    (harness-case "no initials at all is the strict parser"
       (lambda ()
         ;; The default path, named. Every one of the 216 strict fixtures runs
-        ;; this way -- with no lenient callback bound and the machine taking
-        ;; each declared default -- so it is already the most-exercised path
-        ;; in the tree; what it has not had is a case that says so.
-        (check-equal "strict"
+        ;; with a zero bitset, and an embedder may reach the same parser by
+        ;; passing no fourth argument at all -- the three-argument
+        ;; `make-parser` every embedder written before v0.5.0 calls. Both
+        ;; spellings are checked, because "strict" now has two of them.
+        (let* ((r (make-trace-recorder))
+               (p (make-parser machine (trace-recorder-bindings r '(request) #f) #f))
+               (bv (string->utf8 "GET / HTTP/5.6\r\n")))
+          (check-equal "unset is zero" (parser-field-ref p 'lenient-flags) 0)
+          (let ((res (parser-feed! p bv 0 (bytevector-length bv))))
+            (check-equal "and strict" (parser-error-reason (parser-result-error res))
+                         "Invalid HTTP version")))
+        (check-equal "an explicit empty bitset is the same parser"
                      (list-tail (trace '(request) "GET / HTTP/5.6\r\n") 8)
                      '("off=14 error code=9 reason=\"Invalid HTTP version\""))))))
 
@@ -232,30 +249,31 @@
                        "off=24 message complete"))))))
 
 ;;; This one is not about a trace. It is the property the fourth upstream
-;;; brief now cites, and a brief that cites a measurement this tree does not
-;;; keep is a claim with nothing behind it.
-(harness-group "a reset re-asks rather than forgetting"
+;;; brief asked for, measured now that the brief is answered -- and it is
+;;; STRONGER than what the ask chain gave. Under the chain the field was zero
+;;; until the first byte arrived, a reset really did clear it, and the mode
+;;; came back only because the next feed re-entered the chain and asked again.
+;;; A settable field is never unset and never cleared.
+(harness-group "a reset restores the embedder's mode, not the declared one"
   (lambda ()
-    (harness-case "the mode is restored by being asked again"
+    (harness-case "the mode is there before the first byte and after a reset"
       (lambda ()
-        ;; `parser-reset!` restores every field to its DECLARED initial, so
-        ;; the mode field goes back to zero -- and the next feed re-enters the
-        ;; machine's entry, which is the ask chain, and sets it again. The
-        ;; chain's position is what makes that true: inside the message loop
-        ;; it would be re-asked per message, and after `start` it would never
-        ;; be re-asked at all.
+        ;; `parser-reset!` restores each field to the initial the PARSER was
+        ;; built with -- the embedder's where one was given, the machine's
+        ;; otherwise. That distinction is the whole of the generator's
+        ;; decision 0047, and this is the case that would catch it reverting.
         (let* ((r (make-trace-recorder))
                (p (make-parser machine
-                               (trace-recorder-bindings r '(request version) #f) #f))
+                               (trace-recorder-bindings r '(request) #f) #f
+                               (adapter-parser-inits '(request version))))
                (bv (string->utf8 "GET / HTTP/5.6\r\n\r\n"))
                (read-flags (lambda () (parser-field-ref p 'lenient-flags))))
-          (check-equal "nothing is set before the first feed" (read-flags) 0)
+          (check-equal "set at construction, before any byte" (read-flags) 16)
           (parser-feed! p bv 0 (bytevector-length bv))
-          (check-equal "the ask set it" (read-flags) 16)
+          (check-equal "unchanged by a parse" (read-flags) 16)
           (parser-reset! p)
-          (check-equal "the reset cleared it" (read-flags) 0)
+          (check-equal "and the reset restores it, not zero" (read-flags) 16)
           (let ((res (parser-feed! p bv 0 (bytevector-length bv))))
-            (check-equal "and the re-ask set it again" (read-flags) 16)
             ;; The half that matters to an embedder: the second parse is
             ;; still lenient, so `HTTP/5.6` does not become an error.
             (check "the reset parser is still lenient"

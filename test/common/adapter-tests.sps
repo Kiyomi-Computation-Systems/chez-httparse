@@ -295,23 +295,49 @@
         (check "upstream's spelling, which is not ours"
                (refuses? (lambda () (trace-recorder-bindings
                                      (make-trace-recorder) '(request lenient_version) #f))))))
-    (harness-case "only the named flags are bound"
+    (harness-case "a flag the init names becomes llhttp's own bit"
       (lambda ()
-        ;; An unbound optional callback takes the machine's declared default,
-        ;; which is the strict answer. Binding all eleven and answering `no`
-        ;; would look the same from outside and would leave that default
-        ;; unexercised by all 216 strict fixtures.
-        (let ((strict (trace-recorder-bindings (make-trace-recorder) '(request) #f))
-              (lenient (trace-recorder-bindings (make-trace-recorder)
-                                                '(request version) #f)))
-          (check "strict binds no lenient callback"
-                 (not (assq 'on-lenient-version strict)))
-          (check "lenient binds exactly the one named"
-                 (and (assq 'on-lenient-version lenient) #t))
-          (check "and not its neighbours"
-                 (not (assq 'on-lenient-headers lenient)))
-          (check-equal "one more binding than strict"
-                       (- (length lenient) (length strict)) 1))))))
+        ;; `s->lenient_flags |= LENIENT_VERSION` is `1 << 4`, and the whole
+        ;; of the adapter's job here is to produce that integer. The numbers
+        ;; are asserted against llhttp's `LENIENT_FLAGS` enum and not against
+        ;; anything this parser computes.
+        (check-equal "strict is an explicit zero"
+                     (adapter-parser-inits '(request))
+                     '((lenient-flags . 0)))
+        (check-equal "one flag is its own bit"
+                     (adapter-parser-inits '(request version))
+                     '((lenient-flags . 16)))
+        (check-equal "the first and the last, together"
+                     (adapter-parser-inits '(response headers header-value-relaxed))
+                     '((lenient-flags . 1025)))
+        ;; The order a hook writes them in cannot matter -- `|=` is
+        ;; commutative over there and this must be too.
+        (check-equal "order is not significant"
+                     (adapter-parser-inits '(request version headers))
+                     (adapter-parser-inits '(request headers version)))))
+    (harness-case "and the bindings no longer carry a lenient callback at all"
+      (lambda ()
+        ;; Until the generator grew settable fields each flag was an optional
+        ;; decision callback and this group counted bindings. The machine declares
+        ;; none of them now, so a leftover binding would not be ignored --
+        ;; `make-parser` refuses a binding naming no declaration, which is
+        ;; how a half-finished version of this change would have announced
+        ;; itself.
+        (let ((bs (trace-recorder-bindings (make-trace-recorder) '(request version) #f)))
+          (check "none bound"
+                 (not (exists (lambda (b)
+                                (let ((n (symbol->string (car b))))
+                                  (and (> (string-length n) 11)
+                                       (string=? (substring n 0 11) "on-lenient-"))))
+                              bs))))))
+    (harness-case "an undeclared flag is refused by the init reader too"
+      (lambda ()
+        ;; The refusal above goes through `trace-recorder-bindings`; this is
+        ;; the same guard on the path that now carries the flags.
+        (check "not a flag"
+               (refuses? (lambda () (adapter-parser-inits '(request lenient)))))
+        (check "a near miss"
+               (refuses? (lambda () (adapter-parser-inits '(request versions)))))))))
 
 ;;; THE HARNESS MODE IS THE THIRD REQUIRED ARGUMENT, and it is ONE argument
 ;;; rather than two because upstream makes the two exclusive in the C

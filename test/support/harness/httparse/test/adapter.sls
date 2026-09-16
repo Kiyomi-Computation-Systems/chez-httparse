@@ -21,14 +21,15 @@
   (export adapter-trace-names adapter-error-codes adapter-state-fields
           adapter-count-field adapter-finish-states adapter-finish-statuses
           adapter-message-type-callback adapter-message-types
-          adapter-pause-points adapter-lenient-flags
+          adapter-pause-points adapter-lenient-flags adapter-parser-inits
           adapter-event-for adapter-error-event adapter-finish-event
           make-trace-recorder trace-recorder-bindings trace-recorder-events
           trace-recorder-note-error! trace-recorder-note-paused!
           trace-recorder-note-requested-pause!
           trace-recorder-note-finish!
           adapter-error? adapter-error-detail)
-  (import (rnrs) (httparse test trace-format) (byte-machine runtime))
+  (import (rnrs) (httparse test trace-format) (httparse modes)
+          (byte-machine runtime))
 
   (define-condition-type &adapter &error
     make-adapter-error adapter-error? (detail adapter-error-detail))
@@ -297,18 +298,11 @@
   ;; `llhttp__on_headers_complete`.
   (define adapter-skip-body-callback 'on-headers-complete)
 
-  ;; llhttp's eleven LENIENT_FLAGS, in its own bit order. A parser here cannot
-  ;; be started in a mode, so each arrives as an OPTIONAL decision callback
-  ;; that the embedder answers `yes` to or leaves unbound. This list is the
-  ;; adapter's half of the grammar's -- if they ever disagree, binding a flag
-  ;; the machine does not declare is a parser refusal and not a quiet miss.
-  (define adapter-lenient-flags
-    '(headers chunked-length keep-alive transfer-encoding version
-      data-after-close optional-lf-after-cr optional-crlf-after-chunk
-      optional-cr-before-lf spaces-after-chunk-size header-value-relaxed))
-
-  (define (lenient-callback-name flag)
-    (string->symbol (string-append "on-lenient-" (symbol->string flag))))
+  ;; llhttp's eleven LENIENT_FLAGS, in its own bit order, read from the one
+  ;; table the grammar reads. A second copy here would be a rename with
+  ;; nothing renamed: the names in a fixture's meta line ARE these names, and
+  ;; the bits are llhttp's own.
+  (define adapter-lenient-flags httparse-lenient-flag-names)
 
   ;; checked-init : Any -> (Pair Symbol (Listof Symbol))
   ;; The init hook, decomposed: `(request)`, or `(response version)`. ONE
@@ -328,14 +322,15 @@
               (cdr init))
     init)
 
-  ;; ONLY THE FLAGS THE HOOK SETS ARE BOUND. Every other lenient callback is
-  ;; left unbound and the machine takes its declared default, which is the
-  ;; strict answer -- so the 216 strict fixtures exercise that default rather
-  ;; than a binding that says `no`, and a default that stopped meaning strict
-  ;; would break all of them at once.
-  (define (lenient-bindings init)
-    (map (lambda (flag) (list (lenient-callback-name flag) (lambda (p ctx) 'yes)))
-         (cdr init)))
+  ;; adapter-parser-inits : Init -> (Listof (Pair Symbol Nat))
+  ;; `make-parser`'s fourth argument for this fixture -- llhttp's
+  ;; `s->lenient_flags = ...` and nothing more. THE STRICT FIXTURES GET AN
+  ;; EXPLICIT ZERO rather than an empty list, so the 216 of them exercise the
+  ;; override path at its identity value: a bug that wrote the wrong field, or
+  ;; wrote it at the wrong time, cannot hide behind "strict passed nothing".
+  (define (adapter-parser-inits init)
+    (list (cons 'lenient-flags
+                (httparse-lenient-flags-value (cdr (checked-init init))))))
 
   ;; checked-mode : Any -> HarnessMode
   ;; `#f` is the plain harness; `(pause <llhttp name>)` arms one callback;
@@ -425,7 +420,6 @@
           (skip-at (and (mode-skip-body? (recorder-armed r))
                         adapter-skip-body-callback)))
       (append
-       (lenient-bindings init)
        (cons
        (list adapter-message-type-callback (lambda (p ctx) type))
        (map (lambda (row)

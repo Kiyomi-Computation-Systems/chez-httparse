@@ -788,6 +788,12 @@ httparse_add_scheme_lane(
   TIMEOUT 120
   LABELS unit)
 
+# The pure mode tables, imported by the grammar AND by the harness: llhttp's
+# lenient bits and message-type numbers. Set here, above every lane, for the
+# reason the next comment gives -- an unset variable in SOURCES expands to
+# nothing and the dependency vanishes without a word.
+set(HTTPARSE_MODES "${CMAKE_SOURCE_DIR}/src/httparse/modes.sls")
+
 set(HTTPARSE_TRACE_FORMAT
     "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/trace-format.sls")
 
@@ -901,7 +907,10 @@ httparse_add_scheme_lane(
 
 # --- The grammar (M2) -------------------------------------------------------
 
-set(HTTPARSE_GRAMMAR "${CMAKE_SOURCE_DIR}/src/httparse/grammar.sls")
+# Two files: the grammar imports (httparse modes), so a lane that has one
+# and not the other would compile against a stale table.
+set(HTTPARSE_GRAMMAR ${HTTPARSE_MODES}
+                     "${CMAKE_SOURCE_DIR}/src/httparse/grammar.sls")
 
 httparse_add_scheme_lane(
   NAME httparse.unit.request-line.chez.source
@@ -1080,6 +1089,7 @@ httparse_add_scheme_lane(
   SOURCES ${HTTPARSE_HARNESS_MANIFEST}
           ${HTTPARSE_GENERATOR_SOURCES}
           ${HTTPARSE_TRACE_FORMAT}
+          ${HTTPARSE_MODES}
           ${HTTPARSE_ADAPTER}
           "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
   TIMEOUT 180
@@ -1092,6 +1102,7 @@ httparse_add_scheme_lane(
   SOURCES ${HTTPARSE_HARNESS_MANIFEST}
           ${HTTPARSE_GENERATOR_SOURCES}
           ${HTTPARSE_TRACE_FORMAT}
+          ${HTTPARSE_MODES}
           ${HTTPARSE_ADAPTER}
           "${CMAKE_CURRENT_LIST_DIR}/common/adapter-tests.sps"
   TIMEOUT 180

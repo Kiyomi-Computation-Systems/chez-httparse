@@ -157,7 +157,8 @@
          (p (make-parser machine
                          (trace-recorder-bindings r (fixture-init f)
                                                   (fixture-harness-mode f))
-                         #f))
+                         #f
+                         (adapter-parser-inits (fixture-init f))))
          (len (bytevector-length bv)))
     (let loop ((bounds (corpus-chunk-bounds len size)) (result #f))
       (cond
