@@ -58,7 +58,7 @@ passing  request/content-length.md#14
 passing  request/content-length.md#15
 passing  request/content-length.md#16
 passing  request/content-length.md#17
-deferred request/content-length.md#18                    lenient
+passing  request/content-length.md#18
 passing  request/finish.md#1
 passing  request/finish.md#2
 passing  request/finish.md#3
@@ -69,7 +69,7 @@ passing  request/invalid.md#4
 passing  request/invalid.md#5
 passing  request/invalid.md#6
 passing  request/invalid.md#7
-deferred request/invalid.md#8                            lenient
+passing  request/invalid.md#8
 passing  request/invalid.md#9
 passing  request/invalid.md#10
 passing  request/invalid.md#11
@@ -139,7 +139,7 @@ passing  request/sample.md#10
 passing  request/sample.md#11
 passing  request/sample.md#12
 passing  request/sample.md#13
-deferred request/sample.md#14                            lenient
+passing  request/sample.md#14
 passing  request/sample.md#15
 passing  request/sample.md#16
 passing  request/sample.md#17
@@ -171,7 +171,7 @@ passing  request/transfer-encoding.md#24
 passing  request/transfer-encoding.md#25
 passing  request/transfer-encoding.md#26
 passing  request/transfer-encoding.md#27
-deferred request/transfer-encoding.md#28                 lenient
+passing  request/transfer-encoding.md#28
 passing  request/transfer-encoding.md#29
 deferred request/transfer-encoding.md#30                 lenient
 passing  request/transfer-encoding.md#31
@@ -218,7 +218,7 @@ passing  response/invalid.md#5
 passing  response/invalid.md#6
 passing  response/invalid.md#7
 passing  response/invalid.md#8
-deferred response/invalid.md#9                           lenient
+passing  response/invalid.md#9
 passing  response/invalid.md#10
 passing  response/invalid.md#11
 passing  response/invalid.md#12

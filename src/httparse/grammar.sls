@@ -1329,7 +1329,13 @@
       (make-byte-dispatch-node 'expect-lf
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'headers-start 'advance) #f))
-        (make-edge 'e-lf-after-cr 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-lf-after-version 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_LF_AFTER_CR, first of four: the CR ending a REQUEST line
+      ;; stands on its own. The LF is unconsumed either way, so the lenient
+      ;; arm re-executes the header section's first byte against whatever
+      ;; followed the CR.
+      (lenient-fork 'lenient-lf-after-version 'optional-lf-after-cr
+                    'headers-start 'e-lf-after-cr)
 
       ;; --- the status line ----------------------------------------------------
       ;;
@@ -1414,7 +1420,14 @@
       (make-byte-dispatch-node 'res-line-almost-done
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'status-complete 'advance) #f))
-        (make-edge 'e-lf-after-cr-strict 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-lf-after-status 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_LF_AFTER_CR, second: the same for a RESPONSE's status line.
+      ;; Its strict error carries a DIFFERENT reason from the request's --
+      ;; "Expected LF after CR" against "Expected CRLF after version" -- which
+      ;; is why the two are separate declarations and why one fork cannot
+      ;; serve both.
+      (lenient-fork 'lenient-lf-after-status 'optional-lf-after-cr
+                    'status-complete 'e-lf-after-cr-strict)
       (ev 'status-complete 'on-status-complete 'headers-start)
 
       ;; --- the header section -------------------------------------------------
@@ -1866,7 +1879,13 @@
       (make-byte-dispatch-node 'headers-almost-done
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'check-trailing 'advance) #f))
-        (make-edge 'e-lf-after-headers 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-lf-after-headers 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_LF_AFTER_CR, third: the CR of the blank line that ends the
+      ;; header section. The lenient arm joins `check-trailing`, so a message
+      ;; whose headers end `\r` alone still decides trailer-versus-body the
+      ;; same way.
+      (lenient-fork 'lenient-lf-after-headers 'optional-lf-after-cr
+                    'check-trailing 'e-lf-after-headers)
       (make-field-branch-node 'check-trailing 'mask-any (list 'flags F-TRAILING)
                               'trailer-chunk-complete 'before-headers-complete #f)
       ;; The zero chunk's own `chunk complete`, fired after its trailers rather
@@ -2138,7 +2157,10 @@
       (make-byte-dispatch-node 'chunk-size-almost-done
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'chunk-size-header 'advance) #f))
-        (make-edge 'e-lf-after-chunk-size 'reexecute) 'e-eof-none #f)
+        (make-edge 'lenient-lf-after-chunk-size 'reexecute) 'e-eof-none #f)
+      ;; OPTIONAL_LF_AFTER_CR, fourth: after a chunk size.
+      (lenient-fork 'lenient-lf-after-chunk-size 'optional-lf-after-cr
+                    'chunk-size-header 'e-lf-after-chunk-size)
 
       ;; llhttp's `chunk_size_almost_done_lf`. The callback fires with the size
       ;; still whole: the consume below decrements the same field as it goes.
