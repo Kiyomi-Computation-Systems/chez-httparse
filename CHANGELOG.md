@@ -6,6 +6,34 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The request target is parsed, not just carried — and the parser is
+  STRICTER for it**
+  ([0023](.plans/decisions/0023-the-request-target-is-parsed-not-carried.md)).
+  llhttp's URL machine now runs over the request target, entering at the
+  authority form for `CONNECT` and the general form otherwise, so a target
+  whose structure llhttp rejects is an error here too:
+
+  ```
+  OPTIONS a.com:443 HTTP/1.1
+    ->  error code 7, "Unexpected char in url schema", at offset 9
+  ```
+
+  **A message you used to parse may now be refused.** This is the first
+  change in this project's history that turns a previously-parsed message
+  into an error. It is llhttp's behaviour, arrived at deliberately.
+
+  The target is still ONE `span[url]` — llhttp builds the same machine two
+  ways, and this builds it from one description twice for the same reason.
+  No `on-url-data` fires before such an error: the span is open when the
+  refusal happens, and an error abandons an open span.
+
+  **This closes the largest measured divergence.** The live differential goes
+  from `agreed=1097 url-machine=45` to `agreed=1142`, every one of the 45
+  becoming an agreement, and the `url-machine` class is deleted rather than
+  left at zero. 274 fixtures unchanged; the parser grows 434 → 450 states.
+
 ### Added
 
 - **The url sub-parser, and with it every fixture llhttp ships.** The ratchet

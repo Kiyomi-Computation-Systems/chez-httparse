@@ -122,6 +122,27 @@ That is the whole list — *twenty-five, all required*. There is no
 =on-reset= fires between pipelined messages on one parser, before
 =on-message-begin= of the next.
 
+** The request target is checked, not just captured
+
+=on-url-data= still delivers the *whole* target as one span — that has not
+changed. What changed is that a target whose STRUCTURE llhttp rejects is now
+an error here too, where it used to parse:
+
+#+begin_example
+OPTIONS a.com:443 HTTP/1.1
+  ->  error code 7, "Unexpected char in url schema", at offset 9
+#+end_example
+
+The parser runs llhttp's own URL machine over the target, entering it at the
+authority form for =CONNECT= and at the general form for everything else.
+*A message you used to parse may now be refused*, with one of llhttp's
+=invalid-url= reasons. No =on-url-data= fires before such an error: the span
+is open when the refusal happens, and an error abandons an open span rather
+than flushing it.
+
+If you want the target broken into schema, host, path, query and fragment,
+that is the separate parser below.
+
 * Choosing the modes
 
 =make-parser='s fourth argument is an alist of *field initials*. Two fields

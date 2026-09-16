@@ -99,7 +99,7 @@
 ;;; "Invalid response status", which the corpus never records.
 (library (httparse grammar)
   (export make-message-machine
-          httparse-tchar-bytes httparse-url-bytes httparse-header-bytes
+          httparse-tchar-bytes httparse-header-bytes
           httparse-method-names httparse-method-numbers
           httparse-http-methods httparse-rtsp-methods httparse-ice-methods
           method-name->identifier)
@@ -112,11 +112,6 @@
   (define httparse-tchar-bytes
     (append '(33 35 36 37 38 39 42 43 45 46 94 95 96 124 126)
             (range 48 57) (range 65 90) (range 97 122)))
-
-  ;; The request target, as bytes: printable ASCII with SP excluded. The finer
-  ;; rules -- and llhttp's "Invalid char in url path" -- belong to the slice
-  ;; that reproduces that error.
-  (define httparse-url-bytes (range 33 126))
 
   ;; What may appear in a header value: llhttp's HEADER_CHARS, which is
   ;; HTAB / SP / VCHAR / obs-text. Excluded are NUL, the C0 controls other than

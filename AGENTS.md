@@ -455,6 +455,44 @@ previously only say "cleared, then re-asked, so it works out"; it now says the
 field holds the embedder's value before any byte and still holds it after
 `parser-reset!`.
 
+## A description built once is a description tested in one configuration
+
+The url subgraph was factored so it could be built twice — separate spans for
+llhttp's `url` binary, one whole-target span for the HTTP parser. The first
+build passed 21 fixtures. The second did not verify, and the diagnostic was
+right: `#f` as a span state meant "inside the url, between parts", where the
+whole-target span IS open, and the entry nodes run BEFORE it opens.
+
+With separate spans those two states coincide. **The first configuration was
+correct by accident and no amount of testing it would have said so.** Only
+building the second one did, and the verifier named the exact path rather than
+leaving it to a fixture.
+
+So when you factor something to be instantiated more than once, the second
+instance is not a bonus — it is the test. Build it before believing the
+abstraction, and prefer a generator that type-checks the shape (this one's
+flat span lattice) over one that waits for a behavioural difference to show up
+in a trace.
+
+## Closing a divergence should turn something red
+
+`url-machine` was one of three named divergence classes, anchored by a witness
+holding llhttp's exact bytes for one reduced input. Splicing the URL machine
+into the request target closed all 45 comparisons — and the lane went red
+**before anyone looked at the counts**, because the witness no longer
+witnessed anything.
+
+That is worth more than it sounds. The alternative shape — a classifier with
+no anchor — would have reported `url-machine=0` and passed, and the class
+would have sat there forever ready to readmit a real bug under a name that
+made it look expected.
+
+Two habits follow. **Anchor a tolerated divergence to exact bytes**, not just
+a predicate. And when the count reaches zero, **delete the class** rather than
+leaving it at zero; keep its witness, inverted, asserting the agreement it now
+produces. A count going to zero is a number; two identical traces are the
+behaviour.
+
 ## Explain the behaviour in the code and the version in the changelog
 
 The rename audit has caught the same thing in four consecutive milestones, most
