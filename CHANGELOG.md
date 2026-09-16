@@ -6,6 +6,37 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The url sub-parser, and with it every fixture llhttp ships.** The ratchet
+  stands at **274 of 274** and the deferral list is EMPTY, for the first time
+  since decision 0009 wrote it with 84 entries
+  ([0022](.plans/decisions/0022-the-url-sub-parser-is-a-second-machine.md)).
+
+  A SECOND MACHINE, not more of the first. `url.md`'s fixtures carry no HTTP
+  framing: upstream builds a separate binary from `llhttp.URL(p, true)` with
+  both exits looped back to its own entry, and its traces are five span names
+  (`url.schema`, `url.host`, `url.path`, `url.query`, `url.fragment`) and
+  errors. So `(httparse url-grammar)` is a new builder emitting a new
+  artifact, `(generated httparse-url)`, and the conformance driver resolves a
+  machine per fixture.
+
+  **The HTTP parser is unchanged** and keeps its single `span[url]`, which is
+  upstream's other build of the same class and already what M2 shipped.
+
+  Three shapes are where a transcription would have gone wrong quietly, and
+  each is pinned by something that is not an argument: `schema:/path` reports
+  at 8 and not 7 (a sequence match keeps the prefix it consumed before the
+  mismatch); a tab is refused one byte PAST itself (the node wrapper matches
+  rather than peeks); and a host ending at a `?` KEEPS the `?` — measured
+  against an oracle, since no fixture has one, and transcribed rather than
+  repaired.
+
+  The space/CR/LF exits are graph no fixture reaches — none of the 21 inputs
+  contains one — so they were built faithfully and measured against a
+  purpose-built url oracle. A space does not end the parse; it starts another
+  URL, and what follows is judged from scratch.
+
 ### Changed
 
 - **The two modes an embedder chooses are settable FIELDS, written at
