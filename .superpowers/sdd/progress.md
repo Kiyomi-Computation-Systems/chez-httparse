@@ -1865,3 +1865,93 @@ not a milestone at all: byte-machine `v0.5.0` answers the fourth brief, and
 moving the pin should DELETE eleven optional callbacks and twenty-two entry
 nodes in exchange for two settable fields. Its acceptance criterion is unusual
 and strong — 253 still pass, and the diff is smaller.
+
+## 2026-09-16 — the pin move: the modes become settable fields
+
+Not a milestone. No fixture moved, nothing was deferred on it, and the
+acceptance criterion was unusual: **everything still passes AND the artifact is
+smaller**. Both held. Squash-merged as `3521c3c` (PR #19), five commits.
+
+byte-machine `v0.5.0` answers this project's fourth upstream brief with
+settable uint fields and a fourth `make-parser` argument, so the two modes an
+embedder chooses stopped being callbacks. Decision
+[0021](../../.plans/decisions/0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md),
+amending 0005, 0015, 0017 and 0020. Generated ABI 7 -> 8.
+
+| | before | after |
+|---|---|---|
+| states | 457 | **434** |
+| callback declarations | 37 | **25** |
+| bytes | 264 529 | **256 021** |
+
+**The pin moved on its own commit, and that bought the strongest check
+available.** With no settable field declared yet, the regenerated artifact is
+byte-identical to its ABI-7 self but for the version literal, and the IR
+fingerprint — computed from the IR rather than the text — is unchanged at
+`2737053619879110440`. Nobody reviews 4000 regenerated lines; this answers
+"is it the same machine" instead of "does it look the same". Recorded in
+AGENTS.md, because every future pin move can use it.
+
+**Two properties improved rather than merely moved.** `switch-type` sits
+inside the message loop, so `on-message-type` was asked ONCE PER MESSAGE — an
+embedder could have answered `request` for one pipelined message and
+`response` for the next, which `s->type` cannot do upstream. The surface was
+WIDER than llhttp's and is now the same width, and no fixture would ever have
+said so. And `parser-reset!` now restores the embedder's initials, so a mode
+no longer blinks to zero on a reset and return only because the next feed
+re-asked.
+
+**One thing got later rather than better, and is recorded as such.** A missing
+`on-message-type` binding was refused by `make-parser`; a field initial cannot
+be made mandatory, so a parser built with no `type` starts at the declared
+`TYPE-BOTH` and refuses at offset 0 with the same code and reason — one feed
+later. A case in `unit.lenient` pins it so the trade stays visible rather than
+becoming folklore.
+
+**Five tests that named the mechanism were rewritten, not deleted.** Three in
+`unit.lenient`, two in `unit.adapter`, each asserting that eleven callbacks
+were bound or that a counting binding fired once. All five would have been
+easy to delete alongside the code, and the ratchet cannot see that loss
+because 253 pass either way. Two came out stronger for the rewrite. Also in
+AGENTS.md.
+
+New pure library `(httparse modes)`, importing nothing — the first piece of
+the plan's pure layer actually built, and the only one that is both build-time
+and run-time. It has its own lane because a duplicated bit would make two
+flags one flag and every fixture typed for either would still pass; the lane
+was mutation-checked (`keep-alive` set to 2 turns it red in three checks).
+
+**The rename audit fired three times in one session**, always on the same
+shape: the generator named in prose in a test comment. AGENTS.md already
+covers it. The lane catches it every time, so nothing ships wrong; what it
+costs is a red lane and a rewrite.
+
+Verified on MERGED main rather than on the branch: `make clean` then
+`make test-all` green at **84 of 84**, ratchet **253 passing / 0 not-yet /
+21 deferred**, and the opt-in differential re-run against the live oracle at
+**agreed=1097 url-machine=45 late-complete=4 early-complete=0
+unclassified=0** — unchanged through a refactor that deleted 23 states.
+Reconfigured back to the default preset afterwards.
+
+**CI: the billing refusal again, but the SIGNATURE WAS READ WRONG FIRST.**
+Decision 0004's note and the four previous close-outs describe it as
+`steps=0` in about 3 seconds. This PR's run took 42 seconds, which does not
+match — and the duration was never the evidence. The authoritative check is
+the job's ANNOTATION:
+
+> The job was not started because recent account payments have failed or your
+> spending limit needs to be increased.
+
+    gh api repos/<owner>/<repo>/check-runs/<job-id>/annotations --jq '.[].message'
+
+`steps=0` plus that annotation is the refusal; the elapsed time is scheduling
+latency and says nothing. Merged main's run (`35091512257`, `3521c3c`) carries
+the same annotation. Worth fixing here because a 42-second run that does not
+match the remembered shape is exactly when someone would merge past a real
+failure, or stall on a fake one.
+
+**What is left of Gate 0.** Unchanged by this work: 253 of 274 fixtures pass,
+and M11 — the URL sub-parser, 21 fixtures — is the only milestone still
+deferred. It is a second machine rather than more of this one, and it is now
+the only outstanding piece; the fourth brief is discharged and no upstream gap
+is open.
