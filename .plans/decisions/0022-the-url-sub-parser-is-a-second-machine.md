@@ -2,6 +2,9 @@
 
 Date: 2026-09-16
 Status: accepted
+Amended by: [0023](0023-the-request-target-is-parsed-not-carried.md) — its "What this milestone did NOT do"
+section is now done. The url machine IS in the HTTP request target's path, and
+the `url-machine` divergence class is deleted.
 Amends: [0009](0009-v01-is-strict-request-and-response-parsing.md) (its last deferral)
 Builds on: [0020](0020-lenient-modes-a-flag-at-a-time.md)
 Milestone: Gate 0 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md), M11
@@ -114,6 +117,12 @@ wanting the URL parser inside an HTTP parse would want the exits wired
 differently, and that is a different machine again.
 
 ## What this milestone did NOT do
+
+> **Done since, by [0023](0023-the-request-target-is-parsed-not-carried.md)
+> (2026-09-16).** The subgraph was spliced into the request target, every one
+> of the 45 comparisons became an agreement, and the class was deleted. This
+> section is kept as written because it is what made the next step obvious —
+> naming the gap is what got it closed.
 
 **The `url-machine` divergence class is unchanged, and was re-measured after
 the fact to be sure: `agreed=1097 url-machine=45 late-complete=4

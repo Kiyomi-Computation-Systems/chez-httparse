@@ -546,12 +546,31 @@ each. Built faithfully and measured against a purpose-built url oracle: a
 space does not end the parse but starts another URL, and what follows is
 judged from scratch.
 
-**AND IT DID NOT CLOSE THE `url-machine` DIVERGENCE.** Re-measured after the
-milestone and unchanged at **45 comparisons**: the HTTP parser still carries
-its request target as one opaque span. The machine is built the way llhttp's
-`url` BINARY runs it, standalone; putting it in the HTTP parse is separate
-work. The milestone's name invites the opposite reading, which is exactly why
-this sentence is here.
+**AND IT DID NOT CLOSE THE `url-machine` DIVERGENCE** — which is written here
+as it was written then, because naming the gap is what got it closed one
+change later. Re-measured after the milestone and unchanged at **45
+comparisons**: the HTTP parser still carried its request target as one opaque
+span. A milestone that makes a capability exist is not the same as one that
+puts it in the path.
+
+### After M11 — the target is parsed — DONE
+
+The subgraph, spliced into the HTTP request target in its other
+configuration: part spans stubbed, one `url-span` across the whole target,
+entered at `entry.connect` for CONNECT and `entry.normal` otherwise. Decision
+[0023](decisions/0023-the-request-target-is-parsed-not-carried.md).
+
+`agreed` 1097 → **1142**, every one of the 45 an agreement, and the
+`url-machine` class DELETED rather than left at zero. 274 fixtures unchanged.
+
+**The verifier found a bug only the second configuration could expose.** `#f`
+as a span state meant "between parts", where the whole-url span is open; the
+entry nodes run before it opens. With separate spans the two coincide, so the
+standalone build was right by accident. A description built once is a
+description tested in one configuration.
+
+**This made the parser stricter**, and it is the first change here that turns
+a previously-parsed message into an error.
 
 ### Deferred
 

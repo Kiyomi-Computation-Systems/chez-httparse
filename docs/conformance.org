@@ -57,8 +57,9 @@ ratchet asserts the emptiness as a number rather than by no longer having a
 row.
 
 *That is a statement about FIXTURES, not about every difference from llhttp.*
-The three measured divergences below are found by generated input the corpus
-does not contain, and one of them is still open — read on.
+The measured divergences below are found by generated input the corpus does
+not contain. There were three; *the largest is now closed*, and the two that
+remain are the same narrow case seen from both sides.
 
 * Divergences from llhttp, measured
 
@@ -68,33 +69,31 @@ assembled from a grammar and mutants of real fixtures. Over ~110,000
 comparisons across four seeds, every disagreement falls into one of the
 following, and an unclassified one fails the lane.
 
-** The request target is one opaque span
+** Closed: the request target is now parsed, not carried
 
-llhttp runs a URL sub-parser over the request target and rejects targets
-whose *structure* is wrong. This parser carries the target as a single span,
-as every =uri.md= fixture is written against, and reads on where llhttp
-stops.
+This was the largest of the three — *45 comparisons* — and it is gone.
 
 #+begin_example
 OPTIONS a.com:443 HTTP/1.1
 
 llhttp: off=9 error code=7 reason="Unexpected char in url schema"
-ours:   parses to completion
+ours:   off=9 error code=7 reason="Unexpected char in url schema"
 #+end_example
 
-*M11 DID NOT CLOSE THIS, and it is worth saying so plainly because the name
-invites the opposite reading.* M11 built the URL machine and passed all 21
-=url.md= fixtures — but as llhttp's =url= binary runs it: standalone, over a
-bare URL, looping its exits back to its own entry. Wiring it INTO the HTTP
-parse is different work again. llhttp joins it at =entry.normal= /
-=entry.connect= and leaves it at =toHTTP= / =toHTTP09=, and the request-target
-span would stop being the one opaque =span[url]= every =uri.md= fixture is
-written against.
+llhttp runs a URL sub-parser over the request target and rejects targets
+whose *structure* is wrong. This parser carried the target as a single span
+and read on. Since the sub-parser was spliced into the request-target path,
+it does not: =agreed= went 1097 → 1142, every one of the 45 became an
+agreement, and the class was deleted rather than left at zero.
 
-So the count is unchanged by M11 and was re-measured after it: *45
-comparisons*, still the largest of the three by a wide margin. A milestone
-that makes a capability exist is not the same as one that puts it in the
-path, and only the differential can tell you which happened.
+*The target is still ONE =span[url]=*, which is what every =uri.md= fixture
+is written against. llhttp builds the same machine two ways — five separate
+spans for its =url= binary, one whole span inside the HTTP parser — and so
+does this.
+
+*This made the parser stricter.* A target that used to parse may now be an
+error. That is llhttp's behaviour, arrived at deliberately; see
+[[file:api.org][api.org]].
 
 ** A completion event at the exact end of the input
 

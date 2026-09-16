@@ -179,20 +179,18 @@
 ;; one reduced input -- so the class is pinned by an example and the predicate
 ;; only decides membership for the rest. When a class is fixed, its witness
 ;; turns red and says so.
+;;
+;; THERE WERE THREE, AND THE MECHANISM ABOVE IS HOW THE THIRD LEFT. The
+;; `url-machine` class covered 45 comparisons where llhttp ran its URL
+;; sub-parser over the request target and this parser read on. Splicing that
+;; machine in closed every one of them, and the witness went red BEFORE
+;; anyone thought to look at the counts -- which is what decision 0018 buys.
+;; Its input is still here, one group down, asserting the agreement it now
+;; produces.
 
 (define (ends-with? s suffix)
   (let ((n (string-length s)) (m (string-length suffix)))
     (and (>= n m) (string=? (substring s (- n m) n) suffix))))
-
-(define (url-machine-divergence? theirs ours)
-  ;; llhttp runs a URL sub-parser over the request target and rejects targets
-  ;; whose STRUCTURE is wrong; this parser carries the target as one opaque
-  ;; span, which is what decision 0009 defers to M11 and what every `uri.md`
-  ;; fixture is written against. So llhttp errors with INVALID_URL where this
-  ;; parser reads on.
-  (and (pair? theirs)
-       (harness-string-contains? (list-ref theirs (- (length theirs) 1)) "error code=7 ")
-       (not (harness-member? (list-ref theirs (- (length theirs) 1)) ours))))
 
 (define (line-offset line)
   ;; `off=N ...` -> N, and #f for `off=NULL ...`, which no generated input
@@ -245,8 +243,7 @@
          (all-at? (drop-n ours n) len))))
 
 (define (classify theirs ours len)
-  (cond ((url-machine-divergence? theirs ours) 'url-machine)
-        ((late-complete-divergence? theirs ours len) 'late-complete)
+  (cond ((late-complete-divergence? theirs ours len) 'late-complete)
         ((early-complete-divergence? theirs ours len) 'early-complete)
         (else 'unclassified)))
 
@@ -283,7 +280,7 @@
         (let ((results (read-results traces-file)))
           (check-equal "one result per probe" (length results) (length probes))
           (let loop ((ps probes) (rs results)
-                     (unclassified '()) (url 0) (late 0) (early 0) (agreed 0))
+                     (unclassified '()) (late 0) (early 0) (agreed 0))
             (cond
              ((or (null? ps) (null? rs))
               ;; The counts are printed rather than asserted: they move with
@@ -292,7 +289,6 @@
               ;; the two witnesses below hold each class to exact bytes.
               (display (string-append
                         "httparse-differential: agreed=" (number->string agreed)
-                        " url-machine=" (number->string url)
                         " late-complete=" (number->string late)
                         " early-complete=" (number->string early)
                         " unclassified=" (number->string (length unclassified))
@@ -313,7 +309,7 @@
                         (cons (string-append (gen-case-origin c) " @"
                                              (number->string (probe-size p)) " :: " r)
                               unclassified)
-                        url late early agreed))
+                        late early agreed))
                  ((drive-refusal? mine)
                   (loop (cdr ps) (cdr rs)
                         (cons (string-append (gen-case-origin c) " @"
@@ -321,7 +317,7 @@
                                              " :: this parser refused: "
                                              (drive-refusal-detail mine))
                               unclassified)
-                        url late early agreed))
+                        late early agreed))
                  (else
                   (let* ((theirs (guard (e ((oracle-error? e) #f)) 
                                    (map utf8->string (oracle-normalize r))))
@@ -332,23 +328,21 @@
                             (cons (string-append (gen-case-origin c)
                                                  " :: the oracle printed a line this lane cannot read")
                                   unclassified)
-                            url late early agreed))
+                            late early agreed))
                      ((equal? theirs ours)
-                      (loop (cdr ps) (cdr rs) unclassified url late early (+ agreed 1)))
+                      (loop (cdr ps) (cdr rs) unclassified late early (+ agreed 1)))
                      (else
                       (case (classify theirs ours (bytevector-length (gen-case-bytes c)))
-                        ((url-machine)
-                         (loop (cdr ps) (cdr rs) unclassified (+ url 1) late early agreed))
                         ((late-complete)
-                         (loop (cdr ps) (cdr rs) unclassified url (+ late 1) early agreed))
+                         (loop (cdr ps) (cdr rs) unclassified (+ late 1) early agreed))
                         ((early-complete)
-                         (loop (cdr ps) (cdr rs) unclassified url late (+ early 1) agreed))
+                         (loop (cdr ps) (cdr rs) unclassified late (+ early 1) agreed))
                         (else
                          (loop (cdr ps) (cdr rs)
                                (cons (render-divergence (gen-case-origin c) (probe-size p)
                                                         theirs ours)
                                      unclassified)
-                               url late early agreed)))))))))))))))))
+                               late early agreed)))))))))))))))))
 
 ;; --- the witness for each class -------------------------------------------
 ;;
@@ -380,13 +374,18 @@
         (list (string-append "refused: " (drive-refusal-detail t)))
         (map utf8->string t))))
 
-(harness-group "the witness for the deferred URL sub-parser"
+(harness-group "the divergence that was, and is not"
   (lambda ()
     ;; `OPTIONS a.com:443` is an authority-form target, which llhttp's URL
-    ;; machine rejects for a method that is not CONNECT. Decision 0009 defers
-    ;; that machine to M11; until then this parser reads the target as one
-    ;; opaque span and carries on to the version.
-    (harness-case "llhttp stops inside the target and this parser does not"
+    ;; machine rejects for a method that is not CONNECT. THIS WAS THE WITNESS
+    ;; FOR A DIVERGENCE CLASS: decision 0009 deferred the URL machine, and
+    ;; until it was spliced into the request target this parser read the
+    ;; target as one opaque span and carried on to the version.
+    ;;
+    ;; It is kept, inverted, as the sharpest evidence there is that the
+    ;; machine is in the path. A count going to zero is a number; two traces
+    ;; that are the same list of strings is the behaviour.
+    (harness-case "llhttp stops inside the target and so does this parser"
       (lambda ()
         (let ((theirs (oracle-trace-of "request" "OPTIONS a.com:443 HTTP/1.1\r\n\r\n" 30))
               (ours (our-trace-of "request" "OPTIONS a.com:443 HTTP/1.1\r\n\r\n" 30)))
@@ -396,21 +395,30 @@
                          "off=0 len=7 span[method]=\"OPTIONS\""
                          "off=7 method complete"
                          "off=9 error code=7 reason=\"Unexpected char in url schema\""))
-          (check-equal "this parser reads the target whole and finishes the message"
-                       ours
-                       '("off=0 message begin"
-                         "off=0 len=7 span[method]=\"OPTIONS\""
-                         "off=7 method complete"
-                         "off=8 len=9 span[url]=\"a.com:443\""
-                         "off=18 url complete"
-                         "off=18 len=4 span[protocol]=\"HTTP\""
-                         "off=22 protocol complete"
-                         "off=23 len=3 span[version]=\"1.1\""
-                         "off=26 version complete"
-                         "off=30 headers complete method=6 v=1/1 flags=0 content_length=0"
-                         "off=30 message complete"))
-          (check-equal "and the class names it"
-                       (classify theirs ours 30) 'url-machine))))))
+          ;; NO `span[url]` BEFORE THE ERROR. The target span is open when
+          ;; the url machine refuses, and an error abandons an open span
+          ;; rather than flushing it -- the same rule `span[method]` follows.
+          (check-equal "and this parser stops at the same byte, for the same reason"
+                       ours theirs)
+          (check-equal "so there is nothing left for the classifier to name"
+                       (classify theirs ours 30) 'unclassified))))))
+
+(harness-group "and a CONNECT target still gets through"
+  (lambda ()
+    ;; The other half of the same change, and the reason it needed a branch
+    ;; rather than one entry: `0-home0.netscape.com:443` has no scheme and no
+    ;; leading slash, so `url_start` would refuse its first byte. llhttp
+    ;; routes a CONNECT request past `start` and opens at the host instead.
+    ;; `request/method.md#4` covers this in the corpus; here it is checked
+    ;; against the live oracle, because the two entries are one field test
+    ;; apart and a wrong test would fail only for CONNECT.
+    (harness-case "the authority form llhttp accepts, this parser accepts"
+      (lambda ()
+        (let ((theirs (oracle-trace-of "request" "CONNECT a.com:443 HTTP/1.0\r\n\r\n" 30))
+              (ours (our-trace-of "request" "CONNECT a.com:443 HTTP/1.0\r\n\r\n" 30)))
+          (check "llhttp accepted it"
+                 (harness-member? "off=30 message complete" theirs))
+          (check-equal "and so did this parser, line for line" ours theirs))))))
 
 (harness-group "the witness for the keyword table's terminal"
   (lambda ()

@@ -2,6 +2,9 @@
 
 Date: 2026-09-15
 Status: accepted
+Amended by: [0023](0023-the-request-target-is-parsed-not-carried.md) — the `url-machine` class is
+retired. Its witness went red when the divergence was fixed, which is this
+record's mechanism working; two classes remain.
 Milestone: Gate 0 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md), M8
 
 ## Context

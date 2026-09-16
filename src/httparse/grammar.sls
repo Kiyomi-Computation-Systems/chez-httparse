@@ -99,11 +99,11 @@
 ;;; "Invalid response status", which the corpus never records.
 (library (httparse grammar)
   (export make-message-machine
-          httparse-tchar-bytes httparse-url-bytes httparse-header-bytes
+          httparse-tchar-bytes httparse-header-bytes
           httparse-method-names httparse-method-numbers
           httparse-http-methods httparse-rtsp-methods httparse-ice-methods
           method-name->identifier)
-  (import (rnrs) (byte-machine graph) (httparse modes))
+  (import (rnrs) (byte-machine graph) (httparse modes) (httparse url-grammar))
 
   (define (range lo hi)
     (let loop ((i hi) (acc '())) (if (< i lo) acc (loop (- i 1) (cons i acc)))))
@@ -112,11 +112,6 @@
   (define httparse-tchar-bytes
     (append '(33 35 36 37 38 39 42 43 45 46 94 95 96 124 126)
             (range 48 57) (range 65 90) (range 97 122)))
-
-  ;; The request target, as bytes: printable ASCII with SP excluded. The finer
-  ;; rules -- and llhttp's "Invalid char in url path" -- belong to the slice
-  ;; that reproduces that error.
-  (define httparse-url-bytes (range 33 126))
 
   ;; What may appear in a header value: llhttp's HEADER_CHARS, which is
   ;; HTAB / SP / VCHAR / obs-text. Excluded are NUL, the C0 controls other than
@@ -779,7 +774,8 @@
      ;; is the least it can do and still be a rename (decision 0008 item 2).
      ;; `bad-url` is the one placeholder left: llhttp's url reasons belong to
      ;; the URL sub-parser, deferred by decision 0009.
-     (list (make-error-declaration 'eof 'unexpected-eof "unexpected end of input" #f)
+     (append
+      (list (make-error-declaration 'eof 'unexpected-eof "unexpected end of input" #f)
            ;; NO llhttp NUMBER, FOR THE SAME REASON `eof` HAS NONE: llhttp
            ;; cannot reach this state at all, because its type is a field an
            ;; embedder wrote rather than an answer one gives. A binding that
@@ -796,8 +792,6 @@
            ;; placeholder standing in for a decision the url sub-parser had
            ;; not made; no fixture ever recorded it, and these two are what
            ;; the strict request corpus actually asks for.
-           (make-error-declaration 'bad-url-char 'invalid-url
-                                   "Invalid char in url path" #f)
            (make-error-declaration 'expected-crlf 'invalid-url
                                    "Expected CRLF" #f)
            (make-error-declaration 'bad-protocol 'invalid-constant
@@ -946,6 +940,10 @@
            ;; declaration from an error node.
            (make-error-declaration 'upgrade-paused 'paused-upgrade
                                    "Pause on CONNECT/Upgrade" #f))
+      ;; The url subgraph's own reasons. They are part of its contract rather
+      ;; than an implementation detail, which is why they come from there
+      ;; instead of being written out a second time here.
+      (url-error-declarations))
      (append
       (list
       ;; --- the first byte -----------------------------------------------------
@@ -1052,45 +1050,50 @@
       (make-byte-dispatch-node 'spaces-before-url
         (list (make-byte-case (make-exact-byte-matcher SP)
                               (make-edge 'spaces-before-url 'advance) #f))
-        (make-edge 'url-open 'reexecute) 'e-eof-none #f)
+        (make-edge 'url-which-entry 'reexecute) 'e-eof-none #f)
+      ;; WHICH ENTRY THE URL MACHINE IS JOINED AT, and llhttp asks the same
+      ;; question in the same place:
+      ;;
+      ;;   .otherwise(this.isEqual('method', METHODS.CONNECT, {
+      ;;     equal: url.entry.connect, notEqual: url.entry.normal }))
+      ;;
+      ;; `CONNECT 0-home0.netscape.com:443 HTTP/1.0` has no scheme and no
+      ;; leading slash, so `url-start` would refuse its first byte. The
+      ;; connect entry skips `start` and opens at the host instead.
+      (make-field-branch-node 'url-which-entry 'equal
+                              (list 'method (method-number "CONNECT"))
+                              'url-entry-connect 'url-entry-normal #f)
 
       ;; --- request target -----------------------------------------------------
       ;;
-      ;; THE TARGET HAS THREE LEGAL ENDINGS AND ONE ILLEGAL ONE, and which of
-      ;; them a byte is decides whether the span closes at all.
+      ;; THE URL SUB-PARSER, SPLICED IN, and this is the whole of the change
+      ;; decision 0023 records. `(httparse url-grammar)` holds one description
+      ;; of llhttp's URL machine and builds it twice, exactly as upstream does
+      ;; from `new URL(p, separateSpans)`. Here the parts are STUBS and the
+      ;; whole target is ONE `url-span`, which is what every `uri.md` fixture
+      ;; is written against; the url binary's five separate spans are the
+      ;; other configuration.
+      ;;
+      ;; WHAT THIS BUYS is the structural refusal the opaque loop could not
+      ;; make. `OPTIONS a.com:443 HTTP/1.1` reads `a.com` as a schema, wants
+      ;; `//` after the colon, and errors -- where a loop over the target
+      ;; characters read on to the end. That was the largest of the three
+      ;; measured divergences.
+      ;;
+      ;; THE TARGET STILL HAS THREE LEGAL ENDINGS, and they are the caller's
+      ;; half of the subgraph's contract -- upstream's `skipToHTTP`,
+      ;; `skipCRLF` and `skipToHTTP09`, which it calls `exit`:
       ;;
       ;;   SP     the version follows           close, skip, `url complete`
       ;;   CRLF   there is no version: HTTP/0.9 close, skip both, 0/9
       ;;   LF     the same, one byte shorter    close, skip, 0/9
-      ;;   other  no target may carry it        DO NOT CLOSE -- error
       ;;
-      ;; The last is why `url-after-path` exists rather than the loop falling
-      ;; straight into a span end. llhttp ends its PATH span where the target
-      ;; characters stop and leaves the URL span open, so an illegal byte
-      ;; delivers no `span[url]` fragment at all: `request/uri.md#7` records
-      ;; the error at 5 and nothing before it but the method.
+      ;; AN ILLEGAL BYTE DOES NOT CLOSE THE SPAN, which is now the subgraph's
+      ;; doing rather than a node of ours: every error inside it is reached
+      ;; with `url-span` open and abandons it, so an illegal byte delivers no
+      ;; `span[url]` fragment at all. `request/uri.md#7` records the error at
+      ;; 5 and nothing before it but the method.
       ;;
-      ;; This is NOT the url sub-parser. The schema, the server, the query and
-      ;; the fragment -- and the spans they each deliver -- are M11's, deferred
-      ;; by decision 0009. These are the two boundary behaviours the strict
-      ;; request corpus needs, and `httparse-url-bytes` still stands in for
-      ;; llhttp's URL_CHAR.
-      (make-span-start-node 'url-open 'url-span 'url-loop #f)
-      (make-byte-dispatch-node 'url-loop
-        (list (make-byte-case (make-byte-set-matcher httparse-url-bytes)
-                              (make-edge 'url-loop 'advance) #f))
-        (make-edge 'url-after-path 'reexecute) 'e-eof-url #f)
-      ;; The url span is STILL OPEN here, which is the whole point of the
-      ;; node -- and why its own end-of-input target is the span-open one.
-      (make-byte-dispatch-node 'url-after-path
-        (list (make-byte-case (make-exact-byte-matcher SP)
-                              (make-edge 'url-close-sp 'reexecute) #f)
-              (make-byte-case (make-exact-byte-matcher CR)
-                              (make-edge 'url-close-cr 'reexecute) #f)
-              (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'url-close-lf 'reexecute) #f))
-        (make-edge 'e-bad-url-char 'reexecute) 'e-eof-url #f)
-
       ;; Each ending closes the span and then SKIPS its own delimiter, which
       ;; is llparse's `skipTo` -- a dispatch with no cases whose fallback
       ;; advances. That is what puts `url complete` one byte PAST its space
@@ -2530,7 +2533,6 @@
       (make-error-node 'e-no-space-after-method 'no-space-after-method #f)
       ;; Reached with the url span OPEN, which is what keeps a rejected target
       ;; from delivering a fragment.
-      (make-error-node 'e-bad-url-char 'bad-url-char #f)
       (make-error-node 'e-expected-crlf 'expected-crlf #f)
       (make-error-node 'e-bad-protocol 'bad-protocol #f)
       (make-error-node 'e-method-not-http 'method-not-http #f)
@@ -2544,7 +2546,6 @@
       (make-error-node 'e-lf-after-cr 'lf-after-cr #f)
       (make-error-node 'e-eof-none 'eof #f)
       (make-error-node 'e-eof-method 'eof #f)
-      (make-error-node 'e-eof-url 'eof #f)
       (make-error-node 'e-eof-protocol 'eof #f)
       (make-error-node 'e-eof-version 'eof #f)
       (make-error-node 'e-no-space-after-version 'no-space-after-version #f)
@@ -2606,5 +2607,16 @@
       (make-error-node 'e-eof-chunk-ext-value 'eof #f)
       (make-error-node 'e-data-after-close 'data-after-close #f)
       (make-error-node 'e-pri-upgrade 'pri-upgrade #f)
-      (make-error-node 'e-bad-h2-preface 'bad-h2-preface #f)))
+      (make-error-node 'e-bad-h2-preface 'bad-h2-preface #f))
+
+      ;; THE URL SUB-PARSER, in its HTTP configuration: the five part spans
+      ;; stubbed, one `url-span` across the whole target, and the three exits
+      ;; pointing at this machine's own adaptors. `#t` asks for the CONNECT
+      ;; entry, which the standalone build has no reachable use for.
+      ;;
+      ;; ITS ERROR NODES ARE PREFIXED `e-url-`, because `e-eof-none` is a name
+      ;; both machines want and a subgraph reaching into a node it does not
+      ;; own is how two graphs stop being separable.
+      (url-subgraph #f 'url-span 'url-close-sp 'url-close-cr 'url-close-lf
+                    #t 'eof "e-url-"))
      'eof #f)))
