@@ -1577,13 +1577,23 @@
                               'check-te-conflict 'after-field-complete-cl #f)
       (make-field-branch-node 'check-te-conflict 'mask-any
                               (list 'flags F-CONTENT-LENGTH)
-                              'e-te-with-content-length 'value-discard-ws #f)
+                              'lenient-te-with-cl 'value-discard-ws #f)
       (make-field-branch-node 'after-field-complete-cl 'equal
                               (list 'header-state HS-CONTENT-LENGTH)
                               'check-cl-conflict 'value-discard-ws #f)
       (make-field-branch-node 'check-cl-conflict 'mask-any
                               (list 'flags F-TRANSFER-ENCODING)
-                              'e-cl-with-te 'value-discard-ws #f)
+                              'lenient-cl-with-te 'value-discard-ws #f)
+      ;; CHUNKED_LENGTH, and it is BOTH of upstream's sites: the flag turns
+      ;; off the refusal of `Content-Length` beside `Transfer-Encoding`,
+      ;; whichever order they arrived in. Two errors, two reasons, two forks
+      ;; -- llhttp's `checkInvalidTransferEncoding` and
+      ;; `checkInvalidContentLength` are separate functions for the same
+      ;; reason decision 0013 makes them separate declarations.
+      (lenient-fork 'lenient-te-with-cl 'chunked-length
+                    'value-discard-ws 'e-te-with-content-length)
+      (lenient-fork 'lenient-cl-with-te 'chunked-length
+                    'value-discard-ws 'e-cl-with-te)
 
       ;; --- the value ----------------------------------------------------------
       ;; Leading OWS is discarded and is not part of the span.
@@ -1675,12 +1685,25 @@
       (make-field-branch-node 'te-check-chunked 'mask-any (list 'flags F-CHUNKED)
                               'te-restart-type 'te-set-flag #f)
       (make-field-branch-node 'te-restart-type 'equal (list 'type TYPE-REQUEST)
-                              'te-after-chunked 'te-set-flag #f)
+                              'lenient-request-te 'te-set-flag #f)
+      ;; TRANSFER_ENCODING: a REQUEST whose transfer coding does not end in
+      ;; `chunked` is refused, and this flag accepts it. A response is not
+      ;; refused in the first place -- it reads to end of input instead --
+      ;; which is why the fork sits under the type test and not above it.
+      (lenient-fork 'lenient-request-te 'transfer-encoding
+                    'te-set-flag 'te-after-chunked)
       (make-span-end-node 'te-after-chunked 'header-value-span 'te-eat-one #f)
       (make-byte-dispatch-node 'te-eat-one
         '() (make-edge 'e-bad-te-value 'advance) 'e-eof-none #f)
+      ;; THE SECOND OF THE TWO SITES that share the one refusal, and so the
+      ;; second that the flag has to reach. Missing it left one fixture
+      ;; reporting `span[header_value]="chunked"` where the oracle records
+      ;; `"chunked, deflate"` -- the span ended at the comma because the
+      ;; error path closed it.
       (make-field-branch-node 'te-comma-type 'equal (list 'type TYPE-REQUEST)
-                              'te-after-chunked 'te-chunked #f)
+                              'lenient-comma-te 'te-chunked #f)
+      (lenient-fork 'lenient-comma-te 'transfer-encoding
+                    'te-chunked 'te-after-chunked)
 
       ;; The CHUNKED bit is CLEARED on the way in and set again only by
       ;; `setHeaderFlags` at the end of a value that really was `chunked`, so a
@@ -2093,7 +2116,24 @@
       (make-field-branch-node 'after-headers-te 'mask-any (list 'flags F-TRANSFER-ENCODING)
                               'ahc-coding-type 'after-headers-cl #f)
       (make-field-branch-node 'ahc-coding-type 'equal (list 'type TYPE-REQUEST)
-                              'e-request-invalid-te 'body-eof #f)
+                              'lenient-request-coding 'body-eof #f)
+      ;; TWO FLAGS SUPPRESS THIS ONE REFUSAL, and the test is in llhttp's C
+      ;; rather than its grammar -- `llhttp__after_headers_complete` reads
+      ;;
+      ;;   type == HTTP_REQUEST &&
+      ;;   (lenient_flags & LENIENT_CHUNKED_LENGTH) == 0 &&
+      ;;   (lenient_flags & LENIENT_TRANSFER_ENCODING) == 0
+      ;;
+      ;; so EITHER flag is enough. Grepping `src/llhttp/*.ts` for the flag
+      ;; names does not find it, which is how four fixtures across two
+      ;; different flags came to fail at the same line.
+      ;;
+      ;; A response is not refused here at all: it reads to end of input,
+      ;; which is the `body-eof` arm above.
+      (lenient-fork 'lenient-request-coding 'chunked-length
+                    'body-eof 'lenient-request-coding-te)
+      (lenient-fork 'lenient-request-coding-te 'transfer-encoding
+                    'body-eof 'e-request-invalid-te)
       (make-field-branch-node 'after-headers-cl 'mask-any (list 'flags F-CONTENT-LENGTH)
                               'body-length-check (needs-eof-entry "ahc-eof") #f)
       (make-field-branch-node 'body-length-check 'nonzero (list 'content-length)
@@ -2179,9 +2219,15 @@
       ;; strict mode refuses, so its error is one PAST the space --
       ;; request/transfer-encoding.md#31 records off=51 for a space at 50 --
       ;; while the catch-all does not consume and reports AT the byte.
+      ;; SPACES_AFTER_CHUNK_SIZE: whitespace between the size and its line
+      ;; ending. The space is consumed either way, and the lenient arm
+      ;; re-enters this node -- so a run of them is eaten one at a time,
+      ;; which is upstream's shape and terminates because each pass advances.
+      (lenient-fork 'lenient-chunk-size-space 'spaces-after-chunk-size
+                    'chunk-size-otherwise 'e-bad-chunk-size)
       (make-byte-dispatch-node 'chunk-size-otherwise
         (list (make-byte-case (make-byte-set-matcher (list SP HTAB))
-                              (make-edge 'e-bad-chunk-size 'advance) #f)
+                              (make-edge 'lenient-chunk-size-space 'advance) #f)
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'chunk-size-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
@@ -2478,7 +2524,14 @@
                               'start #f #f)
 
       (make-field-action-node 'amc-close 'store (list 'finish FINISH-SAFE)
-                              'closed-clear-flags #f #f)
+                              'lenient-keep-alive #f #f)
+      ;; KEEP_ALIVE: a connection that should close is reused anyway. The
+      ;; `finish` store happens FIRST either way -- upstream writes
+      ;; `update('finish', FINISH.SAFE, lenientClose)` -- so a lenient parse
+      ;; and a strict one agree about that field and differ only in where
+      ;; they go next.
+      (lenient-fork 'lenient-keep-alive 'keep-alive
+                    'restart-clear-flags 'closed-clear-flags)
       (make-field-action-node 'closed-clear-flags 'store (list 'flags 0)
                               'closed #f #f)
 
@@ -2490,7 +2543,13 @@
       (make-byte-dispatch-node 'closed
         (list (make-byte-case (make-byte-set-matcher (list CR LF))
                               (make-edge 'closed 'advance) #f))
-        (make-edge 'e-data-after-close 'advance) 'clean-eof #f)
+        (make-edge 'lenient-data-after-close 'advance) 'clean-eof #f)
+      ;; DATA_AFTER_CLOSE: the byte is discarded instead of refused. It is
+      ;; CONSUMED either way -- upstream `skipTo`s into the test -- so the
+      ;; lenient arm returns to `closed` having eaten it, and a closed
+      ;; connection quietly swallows everything that follows.
+      (lenient-fork 'lenient-data-after-close 'data-after-close
+                    'closed 'e-data-after-close)
 
       ;; --- errors, one node per span state ------------------------------------
       ;; Reached from the table's no-match, where the method span IS open.

@@ -46,7 +46,8 @@
   ;; of the behaviour it needs. `all` is the hook that sets nine at once, so
   ;; it arrives only when all nine do.
   (define ratchet-implemented-lenient '(version headers optional-lf-after-cr optional-crlf-after-chunk
-      header-value-relaxed))
+      header-value-relaxed keep-alive chunked-length transfer-encoding
+      data-after-close spaces-after-chunk-size))
 
   (define (ratchet-fixture-class f)
     (if (or (eq? (fixture-kind f) 'url)

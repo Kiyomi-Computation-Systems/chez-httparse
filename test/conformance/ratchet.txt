@@ -23,14 +23,14 @@
 passing  request/connection.md#1
 passing  request/connection.md#2
 passing  request/connection.md#3
-deferred request/connection.md#4                         lenient
+passing  request/connection.md#4
 passing  request/connection.md#5
 passing  request/connection.md#6
 passing  request/connection.md#7
 passing  request/connection.md#8
 passing  request/connection.md#9
 passing  request/connection.md#10
-deferred request/connection.md#11                        lenient
+passing  request/connection.md#11
 passing  request/connection.md#12
 passing  request/connection.md#13
 passing  request/connection.md#14
@@ -48,7 +48,7 @@ passing  request/content-length.md#4
 passing  request/content-length.md#5
 passing  request/content-length.md#6
 passing  request/content-length.md#7
-deferred request/content-length.md#8                     lenient
+passing  request/content-length.md#8
 passing  request/content-length.md#9
 passing  request/content-length.md#10
 passing  request/content-length.md#11
@@ -158,12 +158,12 @@ passing  request/transfer-encoding.md#11
 passing  request/transfer-encoding.md#12
 passing  request/transfer-encoding.md#13
 passing  request/transfer-encoding.md#14
-deferred request/transfer-encoding.md#15                 lenient
+passing  request/transfer-encoding.md#15
 passing  request/transfer-encoding.md#16
 passing  request/transfer-encoding.md#17
 passing  request/transfer-encoding.md#18
-deferred request/transfer-encoding.md#19                 lenient
-deferred request/transfer-encoding.md#20                 lenient
+passing  request/transfer-encoding.md#19
+passing  request/transfer-encoding.md#20
 passing  request/transfer-encoding.md#21
 passing  request/transfer-encoding.md#22
 passing  request/transfer-encoding.md#23
@@ -175,7 +175,7 @@ passing  request/transfer-encoding.md#28
 passing  request/transfer-encoding.md#29
 passing  request/transfer-encoding.md#30
 passing  request/transfer-encoding.md#31
-deferred request/transfer-encoding.md#32                 lenient
+passing  request/transfer-encoding.md#32
 passing  request/uri.md#1
 passing  request/uri.md#2
 passing  request/uri.md#3
@@ -193,9 +193,9 @@ passing  response/connection.md#3
 passing  response/connection.md#4
 passing  response/connection.md#5
 passing  response/connection.md#6
-deferred response/connection.md#7                        lenient
+passing  response/connection.md#7
 passing  response/connection.md#8
-deferred response/connection.md#9                        lenient
+passing  response/connection.md#9
 passing  response/connection.md#10
 passing  response/connection.md#11
 passing  response/connection.md#12

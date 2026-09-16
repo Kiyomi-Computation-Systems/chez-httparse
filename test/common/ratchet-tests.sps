@@ -111,7 +111,7 @@
                                     (not (eq? derived declared))))
                                 (entries)))
                        0))))
-    (harness-case "34 fixtures are deferred and 240 are in scope"
+    (harness-case "25 fixtures are deferred and 249 are in scope"
       (lambda ()
         ;; Decision 0009's bar was 84 and 190. M9 moved the 24 `pausing` and
         ;; 2 `skipBody` fixtures across; M10 moves the lenient ones a FLAG at
@@ -120,11 +120,11 @@
         (let ((es (entries)))
           (check-equal "deferred"
                        (length (filter (lambda (e) (eq? (ratchet-entry-status e) 'deferred)) es))
-                       34)
+                       25)
           (check-equal "in scope"
                        (length (filter (lambda (e) (memq (ratchet-entry-status e)
                                                          '(passing not-yet))) es))
-                       240))))
+                       249))))
     (harness-case "no deferred entry is missing its reason word"
       (lambda ()
         (check-equal "reasonless deferrals"
