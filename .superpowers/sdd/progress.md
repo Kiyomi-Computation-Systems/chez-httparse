@@ -2039,3 +2039,77 @@ fixture anyone is waiting on:
 - **A URL input generator for the live differential**, which today covers
   `request` and `response` only. M8's experience says generated input finds
   what fixtures do not — the keyword-table divergence was found nowhere else.
+
+## 2026-09-16 — the request target is parsed, and the divergence list shortens
+
+Squash-merged as `4697cca` (PR #21), four commits. Not a milestone: no fixture
+moved. What moved is the LIVE DIFFERENTIAL, from
+
+    agreed=1097 url-machine=45 late-complete=4 early-complete=0 unclassified=0
+
+to
+
+    agreed=1142 late-complete=4 early-complete=0 unclassified=0
+
+Every one of the 45 became an agreement, nothing shifted into another class,
+and the `url-machine` class was DELETED rather than left at zero. Decision
+[0023](../../.plans/decisions/0023-the-request-target-is-parsed-not-carried.md),
+amending [0022](../../.plans/decisions/0022-the-url-sub-parser-is-a-second-machine.md)
+(whose "what this milestone did not do" section is now done) and
+[0018](../../.plans/decisions/0018-a-divergence-is-named-and-witnessed-or-it-fails-the-lane.md)
+(one class retired).
+
+**The consequence worth leading with is not the count.** A message that used
+to parse may now be refused — the first change in this project's history that
+does that. `OPTIONS a.com:443 HTTP/1.1` was parsed to completion and is now an
+error at offset 9. `api.org` and `CHANGELOG.md` lead with it rather than
+burying it under the divergence numbers, because an embedder reading only the
+counts would see an improvement and miss the break.
+
+**A DESCRIPTION BUILT ONCE IS A DESCRIPTION TESTED IN ONE CONFIGURATION.** The
+url subgraph was factored to build twice — separate spans for llhttp's `url`
+binary, one whole-target span for the HTTP parser. The first build passed 21
+fixtures. The second would not verify: `#f` as a span state meant "inside the
+url, between parts", where the whole-target span IS open, and the entry nodes
+run BEFORE it opens. With separate spans those two coincide, so the first
+build was **correct by accident** and no amount of testing it would have said
+so. `inconsistent-span-state` named the exact path. In AGENTS.md.
+
+**CLOSING A DIVERGENCE SHOULD TURN SOMETHING RED.** The `url-machine` class
+was anchored to llhttp's exact bytes for one reduced input, per 0018, so
+closing it turned the witness red BEFORE anyone looked at the counts. A
+classifier with only a predicate would have reported `url-machine=0` and
+passed, leaving a class ready to readmit a real bug under a name that made it
+look expected. The witness is kept and INVERTED — same input, same oracle,
+now asserting the two traces are one list — and a CONNECT case sits beside it,
+because the two entries are one field test apart and a wrong test would fail
+only for CONNECT. Also in AGENTS.md.
+
+`httparse-url-bytes`, the stand-in for `URL_CHAR`, is deleted. Its own comment
+said the finer rules "belong to the slice that reproduces that error"; this
+was that slice. The parser grows 434 -> 450 states and 41 912 bytes, which is
+what the refusal costs.
+
+Verified on MERGED main: `make clean` then `make test-all` green at **86 of
+86**, full chunk-size scan included, ratchet **274/274**, and the opt-in
+differential re-run at the numbers above. Reconfigured back to the default
+preset afterwards.
+
+**SSH BROKE MID-RITUAL AND THE MEMORY NOTE HELD.** `ssh -T git@github.com`
+gave `sign_and_send_pubkey: signing failed ... communication with agent
+failed` — the agent, not the key. The push, the merge's local half and the
+`origin/main` ref update all failed; `gh` over HTTPS did all three. Worth
+knowing the exact shape: `gh pr merge` MERGED SERVER-SIDE AND THEN FAILED on
+its local fast-forward, so the PR was already merged and the branch already
+deleted when the command reported an error. Check `gh pr view --json state`
+before retrying anything that would merge twice.
+
+CI: the billing refusal, `steps=0` plus the annotation, on both the PR and
+merged main.
+
+**What is left.** The ladder is done and no upstream gap is open. One piece
+remains named and not deferred: **a URL input generator for the live
+differential**, which still covers `request` and `response` only. The ground
+just shifted in its favour — the request target now runs a twenty-node
+structural machine that generated input would exercise hard, and M8's
+experience is that the generated-input lane finds what fixtures do not.
