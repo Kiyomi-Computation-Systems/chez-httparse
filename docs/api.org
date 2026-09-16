@@ -25,10 +25,12 @@ diff and loadable without running a generator. It depends on
 The third argument is a *user context* handed back to every callback. Use it
 for the connection state you would otherwise close over; =#f= is fine.
 
-*Every declared callback must be bound.* A binding list with a hole is
+*Every REQUIRED callback must be bound.* A binding list with a hole is
 refused when the parser is made, not quietly ignored. That is deliberate: a
 parser that silently dropped =on-body-data= would look like a message with no
-body.
+body. The eleven lenient-mode callbacks are the exception — they are optional,
+they default to strict, and an embedder that wants strict parsing binds none
+of them.
 
 * Feeding bytes
 
@@ -122,6 +124,41 @@ Plus the decision =on-message-type=.
 
 =on-reset= fires between pipelined messages on one parser, before
 =on-message-begin= of the next.
+
+** Asking for lenient parsing
+
+The parser is strict by default and asks, once per parser before the first
+byte, whether you want each of llhttp's eleven leniencies. Each question is an
+OPTIONAL callback answering ='yes= or ='no=; leave it unbound and the answer
+is ='no=.
+
+#+begin_src scheme
+(list (list 'on-lenient-headers (lambda (p ctx) 'yes))
+      (list 'on-lenient-version (lambda (p ctx) 'yes)))
+#+end_src
+
+: on-lenient-headers                on-lenient-data-after-close
+: on-lenient-chunked-length         on-lenient-optional-lf-after-cr
+: on-lenient-keep-alive             on-lenient-optional-crlf-after-chunk
+: on-lenient-transfer-encoding      on-lenient-optional-cr-before-lf
+: on-lenient-version                on-lenient-spaces-after-chunk-size
+:                                   on-lenient-header-value-relaxed
+
+They correspond one-for-one to llhttp's =llhttp_set_lenient_*= functions, and
+each does what that function's documentation says. *Asked once, not once per
+message:* the questions sit ahead of the parser's entry state, so a pipelined
+connection is asked at the start and the mode survives every restart.
+
+*Two of them are only useful together.* =optional-cr-before-lf= sends a bare
+LF after a chunk size to the node that then expects the LF it just consumed,
+so a chunk size ending in a bare LF needs =optional-lf-after-cr= as well.
+That is upstream's behaviour, reproduced.
+
+*Why questions and not a flags argument.* At the version this parser is built
+against, a field's initial value belonged to the machine and there was no way
+to start a parser in a mode — so the embedder's answer arrives as a branch key
+instead. The generator has since grown settable fields, and this surface is
+expected to change to match.
 
 * Reading parser state
 

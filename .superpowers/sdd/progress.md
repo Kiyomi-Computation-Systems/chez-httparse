@@ -1774,3 +1774,61 @@ preset afterwards, where the lane is absent rather than skipped.
 CI on merged main is run `35035674698`: `linux-amd64 failure steps=0`,
 23:26:36 -> 23:26:39, no logs. The billing refusal 0004 names, not a test
 result — the fourth merge running.
+
+## 2026-09-16 — M10: lenient modes, and 253 of 253
+
+All eleven `LENIENT_FLAGS`, in seven slices. Ratchet 253 / 0 / 21, and the 21
+are `url.md` alone — every HTTP fixture llhttp ships now passes at every chunk
+size. `make test-all` green at 81 lanes, 82 with the opt-in oracle; the live
+differential unchanged at agreed=1097 url-machine=45 late-complete=4
+unclassified=0.
+
+**The ratchet carried the milestone.** Scoping a lenient fixture by whether its
+FLAGS are implemented — one list in `ratchet.sls` — turned an eleven-flag
+milestone into seven slices, each one name added and its fixtures re-classed in
+the same diff. The tree was never red and the manifest never ran ahead of the
+parser. That is the same two-way gate from 0008 doing a job nobody designed it
+for.
+
+**The version subgraph had to come apart first**, and that is worth separating
+from the feature. It fused "store this digit" with "is this an accepted pair":
+only digits in 0.9/1.0/1.1/2.0 had a store node. Same three errors, same three
+offsets, and no way to print `v=5/6`. Store-then-check is llhttp's own shape,
+and it landed green against 216 fixtures and the live oracle before any lenient
+code existed — which is why a reviewer can read the refactor separately from
+the thing that needed it.
+
+**A FLAG'S SITES ARE NOT ALL IN ONE FILE.** Four fixtures across two different
+flags failed at the same line, on a test in `src/native/http.c` rather than in
+the generated grammar: `llhttp__after_headers_complete` drops a request's
+invalid-transfer-encoding refusal if EITHER `LENIENT_CHUNKED_LENGTH` or
+`LENIENT_TRANSFER_ENCODING` is set. Grepping the TypeScript for flag names
+finds nothing. The general form: a generated parser with a hand-written runtime
+half has two places a mode can be read, and only one of them greps.
+
+**Two flags can meet on one node under one reason.** A request line ending in a
+bare LF is `Expected CRLF after version`, the same reason the lone-CR case
+gives from the same node — so the failure looked like an OPTIONAL_LF_AFTER_CR
+fork that was already there, and was the other flag's arm of the same node.
+Found by a fixture, not by reading.
+
+**A quieter wrong answer is worse than a loud one.** TRANSFER_ENCODING has two
+routes into one refusal; forking one left `span[header_value]="chunked"` where
+the oracle records `"chunked, deflate"` — a truncated span instead of an error,
+which no exit status would have caught.
+
+**The disable sweep is now the standard coverage question.** Each of the
+thirty-two forks turned off in turn and the red lanes counted: thirty are
+reached by the corpus, two are not. Both of those carry cases measured against
+purpose-built lenient oracle binaries — the same technique M9 used for the
+skip-body upgrade arm — and re-disabling either fails its lane.
+
+**Upstream shipped the answer to our fourth brief mid-milestone.** byte-machine
+`v0.5.0` (Milestone 13) adds settable fields and a `make-parser` inits
+argument, and its changelog names the collapse in our terms: eleven optional
+callbacks and twenty-two entry nodes become one settable field and one
+argument. `parser-reset!` restores the embedder's initials, which is stronger
+than the re-ask this tree relies on. THE PIN MOVE IS DELIBERATELY NOT IN THIS
+MILESTONE: a dependency bump folded into a behaviour milestone is a red lane
+nobody can attribute, and the 253-fixture ratchet can prove a behaviour-
+preserving refactor changed nothing only if it is the only thing in the diff.

@@ -678,9 +678,8 @@
            ;; `checkVersion` TESTS THE FLAG FIRST and accepts the pair
            ;; unexamined when it is set -- llhttp's own order, and the reason
            ;; the digits had to be stored before they were judged.
-           (make-field-branch-node 'version-check 'mask-any
-                                   (list 'lenient-flags (lenient-bit 'version))
-                                   'version-close 'version-check-strict #f))
+           (lenient-fork 'version-check 'version
+                         'version-close 'version-check-strict))
      (version-check-nodes)))
 
   ;; llhttp's `llhttp_message_needs_eof`, which is a pure question over the

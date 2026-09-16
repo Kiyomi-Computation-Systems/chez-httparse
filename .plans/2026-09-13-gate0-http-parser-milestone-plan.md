@@ -440,11 +440,53 @@ lines are copied from that run and this parser matches them exactly. Decision
 argument, cashed a second time: the corpus is a set of cases someone chose,
 and the oracle answers about the ones they did not.
 
-### Deferred, in order
+### M10 — lenient modes — DONE
 
-**M10** lenient modes (37) · **M11** the URL sub-parser (21). Both are
-vendored and ratcheted from M1, so each deferral is a visible count rather
-than an absence.
+All eleven of llhttp's `LENIENT_FLAGS`, and with them the last 37 HTTP
+fixtures. Ratchet **253 passing / 0 not-yet / 21 deferred**, and the 21 are
+`url.md` alone. Seven slices, decision
+[0020](decisions/0020-lenient-modes-a-flag-at-a-time.md).
+
+**The ratchet is what made an eleven-flag milestone tractable.** A lenient
+fixture is in scope when its flags are IMPLEMENTED — one list in
+`ratchet.sls` — so a slice is one name added and its fixtures re-classed in
+the same reviewed diff. The tree was never red and the manifest was never
+ahead of the parser.
+
+**The version subgraph had to come apart before any of it.** It fused "store
+this digit" with "is this an accepted pair", which gave the right three errors
+at the right three offsets and could not print `v=5/6`. Store-then-check is
+llhttp's shape, and the refactor landed green against 216 fixtures and the
+live differential before a line of lenient code existed.
+
+**A flag's sites are not all in one file.** Four fixtures across two different
+flags failed at one line whose test lives in the hand-written C rather than
+the generated grammar: `llhttp__after_headers_complete` suppresses a request's
+invalid-transfer-encoding refusal if EITHER `LENIENT_CHUNKED_LENGTH` or
+`LENIENT_TRANSFER_ENCODING` is set. Grepping `src/llhttp/*.ts` for the flag
+names cannot find it.
+
+**Two flags can meet on one node under one reason.** A request line ending in
+a bare LF gives `Expected CRLF after version` — the same reason its lone-CR
+sibling gives, from the same node — so the failure read as an
+`OPTIONAL_LF_AFTER_CR` fork already in place when it was the other flag's arm.
+`request/invalid.md#22` is what named it.
+
+**Coverage was measured, not assumed.** Each of the thirty-two forks disabled
+in turn: thirty turn lanes red, two turn nothing red. Those two carry cases
+taken from purpose-built lenient oracle binaries, and re-disabling either now
+fails its lane. The same sweep is how M9's uncovered site was found.
+
+**One divergence is reasoned rather than measured, and says so.** Under
+`HEADER_VALUE_RELAXED` alone a NUL in a header value loops in llhttp with no
+byte consumed; the verifier refuses that shape, so NUL takes the strict
+parser's error instead. The oracle takes its input as argv, so no NUL can be
+fed to it either way.
+
+### Deferred
+
+**M11** the URL sub-parser (21 fixtures) — vendored and ratcheted from M1, so
+the deferral is a visible count rather than an absence.
 
 ## Reachable ceilings, measured
 

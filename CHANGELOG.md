@@ -8,6 +8,32 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Lenient modes — all eleven flags, and with them every HTTP fixture llhttp
+  ships.** The ratchet stands at **253 of 253**; the 21 that remain are
+  `url.md`, which is a separate parser
+  ([0020](.plans/decisions/0020-lenient-modes-a-flag-at-a-time.md)).
+
+  Each flag arrives as an OPTIONAL decision callback asked once, ahead of the
+  machine's entry, and sets a bit in a `lenient-flags` field of its own —
+  separate from `flags`, because the restart between two messages zeroes that
+  one and a mode the embedder chose must survive it. An embedder that wants
+  none of them binds nothing and parses strictly, which is what the other 216
+  fixtures do.
+
+  Every leniency is one mask test, because that is all `testLenientFlags` is
+  upstream: thirty-two of them across the eleven flags. Thirty are reached by
+  the vendored corpus — measured by disabling each in turn — and the two that
+  are not carry cases taken from purpose-built lenient oracle binaries.
+
+  Landed a flag at a time. The ratchet scopes a lenient fixture by whether its
+  flags are IMPLEMENTED, so each slice is one name added to a list and its
+  fixtures re-classed in the same reviewed diff.
+
+- **The version subgraph stores every digit and judges the pair afterwards**,
+  which is llhttp's `checkVersion` shape. It previously fused the two — only a
+  digit belonging to 0.9/1.0/1.1/2.0 had a store node — which gave the same
+  three errors at the same three offsets and could not print `v=5/6`.
+
 - **Pausing, and `skipBody`** — M9, the 26 fixtures decision
   [0009](.plans/decisions/0009-v01-is-strict-request-and-response-parsing.md)
   deferred past v0.1. The ratchet stands at **216 of 253** HTTP fixtures, from

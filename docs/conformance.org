@@ -3,11 +3,12 @@
 
 The claim this project makes is narrow and checkable: *strict-mode HTTP/1.x
 request and response parsing, byte-exact against llhttp's own recorded
-traces, for 216 of the 253 HTTP fixtures in its conformance corpus.* The
-other 37, plus 21 URL fixtures, are enumerated below rather than omitted.
+traces, for *all 253* HTTP fixtures in its conformance corpus.* The 21 URL
+fixtures are a separate parser and are enumerated below rather than omitted.
 
-v0.1 shipped 190 of them. Pausing and =skipBody= — 26 fixtures — came in
-after it, and are on =main= unreleased.
+v0.1 shipped 190 of them, strict-mode only. Pausing and =skipBody= (26) came
+in after it, then the eleven lenient flags (37). All of that is on =main=,
+unreleased.
 
 A compatibility claim that names what it does not do is the only kind worth
 publishing.
@@ -39,14 +40,13 @@ The result is a *ratchet*: a manifest naming every fixture and its status. It
 fails both when a passing fixture breaks and when a deferred one starts
 passing, so a change in either direction is a reviewed diff.
 
-* The 58 still out
+* The 21 still out
 
 | Deferred       | Fixtures | Why                                               |
 |----------------+----------+---------------------------------------------------|
-| Lenient modes  |       37 | this parser is strict only                        |
 | URL sub-parser |       21 | =url.md= only; the target is one opaque span here |
 
-Each is a milestone of its own, and every one of their fixtures is already
+It is a milestone of its own, and every one of its fixtures is already
 vendored and already in the ratchet — so the deferral is a visible count
 rather than an absence, and the day one is picked up its corpus is present,
 checksummed, and failing for the right reason.
