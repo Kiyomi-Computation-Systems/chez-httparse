@@ -23,6 +23,10 @@ Design Principles 2–6):
 ```
   build time                          run time
   ----------                          --------
+  (httparse modes)  <---------------  (httparse modes)   pure, imports NOTHING:
+    llhttp's mode tables                  llhttp's type and lenient-flag numbers
+        ^                                         |
+        |                                         v
   (httparse grammar)                  (generated httparse-message)
     builds the source IR    --emit-->   depends on (byte-machine runtime) ALONE
     via (byte-machine graph)                    |
@@ -34,6 +38,13 @@ Design Principles 2–6):
                                         (httparse parser)   the imperative shell:
                                           make-http-parser, feed!, reset!, callbacks
 ```
+
+`(httparse modes)` is the first piece of the pure layer actually built, and
+the only one that is BOTH build-time and run-time: the grammar reads a bit to
+place a branch, and an embedder writes the same bit at `make-parser`. It
+arrived when the two modes became settable fields
+([0021](decisions/0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md))
+and three consumers needed one table instead of three.
 
 `(httparse grammar)` is build-time only and never ships. The generated parser is
 a **checked-in derived artifact** — committed, with a determinism lane that
@@ -439,6 +450,26 @@ lines are copied from that run and this parser matches them exactly. Decision
 [0010](decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md)'s
 argument, cashed a second time: the corpus is a set of cases someone chose,
 and the oracle answers about the ones they did not.
+
+### After M10 — the pin move — DONE
+
+Not a milestone: no fixture moved, and nothing was deferred on it. The
+generator's `v0.5.0` answers this project's fourth upstream brief with
+settable fields and a fourth `make-parser` argument, so the two modes an
+embedder chooses stopped being callbacks. Decision
+[0021](decisions/0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md),
+three commits, generated ABI 7 -> 8.
+
+Ratchet unchanged at **253 / 0 / 21** and the differential unmoved, which is
+the point: the acceptance criterion was "everything still passes AND the
+artifact is smaller". It is — 457 states to 434, 37 callback declarations to
+25, 8508 fewer bytes.
+
+**The pin moved on its own commit so the machine could be proved unchanged.**
+With no settable field declared, the regenerated artifact is byte-identical to
+its ABI-7 self but for the version literal, and the IR fingerprint is the same
+number. That is a stronger statement than any reading of a 4000-line diff, and
+it only works if nothing else is in the commit.
 
 ### M10 — lenient modes — DONE
 

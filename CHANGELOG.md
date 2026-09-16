@@ -6,6 +6,47 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The two modes an embedder chooses are settable FIELDS, written at
+  `make-parser`, not callbacks the parser asks**
+  ([0021](.plans/decisions/0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md)).
+  The pin moved to the generator's `v0.5.0`, which answers this project's
+  fourth upstream brief, and the surface collapses to llhttp's own:
+
+  ```scheme
+  (make-parser httparse-message-machine bindings #f
+               (list (cons 'type (httparse-message-type-value 'request))
+                     (cons 'lenient-flags
+                           (httparse-lenient-flags-value '(headers version)))))
+  ```
+
+  **`on-message-type` and the eleven `on-lenient-*` callbacks are gone.** So
+  is the twenty-two-node ask chain ahead of the machine's entry. The emitted
+  parser loses 23 states (457 → 434) and 12 callback declarations (37 → 25),
+  and shrinks by 8508 bytes. Ratchet unchanged at 253, and the live
+  differential is unmoved.
+
+  Two properties improved rather than merely moved. The message kind was asked
+  **once per message**, so an embedder could have answered `request` for one
+  pipelined message and `response` for the next, which `s->type` cannot do
+  upstream — a surface narrower than llhttp's now, where it was wider. And
+  `parser-reset!` restores the initials **you gave**, so a mode no longer
+  blinks to zero on a reset, coming back only because the next feed re-asked.
+
+  **One thing is later rather than better, and is recorded rather than
+  smoothed over:** a missing `on-message-type` binding used to be refused by
+  `make-parser`, and a missing `type` initial is now refused at offset 0 with
+  the same code and reason. A field initial cannot be made mandatory.
+
+  New pure library **`(httparse modes)`**, importing nothing — llhttp's bit
+  tables and the arithmetic over them, so the grammar, the harness and an
+  embedder read one source rather than three.
+
+- **Generated-runtime ABI 7 → 8.** A settable machine emits an optional fourth
+  metadata member. Moved on its own commit, with the machine proved unchanged
+  by its IR fingerprint rather than by reading the diff.
+
 ### Added
 
 - **Lenient modes — all eleven flags, and with them every HTTP fixture llhttp

@@ -1,5 +1,18 @@
 # Upstream brief: a parser cannot be started in a mode
 
+> **DISCHARGED — 2026-09-16.** Shipped upstream as Milestone 13 / `v0.5.0`:
+> settable uint fields and a `field-initials` argument on `make-parser`, with
+> `parser-reset!` restoring the embedder's value. This consumer moved its pin
+> and took the collapse in full — the eleven optional lenient callbacks, the
+> twenty-two-node ask chain and the required `on-message-type` are all gone,
+> in exchange for two settable declarations and one argument. See
+> [decision 0021](decisions/0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md).
+>
+> **Kept as written, and not edited to match what shipped.** A brief is
+> evidence of what the consumer could measure at the time it was filed;
+> rewriting it after the fact would leave nothing to check the answer against.
+> The pin and ABI stated below are the ones this brief was written at.
+
 **For a fresh session working in `byte-machine` (not this repository).**
 Recorded here under decision 0006 item 4 — every gap the shakeout consumer
 finds is recorded, including the ones it works around.

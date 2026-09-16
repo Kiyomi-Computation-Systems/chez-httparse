@@ -2,6 +2,10 @@
 
 Date: 2026-09-15
 Status: accepted
+Superseded in part by: [0021](0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md) — the mechanism only. `type` is a
+settable field an embedder writes at `make-parser`, which is what this record
+wanted and could not have. Everything it argues about the third arm, the kind
+not being derivable, and the fall-through being an error still holds.
 Milestone: M7
 
 ## Context

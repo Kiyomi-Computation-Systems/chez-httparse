@@ -10,6 +10,7 @@ bytevector rather than a string.
 
 #+begin_src scheme
 (import (generated httparse-message)   ; httparse-message-machine
+        (httparse modes)               ; the mode tables, pure
         (byte-machine runtime))        ; make-parser, parser-feed!, ...
 #+end_src
 
@@ -18,19 +19,25 @@ bytevector rather than a string.
 diff and loadable without running a generator. It depends on
 =(byte-machine runtime)= and nothing else.
 
+=(httparse modes)= is pure and depends on nothing at all — it is llhttp's two
+mode tables and the arithmetic over them. You need it only to spell the
+fourth argument below; the integers are llhttp's own, so a caller that
+already has one may pass it directly.
+
 * Making a parser
 
-: make-parser : CompiledMachine (Listof (List Symbol Procedure)) Any -> Parser
+: make-parser : CompiledMachine (Listof (List Symbol Procedure)) Any [FieldInitials] -> Parser
 
 The third argument is a *user context* handed back to every callback. Use it
 for the connection state you would otherwise close over; =#f= is fine.
 
+The fourth is optional and is where *the modes* go — see below.
+
 *Every REQUIRED callback must be bound.* A binding list with a hole is
 refused when the parser is made, not quietly ignored. That is deliberate: a
 parser that silently dropped =on-body-data= would look like a message with no
-body. The eleven lenient-mode callbacks are the exception — they are optional,
-they default to strict, and an embedder that wants strict parsing binds none
-of them.
+body. There are no optional callbacks: everything the parser declares, it
+requires.
 
 * Feeding bytes
 
@@ -84,24 +91,12 @@ An outcome is =callback-continue=, =callback-pause=, or a
 
 ** The one callback that answers
 
-=on-message-type= is a *decision*: it returns ='request= or ='response=, and
-it is asked once per message, before the first byte of the start line is
-read.
+=on-headers-complete= is a *decision*: it returns ='skip-body= or nothing.
+Pausing is allowed there, because a resumed run re-enters the body decision
+exactly where an unpaused one would.
 
-#+begin_src scheme
-(list 'on-message-type (lambda (p ctx) 'request))
-#+end_src
-
-HTTP does not say which is coming — a request begins with a method and a
-response with =HTTP/= — and the embedder always knows, from which side of the
-connection it is on. llhttp has the caller write a field before parsing;
-there is no field writer here, so the parser asks. Decision 0017 records the
-alternatives and why this one.
-
-Returning neither symbol, or pausing, is an error: pausing is not answering.
-=on-headers-complete= is the other callback that answers — with ='skip-body=,
-or nothing — and there pausing IS allowed, because a resumed run re-enters
-the body decision exactly where an unpaused one would.
+It is the only one. =on-message-type= used to be the other, and is now the
+=type= mode below — see *Choosing the modes*.
 
 ** The full list
 
@@ -120,45 +115,74 @@ the body decision exactly where an unpaused one would.
 
 Events with no span: =on-message-begin=, =on-headers-complete=,
 =on-chunk-header=, =on-chunk-complete=, =on-message-complete=, =on-reset=.
-Plus the decision =on-message-type=.
+
+That is the whole list — *twenty-five, all required*. There is no
+=on-message-type= and there are no =on-lenient-*=; both are modes now.
 
 =on-reset= fires between pipelined messages on one parser, before
 =on-message-begin= of the next.
 
-** Asking for lenient parsing
+* Choosing the modes
 
-The parser is strict by default and asks, once per parser before the first
-byte, whether you want each of llhttp's eleven leniencies. Each question is an
-OPTIONAL callback answering ='yes= or ='no=; leave it unbound and the answer
-is ='no=.
+=make-parser='s fourth argument is an alist of *field initials*. Two fields
+accept one, and together they are everything the parser needs to be told
+before the first byte:
 
 #+begin_src scheme
-(list (list 'on-lenient-headers (lambda (p ctx) 'yes))
-      (list 'on-lenient-version (lambda (p ctx) 'yes)))
+(make-parser httparse-message-machine bindings #f
+             (list (cons 'type (httparse-message-type-value 'request))
+                   (cons 'lenient-flags
+                         (httparse-lenient-flags-value '(headers version)))))
 #+end_src
 
-: on-lenient-headers                on-lenient-data-after-close
-: on-lenient-chunked-length         on-lenient-optional-lf-after-cr
-: on-lenient-keep-alive             on-lenient-optional-crlf-after-chunk
-: on-lenient-transfer-encoding      on-lenient-optional-cr-before-lf
-: on-lenient-version                on-lenient-spaces-after-chunk-size
-:                                   on-lenient-header-value-relaxed
+Both are llhttp's own integers, written the way llhttp's embedder writes
+them. The alist is *range-checked at construction* and refused for an unknown
+or non-settable field name, a duplicate, or an out-of-range value — so a
+misspelled mode is an error, never a silent default.
+
+** =type= — request or response
+
+HTTP does not say which is coming: a request begins with a method and a
+response with =HTTP/=, and the embedder always knows, from which side of the
+connection it is on.
+
+: (httparse-message-type-value 'request)   ; => 1
+: (httparse-message-type-value 'response)  ; => 2
+
+*This one has no safe default.* Omit it and the parser starts at llhttp's
+=HTTP_BOTH=, which this parser does not implement — llhttp's third arm sniffs
+the first bytes and v0.1 does not — so the first feed returns
+='unexpected-message-type= at offset 0 rather than guessing. That is a
+refusal, not a fallback, but it is a refusal *one feed later* than the
+missing-callback error it replaced. Decision 0021 records why that was
+accepted.
+
+** =lenient-flags= — llhttp's eleven leniencies
+
+A bitset, strict at zero, which is the default when the row is omitted.
+
+: (httparse-lenient-flags-value '(version optional-lf-after-cr))   ; => 80
+
+: headers                 data-after-close
+: chunked-length          optional-lf-after-cr
+: keep-alive              optional-crlf-after-chunk
+: transfer-encoding       optional-cr-before-lf
+: version                 spaces-after-chunk-size
+:                         header-value-relaxed
 
 They correspond one-for-one to llhttp's =llhttp_set_lenient_*= functions, and
-each does what that function's documentation says. *Asked once, not once per
-message:* the questions sit ahead of the parser's entry state, so a pipelined
-connection is asked at the start and the mode survives every restart.
+each does what that function's documentation says.
+
+*Set once, not once per message.* The field is written at construction, and
+the restart between two pipelined messages does not touch it — it stores zero
+over =flags=, which is a different field for exactly this reason. It also
+survives =parser-reset!=, which restores the initials *you* gave rather than
+the ones the machine declares.
 
 *Two of them are only useful together.* =optional-cr-before-lf= sends a bare
 LF after a chunk size to the node that then expects the LF it just consumed,
 so a chunk size ending in a bare LF needs =optional-lf-after-cr= as well.
 That is upstream's behaviour, reproduced.
-
-*Why questions and not a flags argument.* At the version this parser is built
-against, a field's initial value belonged to the machine and there was no way
-to start a parser in a mode — so the embedder's answer arrives as a branch key
-instead. The generator has since grown settable fields, and this surface is
-expected to change to match.
 
 * Reading parser state
 
@@ -182,7 +206,9 @@ length; by =on-message-complete= it is zero.
 : parser-finish! : Parser -> ParserResult
 
 =parser-reset!= returns the parser to its just-constructed state, fields
-included — restored to their *declared initials*, not to zero.
+included — restored to the initials it was *built with*: yours for the two
+modes above, the machine's declared ones for everything else. Not to zero,
+and not back to the machine's defaults.
 
 =parser-resume!= changes the lifecycle only: no callback runs, no input is
 read, and it returns an acknowledgement symbol rather than a result. Feed or

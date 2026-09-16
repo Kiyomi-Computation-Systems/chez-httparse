@@ -2,6 +2,9 @@
 
 Date: 2026-09-16
 Status: accepted
+Amended by: [0021](0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md) — item 1 only. The eleven optional
+callbacks and the twenty-two-node ask chain are gone; `lenient-flags` is a
+settable field. Items 2 onward are untouched.
 Amends: [0009](0009-v01-is-strict-request-and-response-parsing.md) (its deferral of lenient modes)
 Builds on: [0019](0019-the-harness-mode-and-the-two-kinds-of-pause.md)
 Milestone: Gate 0 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md), M10

@@ -3,7 +3,9 @@
 Date: 2026-09-13
 Status: accepted, amended in part
 Supersedes: [0002](0002-byte-machine-consumption-and-abi.md), decision item 3
-Amended by: [0012](0012-generated-abi-6-and-keyword-tables.md), decision item 2
+Amended by: [0012](0012-generated-abi-6-and-keyword-tables.md), decision item 2;
+then [0015](0015-generated-abi-7-and-a-pause-carries-its-reason.md) and [0021](0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md),
+same item
 Milestone: Gate 0 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md)
 
 > **Decision item 2's ABI number is amended by
@@ -13,6 +15,12 @@ Milestone: Gate 0 (.plans/2026-09-13-gate0-http-parser-milestone-plan.md)
 > that did not exist at ABI 5. The title and filename here keep the number this
 > record was written with, so links to it do not rot. Items 1, 3, 4 and 5 stand
 > as written — item 5 is what produced the amendment, by failing at the pin.
+>
+> **And amended twice more since**, by the same item and the same mechanism:
+> **7** at [0015](0015-generated-abi-7-and-a-pause-carries-its-reason.md), when a
+> pause gained a reason, and **8** at [0021](0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md), when a
+> field gained a settable initial. Four numbers in one record's lifetime is item
+> 5 earning its keep: the ABI is re-read at each pin and never remembered.
 
 ## Context
 

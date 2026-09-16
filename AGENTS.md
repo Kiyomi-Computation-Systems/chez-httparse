@@ -412,6 +412,49 @@ dependency lands, go back to what its absence was blocking and ASK WHAT IS
 LEFT, rather than reading the old note. The cheapest form of the question is
 to promote the rows and run the lane — the answer takes one build.
 
+## A fingerprint beats reading the diff
+
+Moving the pin regenerates a 4000-line artifact. Nobody reviews that diff, and
+a reviewer who says they did is the weakest link in the chain.
+
+The pin move to the generator's `v0.5.0` did it differently: move the
+submodule, change nothing else, regenerate, and check that the emitted text is
+byte-identical to its predecessor **but for the ABI literal** — and that the
+IR fingerprint the artifact carries is unchanged. The fingerprint is computed
+from the IR rather than the text, so it answers the question the diff only
+gestures at: not "does this look the same" but "is this the same machine".
+
+    sed 's/compiled-machine 7 /compiled-machine 8 /' old.sls | cmp - new.sls
+
+Two consequences worth keeping. **Put the pin on its own commit**, because the
+check only works when nothing else moved. And when the pin move is a refactor
+rather than a feature, "the diff is smaller" becomes an honest acceptance
+criterion — but only alongside something that can say *and nothing else
+changed*: here, 253 fixtures at every chunk size plus the live differential's
+five counts.
+
+## A test that names a mechanism dies with it — rewrite it, do not delete it
+
+Deleting the lenient ask chain orphaned five cases: three in `unit.lenient`,
+two in `unit.adapter`. Each asserted the MECHANISM — that eleven callbacks
+were bound, that exactly one more binding appeared per flag, that a counting
+binding was called once. None of them would compile against the new shape, and
+all five would have been easy to delete along with the code they covered.
+
+That is coverage silently lost, and the ratchet cannot see it: 253 fixtures
+pass either way. So for each one, ask what BEHAVIOUR the mechanism existed to
+produce, and assert that instead. The counting binding existed to prove the
+mode is chosen once and survives a restart — which is still true and is now
+read straight off the field after two restarts. The binding-count case existed
+to prove no callback is invented and none is missed — still true, and now an
+exact equality with the trace-row count.
+
+**Two of the five came out stronger than they went in**, which is the tell
+that the rewrite was worth doing rather than a formality. The reset case could
+previously only say "cleared, then re-asked, so it works out"; it now says the
+field holds the embedder's value before any byte and still holds it after
+`parser-reset!`.
+
 ## Explain the behaviour in the code and the version in the changelog
 
 The rename audit has caught the same thing in four consecutive milestones, most
