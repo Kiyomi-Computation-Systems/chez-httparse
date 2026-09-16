@@ -36,16 +36,13 @@ counted. See [[file:docs/conformance.org][docs/conformance.org]].
 
 #+begin_src scheme
 (import (generated httparse-message)
+        (httparse modes)
         (byte-machine runtime))
 
 (define parser
   (make-parser
    httparse-message-machine
    (list
-    ;; The one callback that ANSWERS: nothing in the bytes says whether a
-    ;; request or a response is coming, and the embedder always knows.
-    (list 'on-message-type (lambda (p ctx) 'request))
-
     ;; A span callback gets bounds into YOUR bytevector. Nothing is copied
     ;; and nothing is retained -- take what you need before returning.
     (list 'on-method-data
@@ -57,7 +54,13 @@ counted. See [[file:docs/conformance.org][docs/conformance.org]].
     ;; binding list with a hole is refused when the parser is made, not
     ;; quietly ignored.
     )
-   #f))
+   #f
+   ;; The mode, chosen before the first byte. Nothing in the bytes says
+   ;; whether a request or a response is coming, and the embedder always
+   ;; knows; the second row is llhttp's lenient bitset, and omitting it
+   ;; parses strictly.
+   (list (cons 'type (httparse-message-type-value 'request))
+         (cons 'lenient-flags (httparse-lenient-flags-value '())))))
 
 (let ((r (parser-feed! parser chunk 0 (bytevector-length chunk))))
   (case (parser-result-status r)

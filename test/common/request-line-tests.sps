@@ -14,12 +14,18 @@
 (import (rnrs)
         (httparse test harness)
         (httparse grammar)
+        (httparse modes)
         (byte-machine graph)
         (byte-machine verify)
         (byte-machine interpret)
         (byte-machine runtime))
 
 (define compiled (make-interpreted-machine (verify-machine (make-message-machine))))
+
+;; Every case in this lane is a request, and a parser that is not told so
+;; refuses at the first byte. `type` is a settable field, so saying it is
+;; `make-parser`'s fourth argument rather than a binding.
+(define request-init (list (cons 'type (httparse-message-type-value 'request))))
 
 ;; Runs `input` and returns (values status events), where an event is
 ;;   (name offset)                       an event callback
@@ -44,10 +50,6 @@
     (let* ((p (make-parser compiled
                            (list (list 'on-reset (ev 'reset))
                                  (list 'on-message-begin (ev 'message-begin))
-                                 ;; The one binding that ANSWERS. Every case
-                                 ;; in this lane is a request, and a parser
-                                 ;; that is not told so refuses to start.
-                                 (list 'on-message-type (lambda (p ctx) 'request))
                                  (list 'on-method-data (span 'method))
                                  (list 'on-method-complete (ev 'method-complete))
                                  (list 'on-url-data (span 'url))
@@ -71,7 +73,7 @@
                                  (list 'on-chunk-extension-value-complete (ev 'chunk-ext-value-complete))
                                  (list 'on-chunk-complete (ev 'chunk-complete))
                                  (list 'on-message-complete (ev 'message-complete)))
-                           #f))
+                           #f request-init))
            (bv (string->utf8 input))
            (r (feed! p bv)))
       (values r (reverse events)))))
@@ -106,7 +108,6 @@
   (define (ignore-span p ctx bv from to) callback-continue)
   (list (list 'on-reset ignore-event)
         (list 'on-message-begin ignore-event)
-        (list 'on-message-type (lambda (p ctx) 'request))
         (list 'on-method-data ignore-span)
         (list 'on-method-complete ignore-event)
         (list 'on-url-data ignore-span)
@@ -373,7 +374,7 @@
     (harness-case "end of input inside the method is unexpected-eof"
       (lambda ()
         (let* ((bv (string->utf8 "GE"))
-               (p (make-parser compiled (ignoring-bindings) #f)))
+               (p (make-parser compiled (ignoring-bindings) #f request-init)))
           (parser-feed! p bv 0 2)
           (check-equal "code" (parser-error-code (parser-result-error (parser-finish! p)))
                        'unexpected-eof))))
@@ -383,7 +384,7 @@
         ;; which is what lets the message loop terminate in a later milestone.
         (check-equal "status"
                      (parser-result-status
-                      (parser-finish! (make-parser compiled (ignoring-bindings) #f)))
+                      (parser-finish! (make-parser compiled (ignoring-bindings) #f request-init)))
                      'finished)))))
 
 (harness-group "the result does not depend on how the input is split"
@@ -408,7 +409,6 @@
                  (p (make-parser compiled
                                  (list (list 'on-reset (ev 'reset))
                                        (list 'on-message-begin (ev 'message-begin))
-                                       (list 'on-message-type (lambda (p ctx) 'request))
                                        (list 'on-method-data (span 'method))
                                        (list 'on-method-complete (ev 'method-complete))
                                        (list 'on-url-data (span 'url))
@@ -432,7 +432,7 @@
                                        (list 'on-chunk-extension-value-complete (ev 'chunk-ext-value-complete))
                                        (list 'on-chunk-complete (ev 'chunk-complete))
                                        (list 'on-message-complete (ev 'message-complete)))
-                                 #f)))
+                                 #f request-init)))
             (let loop ((i 0))
               (when (< i (bytevector-length bv))
                 (parser-feed! p bv i (+ i 1))

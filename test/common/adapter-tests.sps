@@ -60,11 +60,11 @@
                        on-header-field-data on-header-value-data on-body-data
                        on-chunk-extension-name-data
                        on-chunk-extension-value-data))
-        ;; THE DECISION CALLBACK IS NOT A ROW, and that is the point: llhttp's
+        ;; THE MESSAGE TYPE IS NOT A ROW, and that is the point: llhttp's
         ;; harness sets `s->type` in an init hook that prints nothing, so a
         ;; trace name for it would be a line the oracle never writes.
         (check "the message type has no trace row"
-               (not (assq adapter-message-type-callback adapter-trace-names)))))
+               (not (assq 'on-message-type adapter-trace-names)))))
     (harness-case "an unknown callback is refused, not guessed"
       (lambda ()
         (check "refused"
@@ -233,25 +233,27 @@
 ;; the only one whose VALUE is decided by the caller.
 (harness-group "the binding list"
   (lambda ()
-    (harness-case "every declared callback is bound, and the type is bound too"
+    (harness-case "one binding per trace row, and nothing else"
       (lambda ()
         (let ((bs (trace-recorder-bindings (make-trace-recorder) '(request) #f)))
-          (check-equal "one per row, plus the decision"
-                       (length bs) (+ 1 (length adapter-trace-names)))
-          (check "the message type is bound"
-                 (and (assq adapter-message-type-callback bs) #t)))))
-    (harness-case "the bound type is the one the caller asked for"
+          ;; It was one MORE than the rows until the message type became a
+          ;; settable field. The exact count is the check worth keeping: a
+          ;; binding with no row is a callback this harness invented, and a
+          ;; row with no binding is one the parser would refuse to run.
+          (check-equal "exactly one per row" (length bs) (length adapter-trace-names))
+          (check "the message type is not among them"
+                 (not (assq 'on-message-type bs))))))
+    (harness-case "the type the caller asked for becomes llhttp's own number"
       (lambda ()
         ;; A REQUIRED ARGUMENT, because llhttp's harness cannot build a parser
         ;; without saying what it is parsing. A default here would silently
         ;; make every response a request, and the `headers complete` line
         ;; would print `method=0` for all 66 of them.
-        (for-each
-         (lambda (want)
-           (let* ((bs (trace-recorder-bindings (make-trace-recorder) (list want) #f))
-                  (f (cadr (assq adapter-message-type-callback bs))))
-             (check-equal (symbol->string want) (f #f #f) want)))
-         adapter-message-types)))
+        ;;
+        ;; The numbers are `enum llhttp_type`: HTTP_REQUEST 1, HTTP_RESPONSE 2.
+        (check-equal "a request" (cdr (assq 'type (adapter-parser-inits '(request)))) 1)
+        (check-equal "a response" (cdr (assq 'type (adapter-parser-inits '(response)))) 2)
+        (check-equal "both kinds are accepted" (length adapter-message-types) 2)))
     (harness-case "a kind that is neither is refused, not assumed"
       (lambda ()
         (check "url" (refuses? (lambda () (trace-recorder-bindings
@@ -295,23 +297,49 @@
         (check "upstream's spelling, which is not ours"
                (refuses? (lambda () (trace-recorder-bindings
                                      (make-trace-recorder) '(request lenient_version) #f))))))
-    (harness-case "only the named flags are bound"
+    (harness-case "a flag the init names becomes llhttp's own bit"
       (lambda ()
-        ;; An unbound optional callback takes the machine's declared default,
-        ;; which is the strict answer. Binding all eleven and answering `no`
-        ;; would look the same from outside and would leave that default
-        ;; unexercised by all 216 strict fixtures.
-        (let ((strict (trace-recorder-bindings (make-trace-recorder) '(request) #f))
-              (lenient (trace-recorder-bindings (make-trace-recorder)
-                                                '(request version) #f)))
-          (check "strict binds no lenient callback"
-                 (not (assq 'on-lenient-version strict)))
-          (check "lenient binds exactly the one named"
-                 (and (assq 'on-lenient-version lenient) #t))
-          (check "and not its neighbours"
-                 (not (assq 'on-lenient-headers lenient)))
-          (check-equal "one more binding than strict"
-                       (- (length lenient) (length strict)) 1))))))
+        ;; `s->lenient_flags |= LENIENT_VERSION` is `1 << 4`, and the whole
+        ;; of the adapter's job here is to produce that integer. The numbers
+        ;; are asserted against llhttp's `LENIENT_FLAGS` enum and not against
+        ;; anything this parser computes.
+        (check-equal "strict is an explicit zero"
+                     (adapter-parser-inits '(request))
+                     '((type . 1) (lenient-flags . 0)))
+        (check-equal "one flag is its own bit"
+                     (adapter-parser-inits '(request version))
+                     '((type . 1) (lenient-flags . 16)))
+        (check-equal "the first and the last, together"
+                     (adapter-parser-inits '(response headers header-value-relaxed))
+                     '((type . 2) (lenient-flags . 1025)))
+        ;; The order a hook writes them in cannot matter -- `|=` is
+        ;; commutative over there and this must be too.
+        (check-equal "order is not significant"
+                     (adapter-parser-inits '(request version headers))
+                     (adapter-parser-inits '(request headers version)))))
+    (harness-case "and the bindings no longer carry a lenient callback at all"
+      (lambda ()
+        ;; Until the generator grew settable fields each flag was an optional
+        ;; decision callback and this group counted bindings. The machine declares
+        ;; none of them now, so a leftover binding would not be ignored --
+        ;; `make-parser` refuses a binding naming no declaration, which is
+        ;; how a half-finished version of this change would have announced
+        ;; itself.
+        (let ((bs (trace-recorder-bindings (make-trace-recorder) '(request version) #f)))
+          (check "none bound"
+                 (not (exists (lambda (b)
+                                (let ((n (symbol->string (car b))))
+                                  (and (> (string-length n) 11)
+                                       (string=? (substring n 0 11) "on-lenient-"))))
+                              bs))))))
+    (harness-case "an undeclared flag is refused by the init reader too"
+      (lambda ()
+        ;; The refusal above goes through `trace-recorder-bindings`; this is
+        ;; the same guard on the path that now carries the flags.
+        (check "not a flag"
+               (refuses? (lambda () (adapter-parser-inits '(request lenient)))))
+        (check "a near miss"
+               (refuses? (lambda () (adapter-parser-inits '(request versions)))))))))
 
 ;;; THE HARNESS MODE IS THE THIRD REQUIRED ARGUMENT, and it is ONE argument
 ;;; rather than two because upstream makes the two exclusive in the C

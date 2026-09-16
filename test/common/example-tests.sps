@@ -13,6 +13,7 @@
 (import (rnrs)
         (httparse test harness)
         (generated httparse-message)
+        (httparse modes)
         (byte-machine runtime))
 
 ;; --- the example, exactly as the README shows it --------------------------
@@ -30,10 +31,6 @@
            (make-parser
             httparse-message-machine
             (list
-             ;; The one binding that answers a question: this parser is told
-             ;; what it is parsing, because a request and a response begin
-             ;; differently and no byte says which is coming.
-             (list 'on-message-type (lambda (p ctx) 'request))
              (list 'on-method-data
                    (lambda (p ctx bv from to)
                      (set! method (text bv from to)) callback-continue))
@@ -88,7 +85,12 @@
              (list 'on-chunk-extension-value-complete ignore-event)
              (list 'on-chunk-complete ignore-event)
              (list 'on-message-complete ignore-event))
-            #f)))
+            #f
+            ;; THIS PARSER IS TOLD WHAT IT IS PARSING, because a request and
+            ;; a response begin differently and no byte says which is coming.
+            ;; `type` is a settable field and this is `make-parser`'s fourth
+            ;; argument -- the same one integer llhttp's embedder writes.
+            (list (cons 'type (httparse-message-type-value 'request))))))
       ;; Feed the pieces as they arrive. `need-input` means keep going.
       (let loop ((cs chunks) (result #f))
         (if (null? cs)

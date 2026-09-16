@@ -2,6 +2,7 @@
 
 Date: 2026-09-15
 Status: accepted
+Amended by: [0021](0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md) — the generated ABI is 8.
 Amends: [0012](0012-generated-abi-6-and-keyword-tables.md), item 1 (which amended [0005](0005-byte-machine-pinned-by-gitlink-generated-abi-5.md) item 2)
 Milestone: the pin move to `v0.4.0`, between M4 and M5
 
