@@ -80,19 +80,36 @@
   ;;   whole-span     : (Option Symbol)  the span open across the whole url
   ;;   exit-sp/cr/lf  : Symbol           where a space, CR or LF goes once
   ;;                                     this subgraph has closed its own span
-  (define (make-url-config parts-spanned? whole-span exit-sp exit-cr exit-lf)
-    (list parts-spanned? whole-span exit-sp exit-cr exit-lf))
+  (define (make-url-config parts-spanned? whole-span exit-sp exit-cr exit-lf err-prefix)
+    (list parts-spanned? whole-span exit-sp exit-cr exit-lf err-prefix))
   (define (cfg-parts-spanned? c) (list-ref c 0))
   (define (cfg-whole-span c) (list-ref c 1))
   (define (cfg-exit c which)
     (case which ((sp) (list-ref c 2)) ((cr) (list-ref c 3)) ((lf) (list-ref c 4))
       (else (assertion-violation 'cfg-exit "no such exit" which))))
+  ;; WHAT THIS SUBGRAPH'S ERROR NODES ARE CALLED. A machine that splices the
+  ;; subgraph in already has error nodes of its own, and `e-eof-none` is the
+  ;; name both would want -- so the caller chooses a prefix rather than the
+  ;; two colliding or the subgraph quietly reusing a node it does not own.
+  (define (cfg-err-prefix c) (list-ref c 5))
+  (define (cfg-err c name)
+    (string->symbol (string-append (cfg-err-prefix c) name)))
+  (define (cfg-span-err c kind span)
+    (cfg-err c (string-append kind "-" (span-suffix span))))
 
   ;; The span actually open at a node that is "inside" the part named `part`.
   ;; With separate spans that IS the part; with one whole-url span it is that
   ;; span throughout, because the part spans are stubs and open nothing.
+  ;;
+  ;; `'outside` IS NOT `#f`, and conflating them is a real bug this caught.
+  ;; `#f` means "inside the url, between parts" -- where the whole-url span
+  ;; IS open if there is one. `'outside` means the entry nodes, which run
+  ;; BEFORE that span opens and after nothing has. With separate spans the
+  ;; two coincide; with one whole span they do not, and the verifier said so.
   (define (cfg-span c part)
-    (if (cfg-parts-spanned? c) part (cfg-whole-span c)))
+    (cond ((eq? part 'outside) #f)
+          ((cfg-parts-spanned? c) part)
+          (else (cfg-whole-span c))))
 
   ;; The five part spans, in the order upstream's table lists them.
   (define url-span-parts '(schema-span host-span path-span query-span fragment-span))
@@ -117,9 +134,6 @@
       ;; every other span does, and needs its own copies for the same reason.
       ((url-span) "url")
       (else (assertion-violation 'span-suffix "no such span" span))))
-  (define (span-error prefix span)
-    (string->symbol (string-append prefix (span-suffix span))))
-
   ;; EVERY NODE REFUSES TAB AND FORM FEED, and consumes the offending byte.
   ;; That is upstream's `private node(name)`, which wraps every construction
   ;; in `.match(['\t','\f'], this.errorInvalid)` -- a MATCH and not a peek, so
@@ -129,15 +143,15 @@
   (define (url-node c name part cases fallback)
     (let ((span (cfg-span c part)))
       (make-byte-dispatch-node name
-        (cons (bytes-case (list TAB FF) (span-error "e-invalid-" span) 'advance) cases)
-        fallback (span-error "e-eof-" span) #f)))
+        (cons (bytes-case (list TAB FF) (cfg-span-err c "invalid" span) 'advance) cases)
+        fallback (cfg-span-err c "eof" span) #f)))
 
   ;; A node that consumes exactly one byte, whatever it is, and moves on.
   ;; Upstream's `.skipTo(n)`, which is `otherwise` with the advance it
   ;; normally withholds.
   (define (skip-to c name part target)
     (make-byte-dispatch-node name '() (make-edge target 'advance)
-                             (span-error "e-eof-" (cfg-span c part)) #f))
+                             (cfg-span-err c "eof" (cfg-span c part)) #f))
 
   ;; The space / CR / LF exits, which every node inside a URL carries and no
   ;; fixture in `url.md` reaches -- none of the 21 inputs contains one. They
@@ -233,8 +247,9 @@
   ;; way: its `endTo` closes `url` after the part span, outside the loop that
   ;; gives each node its three edges.
   (define (url-subgraph parts-spanned? whole-span exit-sp exit-cr exit-lf
-                        connect? eof-error)
-    (let* ((c (make-url-config parts-spanned? whole-span exit-sp exit-cr exit-lf))
+                        connect? eof-error err-prefix)
+    (let* ((c (make-url-config parts-spanned? whole-span exit-sp exit-cr exit-lf
+                               err-prefix))
            ;; Where `entry.normal` goes: through the whole-url span's start if
            ;; there is one, straight to `start` if there is not.
            (after-entry (if whole-span 'url-whole-open 'url-start))
@@ -242,7 +257,7 @@
            (path-entry (part-span-start-target c 'url-path-open 'url-path-skip))
            (query-entry (part-span-start-target c 'url-query-open 'url-query))
            (fragment-entry (part-span-start-target c 'url-fragment-open 'url-fragment))
-           (none (lambda (prefix) (span-error prefix (cfg-span c #f))))
+           (none (lambda (kind) (cfg-span-err c kind (cfg-span c #f))))
            ;; The span states any node can be in, and so how many copies of
            ;; the two errors every node reaches are needed. With separate
            ;; spans that is six; with one whole-url span it is two.
@@ -252,7 +267,7 @@
         ;; --- entry ------------------------------------------------------------
         ;; Upstream's `entry.normal`, which opens the whole-url span and falls
         ;; into `start`. The tab/form-feed refusal is the node wrapper's.
-        (url-node c 'url-entry-normal #f '() (make-edge after-entry 'reexecute)))
+        (url-node c 'url-entry-normal 'outside '() (make-edge after-entry 'reexecute)))
        (if whole-span
            (list (make-span-start-node 'url-whole-open whole-span 'url-start #f))
            '())
@@ -265,7 +280,7 @@
        ;; field, made by the caller.
        (if connect?
            (append
-            (list (url-node c 'url-entry-connect #f '()
+            (list (url-node c 'url-entry-connect 'outside '()
                             (make-edge (if whole-span 'url-connect-open host-entry)
                                        'reexecute)))
             (if whole-span
@@ -283,24 +298,24 @@
         ;; SP, CR and LF are refused HERE and are exits everywhere else: a URL
         ;; may end at a space, but it may not begin at one.
         (url-node c 'url-start #f
-          (list (bytes-case (list SP CR LF) (none "e-invalid-") 'advance)
+          (list (bytes-case (list SP CR LF) (none "invalid") 'advance)
                 (bytes-case '(47 42) path-entry 'reexecute)
                 (bytes-case httparse-url-alpha-bytes
                             (part-span-start-target c 'url-schema-open 'url-schema)
                             'reexecute))
-          (make-edge 'e-bad-start 'reexecute)))
+          (make-edge (cfg-err c "bad-start") 'reexecute)))
 
        ;; --- schema -------------------------------------------------------------
        (part-span-start c 'url-schema-open 'schema-span 'url-schema)
        (list
         (url-node c 'url-schema 'schema-span
           (list (bytes-case (list SP CR LF)
-                            (span-error "e-invalid-" (cfg-span c 'schema-span)) 'advance)
+                            (cfg-span-err c "invalid" (cfg-span c 'schema-span)) 'advance)
                 (bytes-case httparse-url-alpha-bytes 'url-schema 'advance)
                 (bytes-case '(58)
                             (part-span-end-target c 'url-schema-close 'url-schema-colon)
                             'reexecute))
-          (make-edge 'e-bad-schema-open 'reexecute)))
+          (make-edge (cfg-err c "bad-schema-open") 'reexecute)))
        ;; The colon is PEEKED so the span closes before it, then skipped.
        (part-span-end c 'url-schema-close 'schema-span 'url-schema-colon)
        (list
@@ -318,11 +333,11 @@
         ;; fallback, and upstream consults its own tab/space matches only at
         ;; the node's first byte too.
         (url-node c 'url-schema-delim #f
-          (list (bytes-case (list SP CR LF) (none "e-invalid-") 'advance))
+          (list (bytes-case (list SP CR LF) (none "invalid") 'advance))
           (make-edge 'url-schema-slashes 'reexecute))
         (make-sequence-dispatch-node 'url-schema-slashes
           (list (make-sequence-case '(47 47) host-entry #f))
-          (make-edge 'e-bad-schema-delim 'reexecute) (none "e-eof-") #f))
+          (make-edge (cfg-err c "bad-schema-delim") 'reexecute) (none "eof") #f))
 
        ;; --- server (host, and the userinfo that may precede it) ----------------
        (part-span-start c 'url-host-open 'host-span 'url-server)
@@ -341,18 +356,18 @@
                  (bytes-case httparse-userinfo-bytes 'url-server 'advance)
                  (bytes-case '(91 93) 'url-server 'advance))
            (exit-cases c "url-server" 'host-span))
-          (make-edge 'e-bad-server 'reexecute))
+          (make-edge (cfg-err c "bad-server") 'reexecute))
         (url-node c 'url-server-with-at 'host-span
           (append
            (list (bytes-case '(47) (part-span-end-target c 'url-server-path path-entry)
                              'reexecute)
                  (bytes-case '(63) (part-span-end-target c 'url-server-query query-entry)
                              'advance)
-                 (bytes-case '(64) 'e-double-at 'advance)
+                 (bytes-case '(64) (cfg-err c "double-at") 'advance)
                  (bytes-case httparse-userinfo-bytes 'url-server-with-at 'advance)
                  (bytes-case '(91 93) 'url-server-with-at 'advance))
            (exit-cases c "url-server" 'host-span))
-          (make-edge 'e-bad-server 'reexecute)))
+          (make-edge (cfg-err c "bad-server") 'reexecute)))
 
        ;; `/` is peeked, so the host span closes before it and the path span
        ;; opens ON it: `span[url.host]="hostname"` then `span[url.path]="/"`.
@@ -385,7 +400,7 @@
            (list (bytes-case '(63) query-entry 'advance)
                  (bytes-case '(35) fragment-entry 'advance))
            (exit-cases c "url-qf" #f))
-          (make-edge 'e-bad-path 'reexecute)))
+          (make-edge (cfg-err c "bad-path") 'reexecute)))
 
        ;; --- query --------------------------------------------------------------
        (part-span-start c 'url-query-open 'query-span 'url-query)
@@ -401,7 +416,7 @@
                              (part-span-end-target c 'url-query-close 'url-query-hash)
                              'reexecute))
            (exit-cases c "url-query" 'query-span))
-          (make-edge 'e-bad-query 'reexecute)))
+          (make-edge (cfg-err c "bad-query") 'reexecute)))
        (part-span-end c 'url-query-close 'query-span 'url-query-hash)
        (list (skip-to c 'url-query-hash #f fragment-entry))
 
@@ -415,7 +430,7 @@
            (list (bytes-case httparse-url-char-bytes 'url-fragment 'advance)
                  (bytes-case '(63 35) 'url-fragment 'advance))
            (exit-cases c "url-fragment" 'fragment-span))
-          (make-edge 'e-bad-fragment 'reexecute)))
+          (make-edge (cfg-err c "bad-fragment") 'reexecute)))
 
        ;; The span-closing exits, one set per part span that can be open.
        ;; With the parts stubbed these contribute nothing and the exit edges
@@ -428,27 +443,27 @@
        ;; span lattice, so an error reachable with two different spans open
        ;; needs two nodes. Six states with separate spans, two with one.
        (map (lambda (span)
-              (make-error-node (span-error "e-invalid-" span) 'invalid-chars #f))
+              (make-error-node (cfg-span-err c "invalid" span) 'invalid-chars #f))
             states)
        (map (lambda (span)
-              (make-error-node (span-error "e-eof-" span) eof-error #f))
+              (make-error-node (cfg-span-err c "eof" span) eof-error #f))
             states)
 
        (list
-        (make-error-node 'e-bad-start 'bad-start #f)
+        (make-error-node (cfg-err c "bad-start") 'bad-start #f)
         ;; ONE REASON, TWO NODES, and the difference is whether the schema span
         ;; is still open: `url_schema` refuses a non-ALPHA with the span live,
         ;; `url_schema_delim` refuses a missing `//` after it has closed.
         ;; Upstream has one error object there because llparse does not track
         ;; spans this way; the pair is the same behaviour, since the reason
         ;; string and the code are what a trace shows.
-        (make-error-node 'e-bad-schema-open 'bad-schema #f)
-        (make-error-node 'e-bad-schema-delim 'bad-schema #f)
-        (make-error-node 'e-bad-server 'bad-server #f)
-        (make-error-node 'e-double-at 'double-at #f)
-        (make-error-node 'e-bad-path 'bad-path #f)
-        (make-error-node 'e-bad-query 'bad-query #f)
-        (make-error-node 'e-bad-fragment 'bad-fragment #f)))))
+        (make-error-node (cfg-err c "bad-schema-open") 'bad-schema #f)
+        (make-error-node (cfg-err c "bad-schema-delim") 'bad-schema #f)
+        (make-error-node (cfg-err c "bad-server") 'bad-server #f)
+        (make-error-node (cfg-err c "double-at") 'double-at #f)
+        (make-error-node (cfg-err c "bad-path") 'bad-path #f)
+        (make-error-node (cfg-err c "bad-query") 'bad-query #f)
+        (make-error-node (cfg-err c "bad-fragment") 'bad-fragment #f)))))
 
   ;; make-url-machine : -> Machine
   ;; The STANDALONE build: five separate spans, no whole-url span, and both
@@ -478,7 +493,7 @@
       ;; refuse it as an unreachable node. The HTTP parser is where it is
       ;; needed and where it is asked for.
       (url-subgraph #t #f 'url-skip-to-http 'url-skip-lf-to-http09
-                    'url-skip-to-http09 #f 'eof)
+                    'url-skip-to-http09 #f 'eof "e-")
       (list
        ;; --- the adaptors, and the loop the test build closes -------------------
        ;; Upstream returns `toHTTP`/`toHTTP09` as EXITS for the HTTP parser to
