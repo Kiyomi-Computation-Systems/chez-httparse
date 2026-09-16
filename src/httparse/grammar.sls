@@ -696,12 +696,13 @@
      (list (make-uint-field 'lenient-flags httparse-lenient-flags-width 0 #t #f)
            (make-uint-field 'method-protocols 8 0 #f)
            (make-uint-field 'method 8 0 #f)
-           ;; llhttp's `i8 type`, and its `i16 status_code`. The first is set
-           ;; by the embedder through `on-message-type` below; the second is
-           ;; accumulated from the three digits of the status line. Both are
-           ;; printed: `headers complete` carries one OR the other, chosen by
-           ;; `type`, which is what llhttp's own callback does.
-           (make-uint-field 'type 8 TYPE-BOTH #f)
+           ;; llhttp's `i8 type`, and its `i16 status_code`. The first is
+           ;; SETTABLE and the embedder writes it at `make-parser`, exactly as
+           ;; llhttp's does before the parse; the second is accumulated from
+           ;; the three digits of the status line. Both are printed: `headers
+           ;; complete` carries one OR the other, chosen by `type`, which is
+           ;; what llhttp's own callback does.
+           (make-uint-field 'type 8 TYPE-BOTH #t #f)
            (make-uint-field 'status-code 16 0 #f)
            (make-uint-field 'http-major 8 0 #f)
            (make-uint-field 'http-minor 8 0 #f)
@@ -726,14 +727,6 @@
            (make-uint-field 'initial-message-completed 8 0 #f))
      (list (make-callback-declaration 'on-reset 'event #t '() #f #f)
            (make-callback-declaration 'on-message-begin 'event #t '() #f #f)
-           ;; THE ONE CALLBACK THAT ANSWERS RATHER THAN REPORTS, and the only
-           ;; DECISION callback in this grammar. llhttp reads a field an
-           ;; embedder wrote before the parse; byte-machine's runtime exposes
-           ;; no field writer, so the same configuration arrives as a branch
-           ;; key. `required?` is the whole point -- a parser that was never
-           ;; told what it is parsing refuses to start rather than guessing.
-           (make-callback-declaration 'on-message-type 'decision #t
-                                      '(request response) #f #f)
            (make-callback-declaration 'on-method-data 'span-data #t '() #f #f)
            (make-callback-declaration 'on-method-complete 'event #t '() #f #f)
            (make-callback-declaration 'on-url-data 'span-data #t '() #f #f)
@@ -999,33 +992,30 @@
       ;;
       ;; llhttp reads a FIELD here -- `load('type', {REQUEST: start_req,
       ;; RESPONSE: start_res}, start_req_or_res)` -- which its embedder wrote
-      ;; before the parse. byte-machine's runtime exposes `parser-field-ref`
-      ;; and no writer, and a field's initial value belongs to the MACHINE, so
-      ;; a per-parser mode cannot arrive that way without emitting the same
-      ;; graph twice. It arrives as a DECISION callback instead: the embedder
-      ;; answers `request` or `response` once per message, and the branch
-      ;; stores llhttp's own number so everything downstream -- including the
-      ;; `headers complete` line -- reads the field llhttp reads.
+      ;; before the parse, and so does this. The field is SETTABLE and the
+      ;; embedder writes it at `make-parser`, so these two nodes are a read
+      ;; and nothing else.
       ;;
-      ;; THE FALL-THROUGH IS AN ERROR, NOT A DEFAULT. `continue` from a
-      ;; decision callback means "no branch", and there is no safe kind to
-      ;; assume; llhttp's third arm is `start_req_or_res`, which v0.1 does not
-      ;; have (see TYPE-BOTH above).
+      ;; IT WAS A DECISION CALLBACK, ASKED ONCE PER MESSAGE, until the
+      ;; generator could start a parser in a mode. That was a wider surface
+      ;; than llhttp's, not a narrower one: `s->type` is written once over
+      ;; there and cannot change between two pipelined messages, where an
+      ;; embedder answering this callback could have said `request` and then
+      ;; `response` on one connection. Nothing in the corpus did, so nothing
+      ;; recorded it -- which is why this is worth writing down rather than
+      ;; leaving to the ratchet.
       ;;
-      ;; PAUSING IS NOT ANSWERING, so the pause continuation is the refusal
-      ;; too. Every other callback here resumes where an un-paused run would
-      ;; have gone, but there is no such place for a question: re-entering
-      ;; this node would ask again and a run that answered `pause` twice would
-      ;; never advance, which is exactly what the verifier's
-      ;; `zero-progress-cycle` refuses.
-      (make-callback-node 'switch-type 'on-message-type 'e-no-message-type
-                          (list (list 'request 'type-store-request)
-                                (list 'response 'type-store-response))
-                          'e-no-message-type #f)
-      (make-field-action-node 'type-store-request 'store (list 'type TYPE-REQUEST)
-                              'method-open #f #f)
-      (make-field-action-node 'type-store-response 'store (list 'type TYPE-RESPONSE)
-                              'protocol-open #f #f)
+      ;; THE FALL-THROUGH IS AN ERROR, NOT A DEFAULT, and TYPE-BOTH is what
+      ;; reaches it: llhttp's third arm is `start_req_or_res`, which v0.1 does
+      ;; not have (see TYPE-BOTH above). An embedder that passes no `type`
+      ;; initial gets the declared TYPE-BOTH and this refusal at the first
+      ;; byte -- where a missing REQUIRED callback used to be refused at
+      ;; `make-parser`. A field initial cannot be made mandatory, so the
+      ;; refusal moved rather than went away; decision 0021 records the trade.
+      (make-field-branch-node 'switch-type 'equal (list 'type TYPE-REQUEST)
+                              'method-open 'switch-type-response #f)
+      (make-field-branch-node 'switch-type-response 'equal (list 'type TYPE-RESPONSE)
+                              'protocol-open 'e-no-message-type #f)
 
       ;; --- method -------------------------------------------------------------
       (make-span-start-node 'method-open 'method-span 'method-table #f)
@@ -1114,7 +1104,7 @@
       ;; space back to itself and only then opens the protocol span, so
       ;; `PUT /url   HTTP/1.1` records the protocol at 11. THE RESPONSE PATH
       ;; DOES NOT COME THROUGH HERE -- `res_after_start` opens the span with
-      ;; no skipping, which is why `type-store-response` still targets
+      ;; no skipping, which is why `switch-type-response` still targets
       ;; `protocol-open` directly.
       (make-byte-dispatch-node 'http-start
         (list (make-byte-case (make-exact-byte-matcher SP)

@@ -29,6 +29,7 @@
         (httparse test drive)
         (httparse test trace-format)
         (httparse grammar)
+        (httparse modes)
         (byte-machine verify)
         (byte-machine interpret)
         (byte-machine runtime))
@@ -107,7 +108,7 @@
                      (list-tail (trace '(request headers) "GET / HTTP/5.6\r\n") 8)
                      '("off=14 error code=9 reason=\"Invalid HTTP version\""))))))
 
-(harness-group "the asks happen once, ahead of everything"
+(harness-group "the mode is written once, before everything"
   (lambda ()
     (harness-case "the flag survives the restart between two messages"
       (lambda ()
@@ -161,23 +162,43 @@
                        3)
           (check-equal "and still set after two restarts"
                        (parser-field-ref p 'lenient-flags) 16))))
-    (harness-case "no initials at all is the strict parser"
+    (harness-case "no lenient bits is the strict parser"
       (lambda ()
         ;; The default path, named. Every one of the 216 strict fixtures runs
-        ;; with a zero bitset, and an embedder may reach the same parser by
-        ;; passing no fourth argument at all -- the three-argument
-        ;; `make-parser` every embedder written before v0.5.0 calls. Both
-        ;; spellings are checked, because "strict" now has two of them.
+        ;; with a zero bitset, and an embedder reaches the same parser by
+        ;; omitting the row entirely -- so both spellings are checked, because
+        ;; "strict" has two of them.
         (let* ((r (make-trace-recorder))
-               (p (make-parser machine (trace-recorder-bindings r '(request) #f) #f))
+               (p (make-parser machine (trace-recorder-bindings r '(request) #f) #f
+                               (list (cons 'type (httparse-message-type-value 'request)))))
                (bv (string->utf8 "GET / HTTP/5.6\r\n")))
-          (check-equal "unset is zero" (parser-field-ref p 'lenient-flags) 0)
+          (check-equal "an omitted row is zero" (parser-field-ref p 'lenient-flags) 0)
           (let ((res (parser-feed! p bv 0 (bytevector-length bv))))
             (check-equal "and strict" (parser-error-reason (parser-result-error res))
                          "Invalid HTTP version")))
         (check-equal "an explicit empty bitset is the same parser"
                      (list-tail (trace '(request) "GET / HTTP/5.6\r\n") 8)
-                     '("off=14 error code=9 reason=\"Invalid HTTP version\""))))))
+                     '("off=14 error code=9 reason=\"Invalid HTTP version\""))))
+    (harness-case "and a parser told nothing at all refuses at the first byte"
+      (lambda ()
+        ;; THE ONE THING THIS CHANGE MADE LATER RATHER THAN EARLIER, kept as
+        ;; a case so the trade is visible. `on-message-type` was a REQUIRED
+        ;; callback and an omitted binding was refused by `make-parser`; a
+        ;; field initial cannot be made mandatory, so a parser built with no
+        ;; `type` starts at the declared TYPE-BOTH and refuses at offset 0
+        ;; instead. Same refusal, same reason string llhttp's `type` gap
+        ;; produces here -- one feed later. Decision 0021 records why that
+        ;; was accepted.
+        (let* ((r (make-trace-recorder))
+               (p (make-parser machine (trace-recorder-bindings r '(request) #f) #f))
+               (bv (string->utf8 "GET / HTTP/1.1\r\n\r\n")))
+          (check-equal "constructed without complaint" (parser-field-ref p 'type) 0)
+          (let ((res (parser-feed! p bv 0 (bytevector-length bv))))
+            (check-equal "status" (parser-result-status res) 'error)
+            (check-equal "code" (parser-error-code (parser-result-error res))
+                         'unexpected-message-type)
+            (check-equal "at the first byte"
+                         (parser-error-offset (parser-result-error res)) 0)))))))
 
 (harness-group "LENIENT_HEADERS, at the one site no fixture reaches"
   (lambda ()

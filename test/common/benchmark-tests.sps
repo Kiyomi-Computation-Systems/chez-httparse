@@ -18,16 +18,16 @@
 (import (rnrs)
         (httparse test harness)
         (generated httparse-message)
+        (httparse modes)
         (byte-machine runtime))
 
 (define completed 0)
 
-(define (bindings kind)
+(define (bindings)
   (define (event p ctx) callback-continue)
   (define (span p ctx bv from to) callback-continue)
   (list (list 'on-reset event)
         (list 'on-message-begin event)
-        (list 'on-message-type (lambda (p ctx) kind))
         (list 'on-method-data span)
         (list 'on-method-complete event)
         (list 'on-url-data span)
@@ -85,7 +85,8 @@
 (define (parse-n bv kind chunk reps)
   (let ((len (bytevector-length bv)))
     (define (one)
-      (let ((p (make-parser httparse-message-machine (bindings kind) #f)))
+      (let ((p (make-parser httparse-message-machine (bindings) #f
+                            (list (cons 'type (httparse-message-type-value kind))))))
         (let loop ((at 0))
           (when (< at len)
             (let* ((end (min (+ at chunk) len))

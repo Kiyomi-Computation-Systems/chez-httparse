@@ -24,16 +24,18 @@
 (import (rnrs)
         (httparse test harness)
         (generated httparse-message)
+        (httparse modes)
         (byte-machine runtime))
 
 ;; Every callback is `required?`, so all of them are bound; none of them does
-;; anything, which is the point.
-(define (silent-bindings kind)
+;; anything, which is the point. The message TYPE is not among them -- it is a
+;; settable field, written at construction, so it costs no callback and no
+;; allocation.
+(define (silent-bindings)
   (define (event p ctx) callback-continue)
   (define (span p ctx bv from to) callback-continue)
   (list (list 'on-reset event)
         (list 'on-message-begin event)
-        (list 'on-message-type (lambda (p ctx) kind))
         (list 'on-method-data span)
         (list 'on-method-complete event)
         (list 'on-url-data span)
@@ -71,7 +73,8 @@
 (define (allocated-per-parse bv chunk reps)
   (let ((len (bytevector-length bv)))
     (define (one)
-      (let ((p (make-parser httparse-message-machine (silent-bindings 'request) #f)))
+      (let ((p (make-parser httparse-message-machine (silent-bindings) #f
+                            (list (cons 'type (httparse-message-type-value 'request))))))
         (let loop ((at 0))
           (if (>= at len)
               #t
