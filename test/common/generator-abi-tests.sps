@@ -19,13 +19,22 @@
         (byte-machine interpret)
         (byte-machine runtime))
 
-;; The generated-runtime ABI this repository targets (decision 0015, amending
-;; decision 0012 item 1, which amended decision 0005 item 2). Upstream bumped
-;; 5 -> 6 for the keyword-table lowering and 6 -> 7 when a pause gained a
-;; reason -- the emitted paused-outcome's error slot goes from always-#f to
-;; `#f | ParserError`. This lane has named both moves AT THE PIN rather than at
-;; load time in some later slice, which is what decision 0005 item 5 is for.
-(define expected-abi 7)
+;; The generated-runtime ABI this repository targets (decision 0021, amending
+;; decision 0015, amending decision 0012 item 1, which amended decision 0005
+;; item 2). Upstream bumped 5 -> 6 for the keyword-table lowering, 6 -> 7 when
+;; a pause gained a reason -- the emitted paused-outcome's error slot goes from
+;; always-#f to `#f | ParserError` -- and 7 -> 8 for the OPTIONAL fourth
+;; metadata member, a `(name width)` settable table the generated `make-parser`
+;; range-checks an embedder's override against. This lane has named all three
+;; moves AT THE PIN rather than at load time in some later slice, which is what
+;; decision 0005 item 5 is for.
+;;
+;; THE SMOKE MACHINE BELOW DECLARES NO FIELD AT ALL, so it emits no settable
+;; table and this number is the only thing about its text that ABI 8 changed.
+;; That is deliberate: the lane answers "what ABI does the pinned generator
+;; speak", and a machine with a settable field would conflate that with "does
+;; the feature work" -- which `unit.grammar` and the 253 fixtures answer.
+(define expected-abi 8)
 
 (define (substring-at? s i sub)
   (and (<= (+ i (string-length sub)) (string-length s))

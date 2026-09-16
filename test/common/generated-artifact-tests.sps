@@ -78,7 +78,7 @@
         ;; artifact that actually ships.
         (check-equal "abi"
                      (integer-after (text) "(byte-machine-make-compiled-machine ")
-                     7)))
+                     8)))
     (harness-case "it is the library the conformance lanes import"
       (lambda ()
         (let ((s (text)))
