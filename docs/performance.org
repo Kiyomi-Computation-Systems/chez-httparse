@@ -1,7 +1,9 @@
 #+TITLE: What chez-httparse costs
 #+OPTIONS: toc:2
 
-Two lanes measure this, and they answer different kinds of question.
+Two lanes measure this, and they answer different kinds of question. Each is
+registered twice — once running from source, once from ahead-of-time compiled
+objects — for the reason at the bottom of this page.
 
 * Allocation: a shape, asserted
 
@@ -17,8 +19,8 @@ bytevector. Nothing is copied, so a large body costs what a small one does.
 
 | message                         | allocated per whole-buffer parse |
 |---------------------------------+----------------------------------|
-| =POST= with a 10-byte body      | 6,496 B                          |
-| =POST= with a 10,000-byte body  | 6,548 B                          |
+| =POST= with a 10-byte body      | 6,592 B                          |
+| =POST= with a 10,000-byte body  | 6,640 B                          |
 
 A thousandfold more body, 0.8% more allocation. A parser that copied spans
 would show a thousandfold difference.
@@ -32,7 +34,7 @@ or re-copying consumed input.
 
 | message fed one byte at a time | allocated per feed |
 |--------------------------------+--------------------|
-| 50 bytes                       | 398 B              |
+| 50 bytes                       | 397 B              |
 | 10,043 bytes                   | 384 B              |
 
 Flat, across a message two hundred times longer.
@@ -55,21 +57,149 @@ reasons which are not about this code. The lane prints its figures and
 asserts only a floor loose enough that only a change of *kind* crosses it —
 an accidental quadratic, a per-byte allocation, a rescan.
 
-On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, source mode:
+On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, over three runs
+of each mode on 2026-09-17:
 
-| what                                         |    msg/s |   MB/s |
-|----------------------------------------------+----------+--------|
-| 308-byte request, 8 headers, whole buffer    |   20,000 |      6 |
-| 1,166-byte response, 1 KB body, whole buffer |   35,000 |     39 |
-| the same request, fed one byte at a time     |   11,000 |      3 |
+| what                                         |         msg/s | MB/s |
+|----------------------------------------------+---------------+------|
+| 308-byte request, 8 headers, whole buffer    | 14,925–15,037 |    4 |
+| 1,166-byte response, 1 KB body, whole buffer | 28,169–28,571 |   31 |
+| the same request, fed one byte at a time     |   8,000–8,695 |    2 |
 
-Read these as an order of magnitude, not a specification. They are here so
-that a later change can be compared against something, and so the cost of
-the worst case a resumable parser can be asked for — a byte at a time — is
-on the record rather than guessed at.
+The ranges are the full spread across all six runs, source and compiled
+together. Read them as an order of magnitude, not a specification. They are
+here so that a later change can be compared against something, and so the
+cost of the worst case a resumable parser can be asked for — a byte at a
+time — is on the record rather than guessed at.
+
+A rate is a quotient, and the denominator is a clock. =adapter-real-time=
+reads whole milliseconds, so a region that finishes in a handful of them is
+mostly quantisation — and the smaller the interval, the *larger* and more
+impressive the fabricated rate, which would sail over every floor above. The
+repetition counts are sized to keep each region two orders of magnitude clear
+of that, and a check asserts it, so a faster machine gets a failure rather
+than a flattering number.
 
 To take your own:
 
 #+begin_src sh
 ctest --preset release -R benchmark
 #+end_src
+
+* Source and compiled cost the same, and that is a measurement
+
+Every cost lane runs twice, =.chez.source= and =.chez.aot=. These were added
+expecting the compiled figures to beat the source ones — on the assumption,
+never checked, that a lane named "source" interprets.
+
+It does not. Measured on 2026-09-17 against Chez 10.4.1, a hot loop of
+20,000,000 iterations:
+
+| how the same code ran                         | steady state |
+|-----------------------------------------------+--------------|
+| =--script=, from source                       |        27 ms |
+| =--program=, from a =compile-program= object  |        28 ms |
+| from source, with =(current-eval interpret)=  |       455 ms |
+
+Chez compiles on load. A =.chez.source= lane is not an interpreted lane; it
+is a compiled lane that pays for the compile at startup. What ahead-of-time
+compilation buys is that startup — the allocation lane takes 0.72 s from
+source and 0.17 s compiled — while the measured region inside it is identical
+to the byte: =6,592= / =6,640= and =397= / =384= in both, on every run.
+
+So the compiled half does not publish a faster number. What it publishes is
+that these costs hold in the configuration this project ships, as an
+observation rather than an inference. The two runs print their mode beside
+every figure and sit side by side in one release log; nothing machine-checks
+that they agree, because no cross-lane comparison exists in this tree and the
+failure it would catch — a parser whose cost depends on when it was compiled
+— is not worth inventing one for.
+
+* Against llhttp, on llhttp's own benchmark
+
+The absolute rates above move with the machine. A *ratio* taken on one
+machine in one sitting does not, which makes it the more durable figure —
+and it answers the question an absolute MB/s cannot: how much of the cost is
+this parser, and how much is parsing.
+
+** The measurement is upstream's, not ours
+
+=llparse-test-fixture= — the same harness that builds the oracle binaries
+this project already compares traces against — carries a =bench= mode, and
+=npm run bench= in an llhttp checkout drives it. So there is no benchmark
+program to write: the binaries are the ones =tools/oracle/= already builds,
+invoked as =http-request-c bench <input>= rather than for a trace.
+
+In that mode the callbacks still fire; =llparse__print= and
+=llparse__print_span= return early instead of writing, so what is timed is
+the parse and the dispatch, with the I/O removed. That is the same shape as
+this project's benchmark bindings, which are bound, called, and do nothing.
+
+Upstream sizes its loop by a fixed total of *bytes* — =kBytes= is 8 GiB, and
+the iteration count is derived from the input length. That is a better
+instrument than the fixed repetition count in =benchmark-tests.sps=, because
+it holds the measured interval steady as the input changes rather than
+letting a short input shrink it.
+
+** The figures
+
+Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-17. Upstream's
+own three bench inputs, their binary and ours on the same bytes:
+
+| input                                |    llhttp | chez-httparse | ratio |
+|--------------------------------------+-----------+---------------+-------|
+| 703 B request, 8 headers, big cookie | 2,621 MB/s|      5.4 MB/s |  485× |
+| 520 B chunked =POST=                 | 1,739 MB/s|      4.8 MB/s |  365× |
+| 52 B URL                             | 2,099 MB/s|     23.6 MB/s |   89× |
+
+Computed from operations per second instead of bytes per second, the same
+three ratios come out 489×, 366× and 89× — the two readings agree, as they
+must, and neither is doing any work the other is not.
+
+** What the spread says
+
+The ratio is *not constant*, and the variance is on this side of it.
+llhttp's URL and message parsers are within 1.5× of each other per byte;
+these two differ by **4.5×** — 23.6 MB/s for the URL machine against 5.4 for
+the message machine. So the gap is not a uniform cost of being Scheme, which
+would show up as one number in all three rows. Something is concentrated in
+the message machine.
+
+It was chased, and it is *state numbering*. Chez compiles =(case st ...)= over
+integer keys as a linear scan — about 0.31 ns per arm skipped, with the total
+number of arms irrelevant and only the matching arm's position counting, at
+every optimize level. The emitted message machine has 530 states and its hot
+scanning states are numbered late (=url-path= 468, =value-loop= 235,
+=header-field-loop= 170); the standalone url machine runs the same url grammar
+at =url-path= 15 because it has only 75 states.
+
+Permuting the emitted =case= arms — which changes no semantics — moves the
+cost exactly as that model predicts: the request-target figure goes from 239.8
+to **42.4 ns/byte**, a 5.7× swing, with the url machine unmoved as a control.
+Nothing in this project's grammar, artifact or runtime is at fault; the
+dispatch is emitted by byte-machine's =render-machine=, and the fix belongs
+there. [[file:../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md][Decision 0027]] records the measurements and why no
+number here became a gate.
+
+Two things it is *not*. It is not the header section: the message machine
+scanning a request target and the url machine scanning a url are the same work
+8× apart. And it is not construction, which is 2.5% of a parse — measured by
+reusing one parser across repetitions instead of building a fresh one, which
+moved the rate from 5.2 MB/s to 5.4. Body bytes stay cheap throughout at
+~17 ns/byte, because a =Content-Length= body consumes in bulk rather than one
+dispatch per byte.
+
+** Taking these yourself
+
+The =bench= mode needs a built llhttp checkout, named the same way the
+differential names one (decision 0010):
+
+#+begin_src sh
+cmake --preset dev -DHTTPARSE_LLHTTP_ROOT=/path/to/llhttp
+cmake --build build/dev
+build/dev/llhttp-oracle/http-request-c bench "$(printf 'GET / HTTP/1.1\r\nHost: x\r\n\r\n')"
+#+end_src
+
+These figures are recorded rather than gated. A ratio is stable enough to
+gate on, which an absolute rate is not — but gating one now would lock in a
+number while the 4.5× above is still unexplained.

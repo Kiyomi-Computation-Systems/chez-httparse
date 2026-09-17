@@ -107,7 +107,8 @@
         ;; and a longer loop genuinely do, without allowing a copy.
         (let ((s (allocated-per-parse small (bytevector-length small) 200))
               (l (allocated-per-parse large (bytevector-length large) 200)))
-          (display (string-append "httparse-allocation: whole-buffer small="
+          (display (string-append "httparse-allocation: " (adapter-execution-mode)
+                                  " whole-buffer small="
                                   (number->string s) "B large="
                                   (number->string l) "B ratio="
                                   (number->string (div (* 100 (max l 1)) (max s 1)))
