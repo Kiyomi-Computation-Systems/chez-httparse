@@ -8,6 +8,25 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A bare LF after a request's version needs BOTH `OPTIONAL_CR_BEFORE_LF`
+  and `OPTIONAL_LF_AFTER_CR`**
+  ([0026](.plans/decisions/0026-the-lenient-flags-are-combined-and-the-init-hook-is-ours.md)).
+  With the first alone llhttp still refuses — at the same offset and with the
+  same reason as strict, and a different code: `Expected CRLF after version`
+  as `strict` (2) rather than as `invalid-version` (9). This parser accepted
+  it. **A message you used to parse may now be refused.**
+
+- **A response status line with no reason phrase, ending in a bare LF, is
+  accepted under `OPTIONAL_CR_BEFORE_LF`** (same decision). Upstream's
+  `res_status_code_otherwise` has an LF arm gated on that flag which this
+  parser had as a flat `Invalid response status`. A thirty-third lenient
+  fork, where decision 0020's sweep measured thirty-two — a fork that is not
+  there is not a site. **A message you used to see refused now parses.**
+
+  Neither is reachable by any fixture upstream ships: the corpus tests one
+  flag at a time where the first needs a pair, and `Invalid response status`
+  appears nowhere in the 274.
+
 - **A host may hold two `@` if they are not adjacent**
   ([0024](.plans/decisions/0024-the-url-input-generator-and-the-second-at.md)).
   llhttp accepts `http://a@b@c/p` — the host is `a@b@c` — and refuses only
@@ -25,6 +44,23 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   of the live differential, on its first sweep.
 
 ### Changed
+
+- **The generated-input lanes combine the lenient flags**
+  ([0026](.plans/decisions/0026-the-lenient-flags-are-combined-and-the-init-hook-is-ours.md)).
+  Upstream's harness picks its init hook with a `-D` at compile time and
+  ships one per (kind, single flag), so no combination can be asked of it at
+  all — and `lenient_all` sets nine of the eleven, leaving
+  `spaces-after-chunk-size` and `header-value-relaxed` combined with nothing
+  anywhere in the corpus.
+
+  A fourth oracle binary takes its mode from the environment, and
+  `generate-lenient`'s subsets walk a fixed schedule — 11 singletons, 55
+  pairs, the whole set — so the seed moves the input rather than the
+  coverage. Differential `agreed` 7730 → **9603**; the property lane gains a
+  mode tally and a floor per mode.
+
+  The custom init hook is held to upstream's own binaries at no flags and at
+  one flag, rather than argued into place.
 
 - **Both generated-input properties are now asked of both machines**
   ([0025](.plans/decisions/0025-both-properties-are-asked-of-both-machines.md)).

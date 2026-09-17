@@ -25,13 +25,17 @@
 ;;; things in.
 (library (httparse test generate)
   (export make-gen-case gen-case? gen-case-kind gen-case-bytes gen-case-origin
+          gen-case-flags
           generate-safe-byte? generate-safe-bytes?
-          generate-structured generate-mutants generate-urls
+          generate-structured generate-mutants generate-urls generate-lenient
+          ;; exported so the pair walk is judged on the schedule it produces
+          ;; rather than through a whole generated run
+          generate-lenient-schedule
           ;; exported so the mutation table is judged on exact bytes rather
           ;; than through a whole generated run
           generate-mutate generate-mutations
           generate-error? generate-error-detail)
-  (import (rnrs) (httparse test prng))
+  (import (rnrs) (httparse test prng) (httparse modes))
 
   (define-condition-type &generate &error
     make-generate-error generate-error? (detail generate-error-detail))
@@ -41,9 +45,18 @@
                       (make-who-condition who)
                       (make-message-condition detail))))
 
-  ;; A case is an input plus the two things a failure report needs: which
-  ;; parser kind it is meant for, and where it came from.
-  (define-record-type gen-case (fields kind bytes origin))
+  ;; A case is an input plus the three things a failure report needs: which
+  ;; parser kind it is meant for, which lenient flags the embedder is to set
+  ;; before the first byte, and where it came from.
+  ;;
+  ;; THE FLAGS ARE PART OF THE CASE, NOT OF THE LANE. They pick a different
+  ;; init hook over on llhttp's side and a different field initial on ours, so
+  ;; a case that carried them implicitly would be compared against the wrong
+  ;; parser. Every producer but `generate-lenient` returns an empty list,
+  ;; which is strict.
+  (define-record-type gen-case (fields kind bytes origin flags))
+
+  (define (strict-case kind bytes origin) (make-gen-case kind bytes origin '()))
 
   ;; generate-safe-byte? : Nat -> Boolean
   (define (generate-safe-byte? b) (and (>= b 1) (<= b 127)))
@@ -212,7 +225,7 @@
             (let* ((kept (substring text 0 (min cut (string-length text))))
                    (bv (string->utf8 kept)))
               (loop (+ i 1) s
-                    (cons (make-gen-case
+                    (cons (strict-case
                            (if response? 'response 'request)
                            bv
                            (str "structured seed=" (num->string seed)
@@ -220,6 +233,213 @@
                                 " framing=" (symbol->string framing)
                                 (if truncate? (str " cut=" (num->string cut)) "")))
                           acc)))))))
+
+  ;; --- the lenient generator ------------------------------------------------
+  ;;
+  ;; WHAT THIS PRODUCER IS FOR IS COMBINATIONS. Upstream's fixture harness has
+  ;; one init hook per (kind, single flag) and chooses it with a `-D` at
+  ;; compile time, so a PAIR of flags is not something llhttp's own corpus can
+  ;; be asked for: its only combination fixtures are three `*-lenient-all`
+  ;; ones, and `lenient_all` sets NINE of the eleven -- leaving
+  ;; `spaces-after-chunk-size` and `header-value-relaxed` combined with
+  ;; nothing, anywhere.
+  ;;
+  ;; THE PAIRS ARE NOT A HYPOTHESIS. Decision 0020 found two cross-flag
+  ;; interactions the hard way, both by a fixture failing rather than by
+  ;; looking: an invalid-transfer-encoding refusal that EITHER
+  ;; `chunked-length` or `transfer-encoding` suppresses, in hand-written C
+  ;; where grepping the grammar cannot find it; and a chunk-size arm that
+  ;; needs BOTH `optional-cr-before-lf` and `optional-lf-after-cr`.
+  ;;
+  ;; THE FLAG NAMES COME FROM `(httparse modes)`. A flag added to the parser
+  ;; enters this schedule rather than being silently skipped, and the pair
+  ;; count in the calibration lane moves, which is how anyone finds out.
+
+  ;; generate-lenient-schedule : -> (Listof (Listof Symbol))
+  ;; The eleven singletons, then all 55 pairs, then the whole set. A RANDOM
+  ;; DRAW OVER 55 PAIRS NEEDS HUNDREDS OF CASES to cover them and "probably
+  ;; covered" is not a coverage claim, so the subsets walk a fixed schedule
+  ;; and the INPUT is what the seed moves. Case i takes entry (i mod 67).
+  (define (generate-lenient-schedule)
+    (let* ((flags httparse-lenient-flag-names)
+           (singles (map list flags))
+           (pairs (let outer ((xs flags) (acc '()))
+                    (if (null? xs)
+                        (reverse acc)
+                        (outer (cdr xs)
+                               (let inner ((ys (cdr xs)) (acc acc))
+                                 (if (null? ys)
+                                     acc
+                                     (inner (cdr ys)
+                                            (cons (list (car xs) (car ys)) acc)))))))))
+      (append singles pairs (list flags))))
+
+  ;; Everything below is a malformation STRICT MODE REFUSES, which is what a
+  ;; lenient flag is for. A line ending that is not CRLF reaches
+  ;; `optional-lf-after-cr` and `optional-cr-before-lf`; a padded chunk size
+  ;; reaches `spaces-after-chunk-size`; a chunk not followed by CRLF reaches
+  ;; `optional-crlf-after-chunk`; a byte a header value may not carry reaches
+  ;; `headers` and `header-value-relaxed`. The framing and version pools the
+  ;; strict generator already has reach the rest.
+  (define lenient-eols '((crlf . "\r\n") (lf . "\n") (cr . "\r")))
+
+  (define lenient-chunk-pads '((none . "") (sp . " ") (sp3 . "   ") (tab . "\t")))
+
+  (define lenient-chunk-terms '((crlf . "\r\n") (lf . "\n") (none . "")))
+
+  ;; `\f` is `request/lenient-headers.md`'s own byte; the C0 and DEL bytes are
+  ;; what `header-value-relaxed` widens to. NUL is absent for the argv reason
+  ;; the module header gives, which is also why decision 0020's NUL divergence
+  ;; is reasoned rather than measured.
+  (define lenient-values
+    '("ok" "" "\x0c;" "a\x0c;b" "\x01;" "a\x7f;b" "  padded  "))
+
+  (define lenient-fields '("X-Foo" "Host" "Connection" "Trailer" "Upgrade"))
+
+  ;; `" : "` -- a space before the colon -- is a TOKEN error no lenient flag
+  ;; excuses, so a matched case does not offer it. The other three are what
+  ;; llhttp accepts strictly.
+  (define (lenient-header s eol matched? flags)
+    (let*-values (((f s) (pick s lenient-fields))
+                  ((v0 s) (pick s lenient-values))
+                  ((v) (offered? matched? flags '(headers) v0 "ok"))
+                  ((sep0 s) (pick s '(": " ":" ":\t" " : ")))
+                  ((sep) (if (and matched? (string=? sep0 " : ")) ": " sep0)))
+      (values (str f sep v eol) s)))
+
+  (define (lenient-headers-text s eol matched? flags)
+    (let-values (((n s) (prng-next s 3)))
+      (let loop ((i 0) (s s) (acc '()))
+        (if (> i n)
+            (values (apply str (reverse acc)) s)
+            (let-values (((h s2) (lenient-header s eol matched? flags)))
+              (loop (+ i 1) s2 (cons h acc)))))))
+
+  (define (lenient-chunks s eol pad term)
+    (let-values (((count s) (prng-next s 3)))
+      (let loop ((i 0) (s s) (acc '()))
+        (if (= i count)
+            (values (apply str (reverse (cons (str "0" pad eol eol) acc))) s)
+            (let-values (((n s2) (pick s '(1 3 10))))
+              (loop (+ i 1) s2
+                    (cons (str (number->string n 16) pad eol (filler n) term) acc)))))))
+
+  (define lenient-framings '(none length chunked both te-identity))
+
+  (define (lenient-body s framing eol pad term)
+    (case framing
+      ((chunked both) (lenient-chunks s eol pad term))
+      ((length) (let-values (((n s) (pick s '(0 5)))) (values (filler n) s)))
+      (else (values "" s))))
+
+  (define (lenient-framing-text framing)
+    (case framing
+      ((none) '())
+      ((length) (list "Content-Length: 5"))
+      ((chunked) (list "Transfer-Encoding: chunked"))
+      ((both) (list "Content-Length: 5" "Transfer-Encoding: chunked"))
+      ((te-identity) (list "Transfer-Encoding: identity"))
+      (else (refuse 'lenient-framing-text "unknown framing"))))
+
+  ;; HALF THE CASES ARE MATCHED TO THEIR SUBSET AND HALF ARE NOT, and that is
+  ;; a MEASURED correction rather than a flourish. Drawing the malformations
+  ;; freely produced inputs that die at the first thing their flags cannot
+  ;; excuse: 4 of 134 parsed without an error, so the fragmentation-invariance
+  ;; property -- which is about error-free parses -- had almost no lenient
+  ;; input to hold of.
+  ;;
+  ;; In a MATCHED case a malformation is offered only when the subset contains
+  ;; the flag that excuses it, so the lenient path is walked to the end. In a
+  ;; FREE case they are drawn independently, which is where a flag that does
+  ;; not excuse what you thought turns up -- both of the interactions this
+  ;; producer found on its first run were free cases.
+  ;;
+  ;; The matched rule for a line ending wants BOTH lf flags, because a bare LF
+  ;; after a request's version needs both. Over-conservative here costs a few
+  ;; error-free cases; under-conservative would cost the property.
+  (define (offered? matched? flags needed choice plain)
+    (if (and matched? (not (for-all (lambda (f) (memq f flags)) needed)))
+        plain
+        choice))
+
+  ;; generate-lenient : Nat Nat -> (Listof GenCase)
+  ;; `count` messages from `seed`, each carrying the schedule's next flag
+  ;; subset. Both kinds appear; the subset does NOT depend on the seed, so two
+  ;; seeds put the same 67 subsets against different inputs -- which is the
+  ;; shape that makes running more than one seed worth anything.
+  (define (generate-lenient seed count)
+    (let ((schedule (generate-lenient-schedule)))
+      (let loop ((i 0) (s (make-prng seed)) (acc '()))
+        (if (= i count)
+            (reverse acc)
+            (let*-values (((flags) (list-ref schedule (mod i (length schedule))))
+                          ((matched? s) (chance s 1 2))
+                          ((response? s) (chance s 1 2))
+                          ((eol0 s) (pick s lenient-eols))
+                          ((eol) (offered? matched? flags
+                                           '(optional-cr-before-lf optional-lf-after-cr)
+                                           eol0 (car lenient-eols)))
+                          ((pad0 s) (pick s lenient-chunk-pads))
+                          ((pad) (offered? matched? flags '(spaces-after-chunk-size)
+                                           pad0 (car lenient-chunk-pads)))
+                          ((term0 s) (pick s lenient-chunk-terms))
+                          ((term) (offered? matched? flags '(optional-crlf-after-chunk)
+                                            term0 (car lenient-chunk-terms)))
+                          ((framing0 s) (pick s lenient-framings))
+                          ((framing) (if (and matched?
+                                              (memq framing0 '(both te-identity))
+                                              (not (or (memq 'transfer-encoding flags)
+                                                       (memq 'chunked-length flags))))
+                                         'length
+                                         framing0))
+                          ((m s) (pick s methods))
+                          ((t s) (pick s targets))
+                          ((pr s) (pick s protocols))
+                          ((v0 s) (pick s versions))
+                          ((v) (offered? matched? flags '(version) v0 "1.1"))
+                          ((code s) (pick s status-codes))
+                          ((reason s) (pick s reasons))
+                          ((hs s) (lenient-headers-text s (cdr eol) matched? flags))
+                          ((body s) (lenient-body s framing (cdr eol)
+                                                  (cdr pad) (cdr term))))
+              (let* ((start (if response?
+                                (str pr "/" v " " (num->string code)
+                                     (if (string=? reason "") "" (str " " reason))
+                                     (cdr eol))
+                                (str m " " t " " pr "/" v (cdr eol))))
+                     (framing-lines
+                      (apply str (map (lambda (l) (str l (cdr eol)))
+                                      (lenient-framing-text framing))))
+                     (text (str start framing-lines hs (cdr eol) body)))
+                (let*-values (((cut? s) (chance s 1 6))
+                              ((cut s) (if cut?
+                                           (prng-next s (max 1 (string-length text)))
+                                           (values (string-length text) s))))
+                  (let* ((kept (substring text 0 (min cut (string-length text))))
+                         (bv (string->utf8 kept)))
+                    (loop (+ i 1) s
+                          (cons (make-gen-case
+                                 (if response? 'response 'request)
+                                 bv
+                                 (str "lenient seed=" (num->string seed)
+                                      " n=" (num->string i)
+                                      " flags=" (join-flags flags)
+                                      " eol=" (symbol->string (car eol))
+                                      " chunk=" (symbol->string (car pad))
+                                      "/" (symbol->string (car term))
+                                      " framing=" (symbol->string framing)
+                                      (if matched? " matched" " free")
+                                      (if cut? (str " cut=" (num->string cut)) ""))
+                                 flags)
+                                acc))))))))))
+
+  (define (join-flags flags)
+    (if (null? flags)
+        "none"
+        (let loop ((fs (cdr flags)) (out (symbol->string (car flags))))
+          (if (null? fs)
+              out
+              (loop (cdr fs) (str out "+" (symbol->string (car fs))))))))
 
   ;; --- the url generator ----------------------------------------------------
   ;;
@@ -332,7 +552,7 @@
                       (let* ((kept (substring text 0 (max 1 cut)))
                              (bv (string->utf8 kept)))
                         (loop (+ i 1) s
-                              (cons (make-gen-case
+                              (cons (strict-case
                                      'url bv
                                      (str "url seed=" (num->string seed)
                                           " n=" (num->string i)
@@ -398,7 +618,7 @@
                         ((byte s) (prng-next s 127)))
             (let ((bv (generate-mutate op (cddr base) at (+ byte 1))))
               (loop (+ i 1) s
-                    (cons (make-gen-case
+                    (cons (strict-case
                            (car base) bv
                            (str "mutant seed=" (num->string seed)
                                 " n=" (num->string i)

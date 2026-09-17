@@ -561,6 +561,30 @@ across several seeds rather than from the first number you see — ours is 15
 against a worst observed 26 — and print the per-kind tally beside the check,
 so a reader can see which member is carrying it.
 
+## A build cache that hashes arguments has not hashed your file
+
+The differential's lenient oracle is upstream's parser built with an init
+hook of ours, passed to `llparse-test-fixture` in its `extra` list. A
+deliberately wrong hook — `LENIENT_HEADERS` swapped for
+`LENIENT_CHUNKED_LENGTH` — produced a byte-identical binary and a green run.
+
+The cache keys on the generated header, the generated C and
+`commonArgs.join(' ')`, then skips the compile when a file with that digest
+exists. Our file reaches it as a **path** in that argument list. The path did
+not change, so the digest did not, so nothing was rebuilt.
+
+Two habits. **When you hand a source file to someone else's build, check what
+their cache key covers** — an argument list is the common case and it almost
+never includes file contents. Putting the file's content hash into the
+arguments as a define nothing reads is enough. And **a mutation that catches
+nothing is a result to chase, not to replace**: the instinct is to pick a
+different mutation, and the different mutation would have passed too.
+
+This is `a derived file can silently stop describing its source` pointed at
+someone else's build system. Our own emitted parsers have a lane for exactly
+this; a binary built outside the tree had none and needed none once the key
+was right.
+
 ## Explain the behaviour in the code and the version in the changelog
 
 The rename audit has caught the same thing in four consecutive milestones, most
@@ -652,6 +676,14 @@ second one.
 So: when a fixture has been red for more than one milestone and you have an
 explanation for it, the explanation being true is not evidence that it is
 complete. Go and read the thing that produces the line.
+
+**A name is a claim too.** `llhttp__test_init_request_lenient_all` sets
+**nine** of the eleven lenient flags: `SPACES_AFTER_CHUNK_SIZE` and
+`HEADER_VALUE_RELAXED` are not in it. Three fixtures use it and they are the
+whole of upstream's combination coverage, so those two flags are combined
+with nothing anywhere in the corpus. Nobody would have checked a constant
+called `lenient_all` against its own definition; reading it took one minute
+and changed what the generator had to cover.
 
 **Upstream's metadata is a claim too, and it can be conservative.** A comment
 was about to say that `url.md`'s four `noScan` marks are exactly the fixtures

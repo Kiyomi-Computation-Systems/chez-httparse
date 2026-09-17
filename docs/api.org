@@ -205,10 +205,28 @@ over =flags=, which is a different field for exactly this reason. It also
 survives =parser-reset!=, which restores the initials *you* gave rather than
 the ones the machine declares.
 
-*Two of them are only useful together.* =optional-cr-before-lf= sends a bare
-LF after a chunk size to the node that then expects the LF it just consumed,
-so a chunk size ending in a bare LF needs =optional-lf-after-cr= as well.
-That is upstream's behaviour, reproduced.
+*Two of them are only useful together, at more than one site.*
+=optional-cr-before-lf= sends a bare LF to a node that then expects the LF it
+has just consumed, so =optional-lf-after-cr= is needed as well — at a chunk
+size, and at a *request line*:
+
+#+begin_example
+PUT / HTTP/1.1\nHost: x\n\n
+  with optional-cr-before-lf alone
+    ->  error code 2, "Expected CRLF after version", at offset 15
+  with both
+    ->  parses
+#+end_example
+
+Note the *code*: strict gives the same reason and offset with code 9, so the
+reason text alone cannot tell the three apart. That is upstream's behaviour,
+reproduced.
+
+*One of them stands alone where you might expect a pair.* A response status
+line with *no reason phrase* ending in a bare LF — =HTTP/1.1 200\n= — is
+completed by =optional-cr-before-lf= by itself, because upstream's arm there
+goes straight to the completion rather than to a node wanting the LF again.
+The two sites read alike and behave differently.
 
 * The url sub-parser
 

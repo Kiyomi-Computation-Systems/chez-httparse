@@ -26,10 +26,17 @@
 ;;; to judge a twenty-node machine on. The kind travels with each case and
 ;;; picks the pair, exactly as the conformance driver picks one per fixture.
 ;;;
-;;; EVERY FLOOR HERE IS PER KIND. A floor over all kinds is satisfied by one
-;;; kind: a url machine that errored on everything it was given, or stopped
-;;; being generated at all, would leave a global floor cleared by the other
-;;; two and this lane green with nothing to say about it.
+;;; AND OF BOTH MODES. A lenient case is the same parser with two fields
+;;; written before the first byte, so both properties apply to it unchanged.
+;;; What it adds is the combinations: upstream's harness has one init hook per
+;;; single flag, so a PAIR is something no fixture anywhere tests.
+;;;
+;;; EVERY FLOOR HERE IS PER KIND AND PER MODE. A floor over all kinds is
+;;; satisfied by one kind, and a floor over all modes by strict alone: a url
+;;; machine that errored on everything, or a lenient half that stopped being
+;;; generated, would leave a global floor cleared by the others and this lane
+;;; green with nothing to say about it. Both tallies are printed beside their
+;;; checks so a reader can see which member is carrying one.
 ;;;
 ;;; A REFUSAL IS A FINDING, NOT A CRASH. The adapter has no row for an outcome
 ;;; llhttp never prints, and a generated input is the likeliest way to reach
@@ -65,6 +72,16 @@
 (define url-case-count
   (let ((v (adapter-environment-variable "HTTPARSE_PROPERTY_URL_CASES")))
     (or (and (string? v) (string->number v)) case-count)))
+
+;; The lenient schedule is 67 entries -- 11 singletons, 55 pairs, the whole
+;; set -- so a count below that leaves pairs unvisited. Three passes, because
+;; only the MATCHED half of a pass produces error-free parses and the floor
+;; below is over those: at two passes the worst of six seeds gave 23 against
+;; a floor of 15, which is less margin than the kind floors have; at three it
+;; is 32. The lane costs about a second either way.
+(define lenient-case-count
+  (let ((v (adapter-environment-variable "HTTPARSE_PROPERTY_LENIENT_CASES")))
+    (or (and (string? v) (string->number v)) 201)))
 
 ;; TWO MACHINES, AND THE CASE'S KIND SAYS WHICH -- the same resolution the
 ;; conformance driver makes per fixture and the differential makes per case.
@@ -149,16 +166,25 @@
 ;; the same reason the differential keeps them apart. `HTTPARSE_PROPERTY_URL_CASES=0`
 ;; reproduces this lane as it was before the url kind existed, so a finding
 ;; here has one possible source.
+;; LENIENT CASES ARE A MODE, NOT A MACHINE. They run the same parser as the
+;; strict ones, with two fields written before the first byte -- so both
+;; properties apply to them unchanged, and the only new question is whether
+;; they are here at all, which the mode tally below answers.
 (define cases
   (append (generate-structured seed case-count)
           (generate-mutants seed case-count bases)
           (generate-urls seed url-case-count)
-          (generate-mutants seed url-case-count url-bases)))
+          (generate-mutants seed url-case-count url-bases)
+          (generate-lenient seed lenient-case-count)))
 
 (define (trace-text lines)
   (harness-join (map utf8->string lines) "\n"))
 
 (define (describe c) (gen-case-origin c))
+
+;; A case carries its own init: the kind, and the lenient flags the embedder
+;; is to set before the first byte.
+(define (case-init c) (drive-init (gen-case-kind c) (gen-case-flags c)))
 
 ;; --- counting per kind ----------------------------------------------------
 ;;
@@ -169,10 +195,20 @@
 ;; machine contributes nothing and nobody notices.
 (define kinds '(request response url))
 
+;; AND A SECOND DIMENSION, for the same reason the first one is split. A
+;; lenient case is a request or a response, so it clears the kind floors
+;; without being distinguishable from a strict one -- and a run that stopped
+;; generating lenient input entirely would leave every kind floor green.
+(define modes '(strict lenient))
+
+(define (case-mode c) (if (null? (gen-case-flags c)) 'strict 'lenient))
+
 (define (tally-new) (map (lambda (k) (cons k 0)) kinds))
 
-(define (tally-add t kind)
-  (map (lambda (row) (if (eq? (car row) kind) (cons (car row) (+ (cdr row) 1)) row)) t))
+(define (mode-tally-new) (map (lambda (m) (cons m 0)) modes))
+
+(define (tally-add t key)
+  (map (lambda (row) (if (eq? (car row) key) (cons (car row) (+ (cdr row) 1)) row)) t))
 
 (define (tally-ref t kind) (cdr (assq kind t)))
 
@@ -185,8 +221,9 @@
   (display "\n")
   (adapter-flush-output))
 
-;; The floor each kind must clear on its own. MEASURED RATHER THAN CHOSEN --
-;; error-free inputs per kind at the default count, over six seeds:
+;; The floor each kind AND each mode must clear on its own. MEASURED RATHER
+;; THAN CHOSEN -- error-free inputs per kind at the default count, over six
+;; seeds:
 ;;
 ;;     seed        request  response  url
 ;;     20260915      39        26     115
@@ -196,10 +233,26 @@
 ;;     20260916      37        34      93
 ;;     31337         31        29     104
 ;;
-;; The smallest anyone produced is 26, and what the floor has to catch is a
-;; kind contributing nothing at all. 15 clears every seed tried by eleven and
-;; still lands far above a kind that stopped being generated, or whose every
-;; input became an error.
+;; and by mode, at 201 lenient cases:
+;;
+;;     seed        strict  lenient
+;;     20260915      180      34
+;;     1             180      35
+;;     2             180      39
+;;     777           180      41
+;;     20260916      180      45
+;;     31337         180      42
+;;
+;; The smallest anyone produced is 26 by kind and 34 by mode, and what the
+;; floor has to catch is a kind or a mode contributing nothing at all. 15
+;; clears every seed tried by eleven or more and still lands far above a
+;; subject that stopped being generated, or whose every input became an
+;; error.
+;;
+;; THE LENIENT ROW IS WHY THE GENERATOR MATCHES HALF ITS MALFORMATIONS TO THE
+;; FLAGS IT WAS GIVEN. Drawn freely it was 4 of 134, because an input dies at
+;; the first thing its subset cannot excuse -- and this property is about
+;; parses that reach no error. The floor is what said so.
 (define kind-floor 15)
 
 (harness-begin "property.generated-input")
@@ -214,7 +267,7 @@
             (check-equal "refusals" refused '()))
            (else
             (let ((t (drive-trace (generated-for (gen-case-kind (car cs)))
-                                  (gen-case-kind (car cs))
+                                  (case-init (car cs))
                                   (gen-case-bytes (car cs))
                                   (max 1 (bytevector-length (gen-case-bytes (car cs)))))))
               (loop (cdr cs)
@@ -232,11 +285,18 @@
   (lambda ()
     (harness-case "every chunk size yields the trace the whole buffer does"
       (lambda ()
-        (let loop ((cs cases) (bad '()) (clean (tally-new)))
+        (let loop ((cs cases) (bad '()) (clean (tally-new)) (cmode (mode-tally-new)))
           (cond
            ((null? cs)
             (check-equal "divergences" bad '())
             (tally-show "error-free inputs" clean)
+            (tally-show "error-free by mode" cmode)
+            (for-each
+             (lambda (m)
+               (check (string-append "enough error-free " (symbol->string m)
+                                     " inputs to be a property")
+                      (> (tally-ref cmode m) kind-floor)))
+             modes)
             ;; Without a floor this passes by selecting nothing: a generator
             ;; that only ever produced errors would leave it green. Per kind,
             ;; because a url machine that errored on everything it was given
@@ -252,15 +312,16 @@
                    (bv (gen-case-bytes c))
                    (len (bytevector-length bv))
                    (whole (drive-trace (generated-for (gen-case-kind c))
-                                       (gen-case-kind c) bv (max 1 len))))
+                                       (case-init c) bv (max 1 len))))
               (if (or (drive-refusal? whole) (has-error? whole))
-                  (loop (cdr cs) bad clean)
+                  (loop (cdr cs) bad clean cmode)
                   (let ((ref (trace-text whole)))
                     (let inner ((ss (drive-chunk-ladder len)) (bad bad))
                       (if (null? ss)
-                          (loop (cdr cs) bad (tally-add clean (gen-case-kind c)))
+                          (loop (cdr cs) bad (tally-add clean (gen-case-kind c))
+                                (tally-add cmode (case-mode c)))
                           (let ((t (drive-trace (generated-for (gen-case-kind c))
-                                                (gen-case-kind c) bv (car ss))))
+                                                (case-init c) bv (car ss))))
                             (inner (cdr ss)
                                    (if (and (not (drive-refusal? t))
                                             (string=? (trace-text t) ref))
@@ -287,7 +348,8 @@
   (string->utf8 "ICE/2.0 102 OK\r\nUpgrade:websocket\r\nTrailer : X-T\r\n\r\n"))
 
 (define (trace-of size)
-  (let ((t (drive-trace generated 'response unclosed-span-input size)))
+  (let ((t (drive-trace generated (drive-init 'response '())
+                        unclosed-span-input size)))
     (if (drive-refusal? t)
         (list (string-append "refused: " (drive-refusal-detail t)))
         (map utf8->string t))))
@@ -345,7 +407,8 @@
   (string->utf8 "http://a:b@@hostname:443/"))
 
 (define (url-trace-of size)
-  (let ((t (drive-trace httparse-url-machine 'url open-host-span-input size)))
+  (let ((t (drive-trace httparse-url-machine (drive-init 'url '())
+                        open-host-span-input size)))
     (if (drive-refusal? t)
         (list (string-append "refused: " (drive-refusal-detail t)))
         (map utf8->string t))))
@@ -396,8 +459,9 @@
 (define (chunking-changes-the-trace? f)
   (let* ((bv (corpus-decode-input (fixture-input-text f)))
          (n (bytevector-length bv))
-         (whole (drive-trace httparse-url-machine 'url bv (max 1 n)))
-         (one (drive-trace httparse-url-machine 'url bv 1)))
+         (url (drive-init 'url '()))
+         (whole (drive-trace httparse-url-machine url bv (max 1 n)))
+         (one (drive-trace httparse-url-machine url bv 1)))
     (not (and (not (drive-refusal? whole))
               (not (drive-refusal? one))
               (string=? (trace-text whole) (trace-text one))))))
@@ -444,11 +508,17 @@
         ;; The conformance lane makes this comparison over the corpus. Here it
         ;; is made where nothing recorded the answer, which is the only place
         ;; an emitter bug could survive that lane.
-        (let loop ((cs cases) (bad '()) (checked (tally-new)))
+        (let loop ((cs cases) (bad '()) (checked (tally-new)) (cmode (mode-tally-new)))
           (cond
            ((null? cs)
             (check-equal "divergences" bad '())
             (tally-show "executor comparisons" checked)
+            (tally-show "executor comparisons by mode" cmode)
+            (for-each
+             (lambda (m)
+               (check (string-append "some " (symbol->string m) " comparisons happened")
+                      (> (tally-ref cmode m) kind-floor)))
+             modes)
             (for-each
              (lambda (k)
                (check (string-append "some " (symbol->string k) " comparisons happened")
@@ -459,9 +529,9 @@
                    (bv (gen-case-bytes c))
                    (size (max 1 (bytevector-length bv)))
                    (a (drive-trace (generated-for (gen-case-kind c))
-                                   (gen-case-kind c) bv size))
+                                   (case-init c) bv size))
                    (b (drive-trace (interpreted-for (gen-case-kind c))
-                                   (gen-case-kind c) bv size))
+                                   (case-init c) bv size))
                    (same (cond ((and (drive-refusal? a) (drive-refusal? b))
                                 (string=? (drive-refusal-detail a)
                                           (drive-refusal-detail b)))
@@ -469,6 +539,7 @@
                                (else (string=? (trace-text a) (trace-text b))))))
               (loop (cdr cs)
                     (if same bad (cons (describe c) bad))
-                    (tally-add checked (gen-case-kind c)))))))))))
+                    (tally-add checked (gen-case-kind c))
+                    (tally-add cmode (case-mode c)))))))))))
 
 (harness-finish)

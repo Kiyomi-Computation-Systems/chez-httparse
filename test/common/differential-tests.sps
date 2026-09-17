@@ -36,6 +36,7 @@
         (httparse test corpus-decode)
         (httparse test generate)
         (httparse test drive)
+        (httparse modes)
         (httparse test oracle)
         (generated httparse-message)
         (generated httparse-url))
@@ -66,6 +67,14 @@
 (define url-case-count
   (let ((v (env "HTTPARSE_DIFFERENTIAL_URL_CASES")))
     (or (and (string? v) (string->number v)) case-count)))
+
+;; The lenient schedule is 67 entries -- 11 singletons, 55 pairs, the whole
+;; set -- so a count below that leaves pairs unvisited. The default is a
+;; multiple of it, and it is its own knob because these cases go to their own
+;; oracle binary.
+(define lenient-case-count
+  (let ((v (env "HTTPARSE_DIFFERENTIAL_LENIENT_CASES")))
+    (or (and (string? v) (string->number v)) 67)))
 
 ;; THREE SEEDS, NOT ONE, AND THAT IS A MEASUREMENT RATHER THAN A PRECAUTION.
 ;; The url kind's first find -- a host holding two `@` that are not adjacent,
@@ -151,7 +160,8 @@
   (append (generate-structured s case-count)
           (generate-mutants s case-count bases)
           (generate-urls s url-case-count)
-          (generate-mutants s url-case-count url-bases)))
+          (generate-mutants s url-case-count url-bases)
+          (generate-lenient s lenient-case-count)))
 
 (define cases (apply append (map cases-at seeds)))
 
@@ -183,7 +193,23 @@
           (string->utf8
            (string-append (symbol->string (gen-case-kind c)) " "
                           (number->string size) ":" (number->string (+ size 1)) " "
-                          (oracle-hex-encode (gen-case-bytes c)) "\n")))))
+                          (oracle-hex-encode (gen-case-bytes c))
+                          ;; NO MASK FIELD FOR A STRICT CASE, so it goes to
+                          ;; upstream's own binary and the message and url
+                          ;; halves are compared against exactly the program
+                          ;; they were before the lenient kind existed.
+                          ;;
+                          ;; The mask is this project's own bit numbering from
+                          ;; `(httparse modes)`; `lenient-init.c` translates
+                          ;; each bit into the constant upstream declares, so
+                          ;; the two sides agree on a FLAG and not on a number.
+                          (if (null? (gen-case-flags c))
+                              ""
+                              (string-append
+                               " " (number->string
+                                    (httparse-lenient-flags-value
+                                     (gen-case-flags c)))))
+                          "\n")))))
      ps)
     (close-port port)))
 
@@ -359,7 +385,8 @@
                      (c (probe-case p))
                      (r (car rs))
                      (mine (drive-trace (machine-for (gen-case-kind c))
-                                        (gen-case-kind c)
+                                        (drive-init (gen-case-kind c)
+                                                    (gen-case-flags c))
                                         (gen-case-bytes c) (probe-size p))))
                 (cond
                  ((string? r)
@@ -410,13 +437,33 @@
 ;; the classifier: a class anchored only by a predicate is a class that can
 ;; quietly widen.
 
+;; Upstream's own binary for a kind that is not one of the three the bulk
+;; run uses -- `request-lenient-headers` is built by its harness with its own
+;; `-D`, and the runner resolves the kind to the binary of that name.
+(define (oracle-with-binary kind text size)
+  (oracle-run kind text size ""))
+
+;; No mask field: upstream's own binary for the kind.
 (define (oracle-trace-of kind text size)
+  (oracle-run kind text size ""))
+
+;; A mask field, ALWAYS -- even an empty one, which is how the group below
+;; asks `http-modes-c` for a strict parse and compares it with the program
+;; upstream ships.
+(define (oracle-lenient-trace-of kind text size flags)
+  (oracle-run kind text size
+              (string-append " " (number->string
+                                  (httparse-lenient-flags-value flags)))))
+
+(define (oracle-run kind text size mask-field)
   (let ((path (string-append work-dir "/witness-cases.txt")))
     (let ((port (open-file-output-port path (file-options no-fail))))
       (put-bytevector port (string->utf8
                             (string-append kind " " (number->string size) ":"
                                            (number->string (+ size 1)) " "
-                                           (oracle-hex-encode (string->utf8 text)) "\n")))
+                                           (oracle-hex-encode (string->utf8 text))
+                                           mask-field
+                                           "\n")))
       (close-port port))
     (adapter-run-command
      (string-append "'" node "' '" runner "' '" bin-dir "' '" path "' '"
@@ -426,9 +473,12 @@
           (list (if (null? rs) "no result" (car rs)))
           (map utf8->string (oracle-normalize (car rs)))))))
 
-(define (our-trace-of kind text size)
+(define (our-trace-of kind text size) (our-lenient-trace-of kind text size '()))
+
+(define (our-lenient-trace-of kind text size flags)
   (let* ((k (string->symbol kind))
-         (t (drive-trace (machine-for k) k (string->utf8 text) size)))
+         (t (drive-trace (machine-for k) (drive-init k flags)
+                         (string->utf8 text) size)))
     (if (drive-refusal? t)
         (list (string-append "refused: " (drive-refusal-detail t)))
         (map utf8->string t))))
@@ -629,5 +679,87 @@
                          "off=2 len=5 span[url.query]=\"a&b=c\""
                          "off=8 len=3 span[url.fragment]=\"a#b\""))
           (check-equal "ours" (our-trace-of "url" "*?a&b=c#a#b" 11) theirs))))))
+
+;;; --- THE FOURTH BINARY IS HELD TO UPSTREAM'S OWN -------------------------
+;;;
+;;; `http-modes-c` is the one piece of this differential whose init hook is
+;;; not upstream's. Decision 0026 says why that is inside decision 0010's
+;;; rule rather than an exception to it -- the hook assigns two integer
+;;; fields and prints nothing, so every trace line still comes from
+;;; upstream's `extra.c` -- but "inside the rule" is an argument, and what
+;;; follows is a measurement.
+;;;
+;;; TWO EQUIVALENCES, and between them they pin both fields the hook writes.
+
+(harness-group "at no flags, our binary is upstream's binary"
+  (lambda ()
+    ;; A mask field of `0` is what routes this at `http-modes-c` at all; with
+    ;; no field the runner uses `http-request-c`, which is what every strict
+    ;; case in the bulk run above does.
+    (harness-case "a request parses identically through both"
+      (lambda ()
+        (check-equal "GET"
+                     (oracle-lenient-trace-of "request" "GET /a HTTP/1.1\r\n\r\n" 19 '())
+                     (oracle-trace-of "request" "GET /a HTTP/1.1\r\n\r\n" 19))))
+    (harness-case "and so does a response, which is the other half of `type`"
+      (lambda ()
+        ;; The hook writes `s->type` as well as `s->lenient_flags`, and it
+        ;; reads that from the environment too. A hook that always said
+        ;; REQUEST would pass the case above and fail this one.
+        (check-equal "HTTP/1.1 200"
+                     (oracle-lenient-trace-of "response" "HTTP/1.1 200 OK\r\n\r\n" 19 '())
+                     (oracle-trace-of "response" "HTTP/1.1 200 OK\r\n\r\n" 19))))
+    (harness-case "and this parser agrees with both"
+      (lambda ()
+        (check-equal "ours"
+                     (our-trace-of "request" "GET /a HTTP/1.1\r\n\r\n" 19)
+                     (oracle-trace-of "request" "GET /a HTTP/1.1\r\n\r\n" 19))))))
+
+(harness-group "at one flag, our binary is upstream's dedicated binary"
+  (lambda ()
+    ;; `http-request-lenient-headers-c` is built by upstream's own harness
+    ;; with `-DLLPARSE__TEST_INIT=llhttp__test_init_request_lenient_headers`;
+    ;; our file is not involved in it at all. If the hook set the wrong bit,
+    ;; or set it after `llparse_init` had already been read, these would
+    ;; differ -- and nothing else in this lane would say so, because both
+    ;; sides of every lenient comparison would be wrong together.
+    (harness-case "LENIENT_HEADERS through the mask is LENIENT_HEADERS"
+      (lambda ()
+        (let ((theirs (oracle-with-binary "request-lenient-headers"
+                                          "GET /url HTTP/1.1\r\nHeader1: \x0c;\r\n\r\n" 33))
+              (ours-mask (oracle-lenient-trace-of
+                          "request" "GET /url HTTP/1.1\r\nHeader1: \x0c;\r\n\r\n" 33
+                          '(headers))))
+          (check-equal "upstream's own binary"
+                       theirs
+                       '("off=0 message begin"
+                         "off=0 len=3 span[method]=\"GET\""
+                         "off=3 method complete"
+                         "off=4 len=4 span[url]=\"/url\""
+                         "off=9 url complete"
+                         "off=9 len=4 span[protocol]=\"HTTP\""
+                         "off=13 protocol complete"
+                         "off=14 len=3 span[version]=\"1.1\""
+                         "off=17 version complete"
+                         "off=19 len=7 span[header_field]=\"Header1\""
+                         "off=27 header_field complete"
+                         "off=28 len=1 span[header_value]=\"\x0c;\""
+                         "off=31 header_value complete"
+                         "off=33 headers complete method=1 v=1/1 flags=0 content_length=0"
+                         "off=33 message complete"))
+          (check-equal "and the mask reproduces it" ours-mask theirs)
+          (check-equal "and so does this parser"
+                       (our-lenient-trace-of
+                        "request" "GET /url HTTP/1.1\r\nHeader1: \x0c;\r\n\r\n" 33
+                        '(headers))
+                       theirs))))
+    (harness-case "and the same bytes at no flags are an error"
+      (lambda ()
+        ;; Otherwise the case above would pass with a hook that set nothing:
+        ;; `\f` in a header value is `Invalid header value char` strictly.
+        (check "strict refuses it"
+               (exists (lambda (l) (harness-string-contains? l "Invalid header value char"))
+                       (oracle-trace-of "request"
+                                        "GET /url HTTP/1.1\r\nHeader1: \x0c;\r\n\r\n" 33)))))))
 
 (harness-finish)

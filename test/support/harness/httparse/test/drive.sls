@@ -16,8 +16,8 @@
 ;;; vocabulary has no word for", so this catches it and hands back the detail
 ;;; as a value.
 (library (httparse test drive)
-  (export drive-trace drive-refusal? drive-refusal-detail drive-chunk-ladder
-          drive-feed! drive-requested-pause?)
+  (export drive-trace drive-init drive-refusal? drive-refusal-detail
+          drive-chunk-ladder drive-feed! drive-requested-pause?)
   (import (rnrs)
           (httparse test adapter)
           (httparse test trace-format)
@@ -77,7 +77,13 @@
               (loop (parser-result-next res)))
             res))))
 
-  ;; drive-parser : Machine Symbol Recorder -> Parser
+  ;; drive-init : Symbol (Listof Symbol) -> Init
+  ;; The adapter's vocabulary for "what the embedder writes before the first
+  ;; byte": a kind and the lenient flags it is to set. Built here so a lane
+  ;; never has to know the shape.
+  (define (drive-init kind flags) (cons kind flags))
+
+  ;; drive-parser : Machine Init Recorder -> Parser
   ;; THE KIND CHOOSES THE BINDING LIST, because the two machines declare
   ;; disjoint callbacks. A url parser bound with the message parser's rows
   ;; would be handed names its machine never declares; a message parser bound
@@ -87,19 +93,26 @@
   ;; `s->lenient_flags` are the message parser's fields, and llhttp's url
   ;; binary is built with no `-D` and no init hook -- so a url parser is
   ;; constructed with three arguments, which is the same thing said in the
-  ;; conformance driver for `url.md`'s fixtures.
-  (define (drive-parser machine kind r)
-    (if (eq? kind 'url)
-        (make-parser machine (trace-recorder-url-bindings r) #f)
-        (make-parser machine (trace-recorder-bindings r (list kind) #f) #f
-                     (adapter-parser-inits (list kind)))))
+  ;; conformance driver for `url.md`'s fixtures. A url init carrying flags is
+  ;; REFUSED rather than ignored: it would be compared against a binary that
+  ;; has no way to honour them.
+  (define (drive-parser machine init r)
+    (if (eq? (car init) 'url)
+        (begin
+          (unless (null? (cdr init))
+            (assertion-violation 'drive-parser
+              "the url parser has no lenient flags to set" init))
+          (make-parser machine (trace-recorder-url-bindings r) #f))
+        (make-parser machine (trace-recorder-bindings r init #f) #f
+                     (adapter-parser-inits init))))
 
-  ;; drive-trace : Machine Symbol Bytevector Nat -> (Listof Bytevector) or Refusal
-  ;; The trace `machine` produces for `bv` fed in `size`-byte chunks, as the
-  ;; parser kind `kind` (which the embedder supplies and a generated input
-  ;; cannot imply). A zero-length input is one run of no chunks, matching the
-  ;; scan schedule's rule that an empty input still executes.
-  (define (drive-trace machine kind bv size)
+  ;; drive-trace : Machine Init Bytevector Nat -> (Listof Bytevector) or Refusal
+  ;; The trace `machine` produces for `bv` fed in `size`-byte chunks, under
+  ;; `init` -- `(kind . lenient-flags)`, which the embedder supplies and a
+  ;; generated input cannot imply. A zero-length input is one run of no
+  ;; chunks, matching the scan schedule's rule that an empty input still
+  ;; executes.
+  (define (drive-trace machine init bv size)
     (call/cc
      (lambda (k)
        (with-exception-handler
@@ -109,7 +122,7 @@
               (raise e)))
         (lambda ()
           (let* ((r (make-trace-recorder))
-                 (p (drive-parser machine kind r)))
+                 (p (drive-parser machine init r)))
             (let loop ((bounds (corpus-chunk-bounds (bytevector-length bv) size))
                        (result #f))
               (cond

@@ -636,6 +636,47 @@ The mutation was chosen to leave the grammar alone, because an executor
 comparison fires for any un-re-emitted grammar edit and that says nothing
 about a compiler bug.
 
+### After M11 — the lenient flags are combined — DONE
+
+Upstream's harness picks its init hook with a `-D` at compile time and ships
+one per (kind, single flag), so a PAIR of flags is something llhttp's own
+corpus tests three times, all all-on -- and `lenient_all` sets NINE of the
+eleven. Decision
+[0026](decisions/0026-the-lenient-flags-are-combined-and-the-init-hook-is-ours.md).
+
+A fourth oracle binary whose init hook is ours, reading the kind and a mask
+from the environment, and a `generate-lenient` whose subsets WALK A FIXED
+SCHEDULE -- 11 singletons, 55 pairs, the whole set -- so the seed moves the
+input and not the coverage. `agreed` 7730 → **9603**.
+
+**The hook is held to upstream's own, not argued into place.** At no flags it
+must be `http-request-c` and `http-response-c`; at one flag it must be
+upstream's dedicated `http-request-lenient-headers-c`, built by its harness
+with none of our code. Both witnesses watched failing.
+
+**Two findings, and a third interaction of a shape 0020 already records
+twice.** A bare LF after a request's version needs BOTH lf flags; with
+`optional-cr-before-lf` alone llhttp still refuses, at the same offset and
+with the same reason, and a different code (9 → 2). This parser jumped
+straight to the headers.
+
+**And a thirty-third fork, which no sweep could have counted.**
+`res_status_code_otherwise` -- a status line with no reason phrase ending in
+a bare LF -- has an LF arm this parser had as a flat error. 0020's sweep
+measured all 32 forks; a fork that is not there is not a site.
+
+**The generator had a defect the new floor caught on its first run.** Drawn
+freely, 4 of 134 lenient inputs parsed without an error, so fragmentation
+invariance had nothing to hold of. Half the cases now MATCH their
+malformations to their subset: 4 → 32. The free half is where both findings
+came from.
+
+**And the fixture cache did not see our source.** `llparse-test-fixture`
+hashes the argument list, not the contents of a file named in it, so editing
+the hook left the digest unchanged and relinked a stale binary -- which is
+why the first mutation appeared to catch nothing. Its content hash now goes
+into the arguments as a define nothing reads.
+
 ### Deferred
 
 Nothing. The three milestones that carried deferrals -- M9's 26, M10's 37 and

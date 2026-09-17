@@ -13,8 +13,19 @@
 // comparison is made by the lane.
 //
 // Usage: node run-oracle.mjs <bin-dir> <cases-file> <out-file>
-//   cases file, one per line:  <kind> <from>:<to> <hex-input>
+//   cases file, one per line:  <kind> <from>:<to> <hex-input> [<lenient-mask>]
+//     -- with no mask field the line goes to upstream's own binary for that
+//        kind; WITH one (even `0`) it goes to `http-modes-c`
 //   out file,   one per line:  ok <hex-stdout>  |  fail <code> <hex-output>
+//
+// THE MASK IS WHY A FOURTH BINARY EXISTS. Upstream's fixture harness picks
+// its init hook with a `-D` at compile time and ships one hook per (kind,
+// single flag), so no combination of flags can be asked of `http-request-c`
+// at all. `http-modes-c` is the same parser built with our own init hook,
+// which reads the mask and the kind out of the environment -- see
+// `tools/oracle/lenient-init.c`. A line with no mask, or a mask of 0, keeps
+// using upstream's own binaries, so every strict comparison is still made
+// against the program the corpus was recorded from.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,14 +43,37 @@ const bins = {
   request: path.join(binDir, 'http-request-c'),
   response: path.join(binDir, 'http-response-c'),
   url: path.join(binDir, 'url-url-c'),
+  // One of upstream's own single-flag binaries, built with its own `-D` and
+  // none of our code. The differential holds `http-modes-c` to it.
+  'request-lenient-headers': path.join(binDir, 'http-request-lenient-headers-c'),
 };
+
+const modesBin = path.join(binDir, 'http-modes-c');
 
 const lines = fs.readFileSync(casesFile, 'utf8').split('\n').filter((l) => l.length > 0);
 const out = [];
 
 for (const line of lines) {
-  const [kind, spec, hex] = line.split(' ');
-  const bin = bins[kind];
+  const [kind, spec, hex, flags] = line.split(' ');
+  // A LINE WITH NO FOURTH FIELD GOES TO UPSTREAM'S OWN BINARY, and that is
+  // the rule rather than `mask === 0`: it keeps every strict comparison
+  // against the program the corpus was recorded from, and it still lets a
+  // caller write an explicit `0` to ask for the modes binary at no flags --
+  // which is how the differential checks the two are the same program.
+  const useModes = flags !== undefined;
+  const mask = useModes ? Number.parseInt(flags, 10) : 0;
+  if (!Number.isInteger(mask) || mask < 0) {
+    console.error(`bad lenient mask ${JSON.stringify(flags)}`);
+    process.exit(3);
+  }
+  if (useModes && kind === 'url') {
+    // llhttp's url binary is built with no init hook at all, so there is no
+    // field for a flag to set. Answering anyway would silently compare a
+    // strict parse against a lenient one.
+    console.error('the url parser has no lenient flags');
+    process.exit(3);
+  }
+  const bin = useModes ? modesBin : bins[kind];
   if (!bin) {
     // A kind with no binary is a caller error, and answering anyway would
     // compare the wrong parser.
@@ -50,7 +84,14 @@ for (const line of lines) {
   // every input to [1,127] precisely because argv is encoded as UTF-8 and a
   // high byte would arrive as two.
   const input = Buffer.from(hex ?? '', 'hex').toString('latin1');
-  const r = spawnSync(bin, [spec, input], { maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync(bin, [spec, input], {
+    maxBuffer: 64 * 1024 * 1024,
+    env: {
+      ...process.env,
+      HTTPARSE_ORACLE_LENIENT: String(mask),
+      HTTPARSE_ORACLE_RESPONSE: kind === 'response' ? '1' : '0',
+    },
+  });
   if (r.error) {
     out.push(`fail spawn ${Buffer.from(String(r.error)).toString('hex')}`);
   } else if (r.signal) {
