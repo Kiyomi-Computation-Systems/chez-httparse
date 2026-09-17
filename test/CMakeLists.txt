@@ -1202,6 +1202,7 @@ foreach(mode source aot)
     BACKEND chez
     PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/generate-tests.sps"
     SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_MODES}
             ${HTTPARSE_PRNG}
             ${HTTPARSE_GENERATE}
             "${CMAKE_CURRENT_LIST_DIR}/common/generate-tests.sps"
@@ -1427,18 +1428,23 @@ if(HTTPARSE_LLHTTP_ROOT)
     OUTPUT "${HTTPARSE_ORACLE_BIN_DIR}/http-request-c"
            "${HTTPARSE_ORACLE_BIN_DIR}/http-response-c"
            "${HTTPARSE_ORACLE_BIN_DIR}/url-url-c"
+           "${HTTPARSE_ORACLE_BIN_DIR}/http-modes-c"
+           "${HTTPARSE_ORACLE_BIN_DIR}/http-request-lenient-headers-c"
            "${HTTPARSE_ORACLE_BIN_DIR}/VERSION"
     COMMAND "${HTTPARSE_NODE_EXECUTABLE}" --import tsx
             "${HTTPARSE_ORACLE_BUILD}" "${HTTPARSE_LLHTTP_ROOT}"
             "${HTTPARSE_ORACLE_BIN_DIR}"
     WORKING_DIRECTORY "${HTTPARSE_LLHTTP_ROOT}"
     DEPENDS "${HTTPARSE_ORACLE_BUILD}"
+            "${CMAKE_SOURCE_DIR}/tools/oracle/lenient-init.c"
     COMMENT "httparse: building the live llhttp oracle binaries"
     VERBATIM)
   add_custom_target(httparse_llhttp_oracle ALL
     DEPENDS "${HTTPARSE_ORACLE_BIN_DIR}/http-request-c"
             "${HTTPARSE_ORACLE_BIN_DIR}/http-response-c"
             "${HTTPARSE_ORACLE_BIN_DIR}/url-url-c"
+            "${HTTPARSE_ORACLE_BIN_DIR}/http-modes-c"
+            "${HTTPARSE_ORACLE_BIN_DIR}/http-request-lenient-headers-c"
             "${HTTPARSE_ORACLE_BIN_DIR}/VERSION")
 
   httparse_add_scheme_lane(

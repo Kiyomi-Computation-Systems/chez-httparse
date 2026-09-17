@@ -152,7 +152,7 @@ fixtures the qualifier holds for.
 
 * Things found this way
 
-The live differential is not decoration. Building it turned up four defects
+The live differential is not decoration. Building it turned up six defects
 the corpus could not see, all now fixed and pinned by offline checks:
 
 1. =message begin= was withheld when the first byte was one no method may
@@ -168,6 +168,15 @@ the corpus could not see, all now fixed and pinned by offline checks:
    =http://a@b@c/p= and refuses only =a@@b=; =url.md='s "Double =@=" fixture
    has its two adjacent, so neither the corpus nor the oracle-measured cases
    could tell the two rules apart.
+5. A bare LF after a request's version was accepted under
+   =OPTIONAL_CR_BEFORE_LF= alone. llhttp needs *both* lf flags; with the
+   first alone it still refuses, at the same offset and with the same reason,
+   and a different code. Only a flag *pair* can see it.
+6. A response status line with no reason phrase, ending in a bare LF, was
+   refused. Upstream gates it on =OPTIONAL_CR_BEFORE_LF= and this parser had
+   no fork there at all — a thirty-third lenient site where decision 0020's
+   sweep measured thirty-two, because a fork that is not there is not a
+   site.
 
 * Both properties, both machines
 
@@ -189,7 +198,37 @@ four error fixtures; only three of them actually diverge across chunk sizes.
 chunk boundary has an open span to flush early — and llhttp does not diverge
 on it either.
 
-* Three kinds, three binaries
+* Lenient flags, in combination
+
+Upstream's fixture harness picks its init hook with a =-D= at compile time
+and ships one per (kind, single flag). So a *pair* of flags cannot be asked
+of it at all: 55 pairs would be 55 binaries, and no hook exists for any of
+them. Its only combination fixtures are three =*-lenient-all= ones — and
+=lenient_all= sets *nine of the eleven*, leaving =spaces-after-chunk-size=
+and =header-value-relaxed= combined with nothing anywhere in the corpus.
+
+A fourth oracle binary, =http-modes-c=, is the same parser graph built with
+=tools/oracle/lenient-init.c= — an init hook of ours that reads the kind and
+a flag mask from the environment. It assigns two integer fields and prints
+nothing; every trace line still comes from upstream's =extra.c=, which is
+what decision 0010 protects.
+
+*It is held to upstream's own binaries rather than argued into place.* At no
+flags it must equal =http-request-c= and =http-response-c=; at one flag it
+must equal =http-request-lenient-headers-c=, built by upstream's harness with
+none of our code.
+
+The flag subsets *walk a fixed schedule* — 11 singletons, then all 55 pairs,
+then the whole set — so the seed moves the input rather than the coverage. A
+random draw over 55 pairs needs hundreds of cases, and "probably covered" is
+not a coverage claim.
+
+Half the cases *match* their malformations to the subset they were given, so
+the lenient path is walked to the end; the other half draw them
+independently, which is where both of this producer's first findings came
+from.
+
+* The kinds and the binaries
 
 =request= and =response= are two modes of llhttp's message parser. =url= is
 its URL sub-parser built standalone — =test/md-test.ts='s =buildURL()=, with

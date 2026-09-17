@@ -1267,8 +1267,22 @@
       ;; was missed until `request/invalid.md#22` named it: the failure read
       ;; as the OPTIONAL_LF_AFTER_CR fork already in place, and it was the
       ;; other flag's arm of the same node.
+      ;;
+      ;; ITS LENIENT ARM GOES TO `expect-lf`, NOT TO THE HEADERS, and that
+      ;; costs a second flag. Upstream sends it to `req_http_complete_crlf`,
+      ;; which is this node -- and that node wants an LF the `.match` above
+      ;; has already CONSUMED, so it falls through to the OPTIONAL_LF_AFTER_CR
+      ;; fork below. With `optional-cr-before-lf` alone the parse still fails,
+      ;; at the same offset and with the same reason as strict, and a
+      ;; different code: `Expected CRLF after version` as `strict` (2) rather
+      ;; than as `invalid-version` (9).
+      ;;
+      ;; A JUMP STRAIGHT TO `headers-start` PASSES EVERY FIXTURE UPSTREAM
+      ;; SHIPS -- the corpus tests one flag at a time, where this needs a
+      ;; pair, and its only combination fixtures set both. The live
+      ;; differential's lenient kind found it on its first run.
       (lenient-fork 'lenient-lf-request-line 'optional-cr-before-lf
-                    'headers-start 'e-no-crlf)
+                    'expect-lf 'e-no-crlf)
       (make-byte-dispatch-node 'expect-lf
         (list (make-byte-case (make-exact-byte-matcher LF)
                               (make-edge 'headers-start 'advance) #f))
@@ -1330,8 +1344,25 @@
               (make-byte-case (make-exact-byte-matcher CR)
                               (make-edge 'res-line-almost-done 'advance) #f)
               (make-byte-case (make-exact-byte-matcher LF)
-                              (make-edge 'e-bad-response-status 'advance) #f))
+                              (make-edge 'lenient-lf-status-code 'advance) #f))
         (make-edge 'e-bad-response-status 'reexecute) 'e-eof-none #f)
+      ;; THE ELEVENTH OPTIONAL_CR_BEFORE_LF SITE, and the one decision 0020's
+      ;; disable sweep could not count, because a fork that is not there is
+      ;; not a site. Upstream's arm is
+      ;; `.match('\n', checkIfAllowLFWithoutCR(onStatusComplete, error))`,
+      ;; and this parser had the error alone.
+      ;;
+      ;; ONE FLAG IS ENOUGH HERE, unlike the request line's bare LF: the
+      ;; lenient arm goes STRAIGHT to `onStatusComplete` rather than to a node
+      ;; that wants the LF the match has already eaten. The two sites read
+      ;; alike and behave differently.
+      ;;
+      ;; NO FIXTURE UPSTREAM SHIPS REACHES IT -- `Invalid response status`
+      ;; appears nowhere in the 274, and a status line with no reason phrase
+      ;; AND a bare LF is two unusual things at once. The live differential's
+      ;; lenient kind found it at two seeds.
+      (lenient-fork 'lenient-lf-status-code 'optional-cr-before-lf
+                    'status-complete 'e-bad-response-status)
 
       ;; THE REASON PHRASE TAKES ANY BYTE BUT ITS LINE ENDING. llhttp's
       ;; `res_status` is `.peek('\r', ...).peek('\n', ...).skipTo(res_status)`

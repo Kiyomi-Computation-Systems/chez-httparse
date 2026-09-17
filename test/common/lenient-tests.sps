@@ -300,4 +300,146 @@
             (check "the reset parser is still lenient"
                    (not (eq? (parser-result-status res) 'error)))))))))
 
+;;; A BARE LF AFTER THE VERSION NEEDS TWO FLAGS, AND ONE OF THEM ALONE MOVES
+;;; ONLY THE ERROR CODE. Found by the live differential's lenient kind on its
+;;; first run, and invisible to every fixture upstream ships: the corpus
+;;; tests one flag at a time, where this needs a pair, and its only
+;;; combination fixtures are `*-lenient-all`, which set both.
+;;;
+;;; Upstream's two nodes, and the whole of the behaviour:
+;;;
+;;;     n('req_http_complete')
+;;;       .match('\r', n('req_http_complete_crlf'))
+;;;       .match('\n', checkIfAllowLFWithoutCR(       // OPTIONAL_CR_BEFORE_LF
+;;;         n('req_http_complete_crlf'),
+;;;         p.error(ERROR.INVALID_VERSION, 'Expected CRLF after version')))
+;;;       .otherwise(p.error(ERROR.INVALID_VERSION, ...));
+;;;
+;;;     n('req_http_complete_crlf')
+;;;       .match('\n', n('headers_start'))
+;;;       .otherwise(testLenientFlags(OPTIONAL_LF_AFTER_CR, {
+;;;         1: n('headers_start'),
+;;;       }, p.error(ERROR.STRICT, 'Expected CRLF after version')));
+;;;
+;;; `.match('\n')` CONSUMES, so the lenient arm arrives at a node that wants
+;;; an LF the input has already spent. With `optional-cr-before-lf` alone the
+;;; parse still fails -- at the SAME OFFSET and with the SAME REASON as
+;;; strict, and a different code. Reading the reason alone cannot tell the
+;;; two apart, which is how this parser came to jump straight to the headers.
+;;;
+;;; THIS IS THE THIRD INTERACTION OF ITS SHAPE. Decision 0020 records the
+;;; other two.
+(define (after-version flags input)
+  ;; The last two lines: the version event and what follows it. The nine
+  ;; before are the same in every case here and say nothing.
+  (let ((lines (trace (cons 'request flags) input)))
+    (reverse (harness-take (reverse lines) 2))))
+
+(harness-group "a bare LF after the version, one flag at a time"
+  (lambda ()
+    (harness-case "strict refuses it as an invalid version"
+      (lambda ()
+        (check-equal "no flags"
+                     (after-version '() "PUT / HTTP/1.1\nX")
+                     '("off=14 version complete"
+                       "off=15 error code=9 reason=\"Expected CRLF after version\""))))
+    (harness-case "OPTIONAL_LF_AFTER_CR alone changes nothing"
+      (lambda ()
+        ;; It governs the byte after a CR, and there is no CR here.
+        (check-equal "lf-after-cr"
+                     (after-version '(optional-lf-after-cr) "PUT / HTTP/1.1\nX")
+                     '("off=14 version complete"
+                       "off=15 error code=9 reason=\"Expected CRLF after version\""))))
+    (harness-case "OPTIONAL_CR_BEFORE_LF alone still refuses, with a DIFFERENT CODE"
+      (lambda ()
+        ;; Same offset, same reason, code 9 -> 2. The lenient arm reaches
+        ;; `req_http_complete_crlf`, which wants an LF that `.match` has
+        ;; already consumed, and falls through to the other flag's strict arm.
+        (check-equal "cr-before-lf"
+                     (after-version '(optional-cr-before-lf) "PUT / HTTP/1.1\nX")
+                     '("off=14 version complete"
+                       "off=15 error code=2 reason=\"Expected CRLF after version\""))))
+    (harness-case "and only both together let the message through"
+      (lambda ()
+        (check-equal "both"
+                     (after-version '(optional-cr-before-lf optional-lf-after-cr)
+                                   "PUT / HTTP/1.1\nHost: x\n\n")
+                     '("off=24 headers complete method=4 v=1/1 flags=0 content_length=0"
+                       "off=24 message complete"))))))
+
+;;; AND A STATUS LINE WITH NO REASON PHRASE HAS A SITE M10 NEVER FOUND.
+;;; Decision 0020's disable sweep counted thirty-two forks and measured each
+;;; one; it could not count a fork that was not there. Upstream's
+;;; `res_status_code_otherwise` has an LF arm this parser left as a flat
+;;; error:
+;;;
+;;;     n('res_status_code_otherwise')
+;;;       .match(' ', n('res_status_start'))
+;;;       .match('\r', n('res_line_almost_done'))
+;;;       .match('\n', checkIfAllowLFWithoutCR(        // OPTIONAL_CR_BEFORE_LF
+;;;         onStatusComplete,
+;;;         p.error(ERROR.INVALID_STATUS, 'Invalid response status')))
+;;;       .otherwise(p.error(ERROR.INVALID_STATUS, ...));
+;;;
+;;; NO FIXTURE UPSTREAM SHIPS REACHES IT: `Invalid response status` appears
+;;; nowhere in the 274, which `corpus-load-tests.sps` already pins, and a
+;;; response whose status line has NO REASON PHRASE and ends in a BARE LF is
+;;; two unusual things at once. The live differential's lenient kind found it
+;;; at two seeds.
+;;;
+;;; UNLIKE THE REQUEST SIDE ABOVE, ONE FLAG IS ENOUGH -- upstream's lenient
+;;; arm here goes straight to `onStatusComplete` rather than to a node that
+;;; wants the LF again. The two sites read alike and behave differently,
+;;; which is why both are written down.
+(define (status-line flags input)
+  (let ((lines (trace (cons 'response flags) input)))
+    (reverse (harness-take (reverse lines) 2))))
+
+(harness-group "a status line with no reason phrase, ending in a bare LF"
+  (lambda ()
+    (harness-case "strict refuses it as an invalid status"
+      (lambda ()
+        (check-equal "no flags"
+                     (status-line '() "HTTP/1.1 200\nA: b\n\n")
+                     '("off=8 version complete"
+                       "off=13 error code=13 reason=\"Invalid response status\""))))
+    (harness-case "OPTIONAL_LF_AFTER_CR alone changes nothing"
+      (lambda ()
+        ;; There is no CR, so the other flag has nothing to govern -- the
+        ;; check that this site belongs to the flag it is now forked on.
+        (check-equal "lf-after-cr"
+                     (status-line '(optional-lf-after-cr) "HTTP/1.1 200\nA: b\n\n")
+                     '("off=8 version complete"
+                       "off=13 error code=13 reason=\"Invalid response status\""))))
+    (harness-case "OPTIONAL_CR_BEFORE_LF alone completes the status line"
+      (lambda ()
+        ;; `status complete` at 13, one past the LF, and the header section
+        ;; begins there. One flag, where the request side needs two.
+        (check-equal "cr-before-lf"
+                     (trace (cons 'response '(optional-cr-before-lf))
+                            "HTTP/1.1 200\nA: b\n\n")
+                     '("off=0 message begin"
+                       "off=0 len=4 span[protocol]=\"HTTP\""
+                       "off=4 protocol complete"
+                       "off=5 len=3 span[version]=\"1.1\""
+                       "off=8 version complete"
+                       "off=13 status complete"
+                       "off=13 len=1 span[header_field]=\"A\""
+                       "off=15 header_field complete"
+                       "off=16 len=1 span[header_value]=\"b\""
+                       "off=18 header_value complete"
+                       ;; NO `message complete`. A response with neither a
+                       ;; Content-Length nor a Transfer-Encoding is read to
+                       ;; end of connection, so the message ends at a finish
+                       ;; this trace never asks for.
+                       "off=19 headers complete status=200 v=1/1 flags=0 content_length=0"))))
+    (harness-case "and there is no span[status] at all, because there was none"
+      (lambda ()
+        ;; The span opens only on the SPACE arm, so a status line with no
+        ;; reason phrase records none -- and this is the arm that skips it.
+        (check "no status span"
+               (not (exists (lambda (l) (harness-string-contains? l "span[status]"))
+                            (trace (cons 'response '(optional-cr-before-lf))
+                                   "HTTP/1.1 200\nA: b\n\n"))))))))
+
 (harness-finish)

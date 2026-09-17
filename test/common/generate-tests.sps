@@ -9,12 +9,18 @@
 ;;; while comparing less -- or comparing two different inputs.
 (import (rnrs)
         (httparse test harness)
-        (httparse test generate))
+        (httparse test generate)
+        (httparse modes))
 
 (define (bytes . xs) (u8-list->bytevector xs))
 (define (text bv) (utf8->string bv))
 
 (define (all? p xs) (for-all p xs))
+
+(define (remove-duplicates xs)
+  (cond ((null? xs) '())
+        ((memq (car xs) (cdr xs)) (remove-duplicates (cdr xs)))
+        (else (cons (car xs) (remove-duplicates (cdr xs))))))
 
 (define sample-bases
   (list (cons 'request (cons "b1" (string->utf8 "GET / HTTP/1.1\r\n\r\n")))
@@ -309,5 +315,164 @@
         (check "every case has bytes"
                (all? (lambda (c) (> (bytevector-length (gen-case-bytes c)) 0))
                      (generate-urls 5 200)))))))
+
+;;; THE LENIENT GENERATOR IS ABOUT COMBINATIONS, and that is what its schedule
+;;; has to guarantee. Upstream's harness has one init hook per (kind, single
+;;; flag), so a PAIR of flags is something llhttp's own corpus tests exactly
+;;; three times -- the `*-lenient-all` fixtures -- and those set nine of the
+;;; eleven flags, leaving `spaces-after-chunk-size` and
+;;; `header-value-relaxed` combined with nothing anywhere.
+;;;
+;;; A random draw over 55 pairs needs hundreds of cases to cover them, and
+;;; "probably covered" is not a coverage claim. So the subsets walk a fixed
+;;; schedule and the cases below assert the walk rather than a distribution.
+(define (subset-of c) (gen-case-flags c))
+
+(define (pairs-of flags)
+  (if (null? flags)
+      '()
+      (append (map (lambda (b) (list (car flags) b)) (cdr flags))
+              (pairs-of (cdr flags)))))
+
+(define all-flags httparse-lenient-flag-names)
+(define all-pairs (pairs-of all-flags))
+
+(harness-group "a lenient run replays from its seed"
+  (lambda ()
+    (harness-case "the same seed produces the same cases, byte for byte"
+      (lambda ()
+        (check-equal "bytes"
+                     (map gen-case-bytes (generate-lenient 7 30))
+                     (map gen-case-bytes (generate-lenient 7 30)))
+        (check-equal "flags"
+                     (map gen-case-flags (generate-lenient 7 30))
+                     (map gen-case-flags (generate-lenient 7 30)))))
+    (harness-case "a different seed produces different inputs"
+      (lambda ()
+        ;; The SUBSETS are scheduled and so do not move with the seed; the
+        ;; inputs they are paired with do, which is the point of running it
+        ;; at more than one seed.
+        (check-not-equal "7 vs 8"
+                         (map gen-case-bytes (generate-lenient 7 30))
+                         (map gen-case-bytes (generate-lenient 8 30)))
+        (check-equal "same schedule"
+                     (map gen-case-flags (generate-lenient 7 30))
+                     (map gen-case-flags (generate-lenient 8 30)))))
+    (harness-case "the count is the number of cases"
+      (lambda ()
+        (check-equal "0" (length (generate-lenient 1 0)) 0)
+        (check-equal "37" (length (generate-lenient 1 37)) 37)))
+    (harness-case "its output stays inside [1,127]"
+      (lambda ()
+        (for-each
+         (lambda (seed)
+           (check (string-append "seed " (number->string seed))
+                  (all? (lambda (c) (generate-safe-bytes? (gen-case-bytes c)))
+                        (generate-lenient seed 67))))
+         '(1 2 3 11 101 9973))))))
+
+(harness-group "what a lenient run contains"
+  (lambda ()
+    (harness-case "a lenient case is a message, never a url"
+      (lambda ()
+        ;; The flags are the MESSAGE parser's field. llhttp's url binary is
+        ;; built with no init hook at all, so a lenient url is not a thing
+        ;; either side can be asked for.
+        (check "only request and response"
+               (all? (lambda (c) (memq (gen-case-kind c) '(request response)))
+                     (generate-lenient 5 67)))))
+    (harness-case "every flag the parser knows appears alone"
+      (lambda ()
+        ;; Drawn from `(httparse modes)` rather than a list written here, so
+        ;; a flag added to the parser enters the schedule instead of being
+        ;; silently skipped.
+        (let ((subsets (map subset-of (generate-lenient 5 67))))
+          (for-each
+           (lambda (f)
+             (check (symbol->string f) (member (list f) subsets)))
+           all-flags))))
+    (harness-case "EVERY PAIR OF FLAGS APPEARS, and there are 55 of them"
+      (lambda ()
+        ;; The whole reason this producer exists. Decision 0020 found two
+        ;; cross-flag interactions the hard way -- an invalid-transfer-encoding
+        ;; refusal suppressed by EITHER of two flags, and a chunk-size arm
+        ;; that needs BOTH of two others -- so the pairs are not a hypothesis.
+        (check-equal "pairs of eleven flags" (length all-pairs) 55)
+        (let ((subsets (map subset-of (generate-lenient 5 67))))
+          (check-equal "pairs the schedule missed"
+                       (filter (lambda (p)
+                                 (not (exists (lambda (s)
+                                                (and (= (length s) 2)
+                                                     (memq (car p) s)
+                                                     (memq (cadr p) s)))
+                                              subsets)))
+                               all-pairs)
+                       '()))))
+    (harness-case "and so does the whole set, which upstream has no hook for"
+      (lambda ()
+        ;; `lenient_all` is a misnomer over there: it sets nine of eleven.
+        (let ((subsets (map subset-of (generate-lenient 5 67))))
+          (check "all eleven"
+                 (exists (lambda (s) (= (length s) (length all-flags))) subsets)))))
+    (harness-case "no subset names a flag twice or a flag the parser lacks"
+      (lambda ()
+        (for-each
+         (lambda (c)
+           (let ((s (subset-of c)))
+             (check "known" (for-all (lambda (f) (memq f all-flags)) s))
+             (check "distinct" (= (length s) (length (remove-duplicates s))))))
+         (generate-lenient 5 67))))
+    (harness-case "half the cases match their malformations to their subset"
+      (lambda ()
+        ;; MEASURED, and the reason the split exists: drawn freely, 4 of 134
+        ;; lenient inputs parsed without an error, because an input dies at
+        ;; the first thing its subset cannot excuse -- and fragmentation
+        ;; invariance is a property of parses that reach NO error. A matched
+        ;; case offers a malformation only when the flag that excuses it is in
+        ;; the subset; a free case draws them independently, which is where
+        ;; both of this producer's first two findings came from.
+        (let ((origins (map gen-case-origin (generate-lenient 5 67))))
+          (check "matched"
+                 (exists (lambda (o) (harness-string-contains? o " matched")) origins))
+          (check "free"
+                 (exists (lambda (o) (harness-string-contains? o " free")) origins)))))
+    (harness-case "a matched case never carries a malformation its flags cannot excuse"
+      (lambda ()
+        ;; The two the origin can be read for. A matched case with a bare LF
+        ;; and no lf flags, or a padded chunk size and no
+        ;; `spaces-after-chunk-size`, would be a free case wearing the wrong
+        ;; label -- and the error-free floor in the property lane would drop
+        ;; without anything saying why.
+        (for-each
+         (lambda (c)
+           (let ((o (gen-case-origin c)) (fs (gen-case-flags c)))
+             (when (harness-string-contains? o " matched")
+               (check "eol"
+                      (or (harness-string-contains? o "eol=crlf")
+                          (and (memq 'optional-cr-before-lf fs)
+                               (memq 'optional-lf-after-cr fs))))
+               (check "chunk pad"
+                      (or (harness-string-contains? o "chunk=none/")
+                          (memq 'spaces-after-chunk-size fs))))))
+         (generate-lenient 5 201))))
+    (harness-case "an origin names the seed, the case and the subset"
+      (lambda ()
+        (let ((c (car (generate-lenient 42 3))))
+          (check "seed" (harness-string-contains? (gen-case-origin c) "seed=42"))
+          (check "index" (harness-string-contains? (gen-case-origin c) "n=0"))
+          (check "flags" (harness-string-contains? (gen-case-origin c) "flags=")))))
+    (harness-case "the other producers carry no flags at all"
+      (lambda ()
+        ;; A strict case that quietly acquired a flag would be compared
+        ;; against the wrong oracle binary.
+        (check "structured"
+               (all? (lambda (c) (null? (gen-case-flags c)))
+                     (generate-structured 5 20)))
+        (check "urls"
+               (all? (lambda (c) (null? (gen-case-flags c)))
+                     (generate-urls 5 20)))
+        (check "mutants"
+               (all? (lambda (c) (null? (gen-case-flags c)))
+                     (generate-mutants 5 20 sample-bases)))))))
 
 (harness-finish)
