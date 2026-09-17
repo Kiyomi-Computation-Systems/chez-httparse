@@ -56,7 +56,7 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   A fourth oracle binary takes its mode from the environment, and
   `generate-lenient`'s subsets walk a fixed schedule — 11 singletons, 55
   pairs, the whole set — so the seed moves the input rather than the
-  coverage. Differential `agreed` 7730 → **9603**; the property lane gains a
+  coverage. Differential `agreed` 7730 → **9557**; the property lane gains a
   mode tally and a floor per mode.
 
   The custom init hook is held to upstream's own binaries at no flags and at

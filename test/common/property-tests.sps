@@ -226,26 +226,31 @@
 ;; seeds:
 ;;
 ;;     seed        request  response  url
-;;     20260915      39        26     115
-;;     1             32        29      98
-;;     2             28        28     102
-;;     777           37        29     103
-;;     20260916      37        34      93
-;;     31337         31        29     104
+;;     20260915      49        48     115
+;;     1             50        50      98
+;;     2             40        58     102
+;;     777           51        53     103
+;;     20260916      57        53      93
+;;     31337         40        56     104
+;;
+;; The request and response columns grew when the lenient producer arrived --
+;; a lenient case is a request or a response too. RE-MEASURED rather than
+;; scaled: the figures these replace were taken before it existed, and a
+;; scaled guess is what put a wrong table here in the first place.
 ;;
 ;; and by mode, at 201 lenient cases:
 ;;
 ;;     seed        strict  lenient
-;;     20260915      180      34
-;;     1             180      35
-;;     2             180      39
-;;     777           180      41
-;;     20260916      180      45
-;;     31337         180      42
+;;     20260915      180      32
+;;     1             159      39
+;;     2             158      42
+;;     777           169      38
+;;     20260916      164      39
+;;     31337         164      36
 ;;
-;; The smallest anyone produced is 26 by kind and 34 by mode, and what the
+;; The smallest anyone produced is 40 by kind and 32 by mode, and what the
 ;; floor has to catch is a kind or a mode contributing nothing at all. 15
-;; clears every seed tried by eleven or more and still lands far above a
+;; clears every seed tried by seventeen or more and still lands far above a
 ;; subject that stopped being generated, or whose every input became an
 ;; error.
 ;;

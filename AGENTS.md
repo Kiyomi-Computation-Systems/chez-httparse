@@ -561,6 +561,30 @@ across several seeds rather than from the first number you see — ours is 15
 against a worst observed 26 — and print the per-kind tally beside the check,
 so a reader can see which member is carrying it.
 
+## Re-measure a number after the last change, not before it
+
+A milestone's headline figure -- `agreed=9603` -- was measured, correctly,
+and then the generator changed once more. The change was to the INPUTS, so
+it moved their lengths, so it moved how many chunk sizes the ladder gives
+them. Merged main measures 9557. The conclusion was unaffected;
+the number in the decision record, the plan, the changelog and the PR body
+was wrong in four places.
+
+The same slip, a few minutes earlier, put a table of per-mode counts into a
+comment that had been SCALED from a smaller run rather than measured. It
+survived a full green suite, because nothing executes a comment.
+
+So: when a number goes into a record, **take it from a run of the tree you
+are about to commit**, not from the run that motivated the change. And when
+a number is a table rather than a single figure, the temptation to fill the
+remaining rows by proportion is exactly the failure -- one measured row and
+five invented ones looks identical to six measured rows.
+
+`Prefer a check to a comment` is the general form, and the specific form
+here is that a printed tally beside the check would have caught both: the
+lane prints its per-kind and per-mode counts every run, so the table in the
+comment was contradicted on screen by the lane it describes.
+
 ## A build cache that hashes arguments has not hashed your file
 
 The differential's lenient oracle is upstream's parser built with an init

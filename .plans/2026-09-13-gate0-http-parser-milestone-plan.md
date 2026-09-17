@@ -647,7 +647,7 @@ eleven. Decision
 A fourth oracle binary whose init hook is ours, reading the kind and a mask
 from the environment, and a `generate-lenient` whose subsets WALK A FIXED
 SCHEDULE -- 11 singletons, 55 pairs, the whole set -- so the seed moves the
-input and not the coverage. `agreed` 7730 → **9603**.
+input and not the coverage. `agreed` 7730 → **9557**.
 
 **The hook is held to upstream's own, not argued into place.** At no flags it
 must be `http-request-c` and `http-response-c`; at one flag it must be
