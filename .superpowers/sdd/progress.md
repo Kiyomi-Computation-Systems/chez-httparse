@@ -2113,3 +2113,107 @@ differential**, which still covers `request` and `response` only. The ground
 just shifted in its favour — the request target now runs a twenty-node
 structural machine that generated input would exercise hard, and M8's
 experience is that the generated-input lane finds what fixtures do not.
+
+## 2026-09-17 — the url is generated input too, and the second `@` was wrong (#22)
+
+Merged as `ff60c4c`. The one piece the last close-out left named: the live
+differential covered `request` and `response` only, so a twenty-node machine
+with six error arms was being judged by 21 fixtures and a target pool of ten
+strings that all parse. Decision
+[0024](../../.plans/decisions/0024-the-url-input-generator-and-the-second-at.md),
+amending [0010](../../.plans/decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md)
+(a third kind, a third binary, a seed sweep) and
+[0022](../../.plans/decisions/0022-the-url-sub-parser-is-a-second-machine.md)
+(the asymmetry it left).
+
+`generate-urls` as a third producer, `url.md` entire as a mutation base, and a
+third oracle binary built the way `test/md-test.ts`'s `buildURL()` builds it —
+the program `url.md` was recorded from.
+
+    agreed=1142  ->  agreed=7730 late-complete=4 early-complete=0 unclassified=0
+
+**THE URL CASES ARE A SEPARATE RUN, NOT MORE BASES IN THE EXISTING ONE.**
+Added to `bases` they would have changed every message mutant this lane has
+ever produced, and a new divergence would have had two possible causes. Kept
+apart, `HTTPARSE_DIFFERENTIAL_URL_CASES=0` reproduces `agreed=1142` exactly —
+which is how the bisection was done rather than argued.
+
+**IT FOUND A REAL BUG ON ITS FIRST SWEEP, WHICH IS THE POINT.** llhttp
+rejects only ADJACENT `@`: `http://a@b@c/p` is a host of `a@b@c`, and only
+`a@@b` is `Double @ in url`. This parser refused the second `@` wherever it
+fell. Upstream builds `server` and `server_with_at` from one loop whose edges
+name `server` EXPLICITLY rather than the loop variable —
+
+    .match(USERINFO_CHARS, server)   // server, NOT node
+    .match([ '[', ']' ], server)     // server, NOT node
+
+— so the second node is ONE BYTE WIDE and any ordinary host byte re-arms `@`.
+The code had read that as "the same node twice, minus one edge" and said so in
+a comment. `url.md`'s "Double `@`" fixture has its two `@` ADJACENT, so
+neither the corpus, nor the six oracle-measured cases, nor 274 replays at
+every chunk size could tell the two rules apart. Seed 777 found it by mutating
+that very fixture — inserting one byte between the two `@`. In AGENTS.md as
+**a loop variable is not the node the edges name**.
+
+**ONE SEED IS NOT A LANE**, and that is the finding about the instrument
+rather than the parser. The default seed did not see the bug; three of the
+five tried did:
+
+| seed | unclassified, before the fix |
+|---|---|
+| 20260915 (default) | **0** |
+| 1 | 20 |
+| 2 | 0 |
+| 777 | 8 |
+| 20260916 | 17 |
+
+`agreed=2573 unclassified=0` looks exactly like a lane with nothing to say, so
+the default's green would have been read as evidence. The run is now the seed
+it is given AND ITS TWO SUCCESSORS — one number still names it, any member
+replays alone, and re-introducing the bug turns the DEFAULT run red at 8. The
+extra seeds are derived arithmetically on purpose: picking the three that
+caught this would have been fitting the lane to its own history. In AGENTS.md.
+
+**THE FIX IS PINNED TWICE, BECAUSE THE DESCRIPTION IS BUILT TWICE.** Last
+close-out's lesson applied rather than re-learned: `unit.url` for the
+standalone build, where the host is `span[url.host]`, and
+`unit.request-target` for the HTTP build, where the whole target is one
+`span[url]`. Both expectations are the live binaries' own bytes, and both were
+watched failing before the fix went in.
+
+**The url half's sensitivity was measured three ways, not assumed.** Dropping
+`#` from `fragment.match(['?','#'], fragment)` leaves ALL 86 OTHER LANES GREEN
+— `url.md`'s 21 at every chunk size included — and turns this lane's
+`unclassified` from 0 to 48. Resolving the `url` kind to the request binary
+turns all 1431 new comparisons unclassified and `agreed` back to exactly 1142.
+Handing a url case to the message machine is a runtime contract violation, not
+a divergence — red, but not the red that means anything, which is the
+"reading a red lane" rule biting in a new place.
+
+**Three witnesses anchor the kind even though there is no class to name**, in
+0018's shape: the same bytes read as a url and as a request are two different
+traces; the exits, which no fixture in the corpus reaches; and the fragment
+arm the mutation proved only this lane can see.
+
+**A target you used to see refused now parses** — the mirror of #21's
+consequence, and the same reason. `CHANGELOG.md` files it under Fixed and
+`api.org` says it beside the stricter change, so an embedder reading either
+one sees both directions.
+
+Verified on MERGED main: `make clean`, then **86 of 86** at the default preset
+and **87 of 87** with the oracle enabled, full chunk-size scan included,
+ratchet **274 passing / 0 not-yet / 0 deferred**, differential at the numbers
+above. Reconfigured back to the default preset afterwards. SSH was still down;
+`gh` over HTTPS did the push, the merge and the ref update, and this time
+`gh pr merge --squash --delete-branch` succeeded outright.
+
+CI: the billing refusal, `steps=0` plus the annotation, on both the PR
+(`104916213931`) and merged main (`105030545896`).
+
+**What is left.** The PROPERTY lane is message-only. It runs on every pull
+request and needs no llhttp, and both its properties — fragmentation
+invariance, and the two executors agreeing — hold of the url machine as much
+as the message one. Nothing yet compares `httparse-url-machine` against its
+interpreted twin on input the corpus does not contain, which is the one place
+a compiler bug could hide from the conformance lane. Named in 0024 and in the
+plan's *Deferred*, not built.
