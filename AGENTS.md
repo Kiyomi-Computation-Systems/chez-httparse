@@ -777,3 +777,32 @@ hashed your file*: **when a change that must do something appears to do nothing,
 suspect the apparatus before the hypothesis.** Both times the apparatus was
 wrong, and both times the tempting move was to accept the null result and go
 looking for a different explanation.
+
+## A constant that makes a measurement valid goes stale when the code improves
+
+The throughput lane grew a check that each timed region outlasts the
+millisecond clock, with a 10 ms floor, because a rate computed over an interval
+the clock cannot resolve is a fabricated number — and the smaller the interval,
+the larger and more flattering the fabrication. The floor was written against
+the risk of **a faster machine**.
+
+What it caught, one day later, was **a faster parser**. The pin bump that made
+the generated dispatch four times cheaper left the three repetition literals
+measuring 31 ms, 19 ms and 10 ms where they had measured 135, 70 and 23 — the
+byte-at-a-time case landing exactly on the floor, passing, one improvement from
+failing. Nothing was wrong with the floor; the literals it guarded had simply
+stopped being the right literals, and there is no version of them that stays
+right.
+
+**So a constant that exists to keep a measurement valid should be derived at
+run time, not chosen.** Each case now doubles its repetitions until the region
+clears a target, and prints the count it arrived at; two runs of the lane need
+not agree on repetitions, and the floor's job changed from "these literals are
+still big enough" to "calibration did not give up". The general shape: *a
+tuned constant is a claim about the code as it was when someone tuned it*, and
+the failure mode is not a red lane but a plausible number — which is why the
+check had to exist before the improvement did.
+
+Worth noting what the guard cost to be right: it was added a day earlier for a
+reason that never materialised. That is the usual return on this kind of check,
+and it is not a reason to skip the next one.

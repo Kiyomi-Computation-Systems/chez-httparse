@@ -2447,3 +2447,55 @@ unchecked inference costs more the moment it is reported and someone acts on it.
 that swaps a library must prove which copy ran: the first permutation reported no change at all,
 which read exactly like a refuted hypothesis, and the reordered library had simply been second on
 `library-directories`.
+
+## 2026-09-17 — the pin moves, and decision 0027 is delivered
+
+PR #26 (squash `c199a2d` on main; base `41f9549`). Decision
+[0005](../../.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md) item 3, delivering
+[0027](../../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md).
+
+Upstream range `bce3a6b..69276b5` — that project's PR #133 and its close-out. Its decisions 0048 and
+0049 replace the emitted `(case st ...)`, which Chez compiles as a linear scan of about 0.31ns per arm
+skipped, with one procedure per state and direct tail calls between them, so a machine's per-byte cost
+stops depending on where its hot states happened to be numbered.
+
+**0005 item 5 discharged: the ABI is re-read at the pin and is still 8**, so item 2 is unamended.
+**Both IR fingerprints are unchanged** — url `3216037711265608570`, message `318434098601601619` —
+which is what item 3 asks them for and the reason to quote them: the emitter moved and the IR did
+not, so the regenerated sources are a pure re-rendering of the same two machines, and a moving
+fingerprint would have meant the bump reached something it should not have. They grow 12.2% and 7.1%.
+
+Throughput, both execution modes, three runs each: **14,925-15,037 → 60,377-64,000 msg/s** on a
+request, **28,169-28,571 → 103,225-106,666** on a response, **8,000-8,695 → 18,823-19,753** fed one
+byte at a time. Against llhttp's own `bench` mode on its own inputs the ratio falls **485x → 104x**,
+**365x → 89x**, **89x → 67x**, and the spread between the three has largely collapsed — which is the
+confirmation that the position term is gone, not a separate claim.
+
+**Unchanged, which is the evidence that matters**: differential `agreed=9557 late-complete=4
+early-complete=0 unclassified=0`, identical to the pre-bump figure; ratchet **274 passing / 0 not-yet
+/ 0 deferred**; both property tallies to the case. A re-rendering of the same IR should move nothing
+semantic, and nothing semantic moved. One figure did move and the docs followed it rather than keeping
+the prettier number: per-feed allocation for the 50-byte message, 397 → 398 B, stable across runs.
+
+**The benchmark now calibrates its repetition count, and the reason is the previous PR's check firing
+one day later.** That check asserts each timed region outlasts the millisecond clock, floor 10ms, and
+it was written against the risk of a faster *machine*. What it caught was a faster *parser*: at this
+pin the three literals measured 31ms, 19ms and 10ms where they had measured 135, 70 and 23, the
+byte-at-a-time case landing exactly on the floor — passing, one improvement from failing. Bumping one
+literal would have deferred the problem to whoever next makes the parser faster, and the symptom of
+noticing late is a flattering rate rather than a red lane. Each case now doubles until its region
+clears 50ms and prints the count it reached; the floor's job changed from "these literals are still
+big enough" to "calibration did not give up". AGENTS.md carries the general shape.
+
+**The rename audit caught a leak on the way**, which is the machinery working rather than a defect:
+decision 0003 lets the test tree import `(byte-machine runtime)` but not name the project in prose,
+and the calibration comment did. Reworded; no rule changed.
+
+Verification on merged main, clean rebuild: **88/88** at the default preset, **89/89** with
+`HTTPARSE_LLHTTP_ROOT`. CI a billing refusal on the PR (`105198089053`): `steps=0` plus the
+account-payments annotation, decision 0004.
+
+Gate 0's cost work is closed. The parser is four times faster than it was this morning, the reason it
+was slow is recorded in three places rather than one, and none of it came from tuning this repository
+— it came from measuring a ratio, noticing the ratio was not constant, and chasing the variance into
+the dependency.
