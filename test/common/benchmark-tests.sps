@@ -14,7 +14,12 @@
 ;;; that the message actually completed before it reports a rate.
 ;;;
 ;;; This lane carries the `benchmark` label, which the pull-request preset
-;;; does not select; it runs in the release selection.
+;;; does not select; it runs in the release selection. It is registered in
+;;; both execution modes, and they agree: Chez compiles on load, so a
+;;; `.chez.source` run and a `.chez.aot` run execute the same native code and
+;;; ahead-of-time compilation buys startup rather than throughput. Every
+;;; figure below prints its mode so the two runs can be told apart in one log.
+;;; test/CMakeLists.txt records the measurement behind that claim.
 (import (rnrs)
         (httparse test harness)
         (generated httparse-message)
@@ -96,12 +101,38 @@
     (one)
     (let ((start (adapter-real-time)))
       (let loop ((i 0)) (when (< i reps) (one) (loop (+ i 1))))
-      (max 1 (- (adapter-real-time) start)))))
+      ;; The RAW reading, zero included. Guarding against dividing by it is
+      ;; `report`'s job, so that the case can see what the clock actually
+      ;; said rather than a floor standing in for it.
+      (- (adapter-real-time) start))))
 
-(define (report label bytes reps ms)
-  (let ((per-sec (div (* 1000 reps) ms))
-        (mb-per-sec (div (* 1000 bytes reps) (* ms 1048576))))
-    (display (string-append "httparse-benchmark: " label
+;; A RATE COMPUTED OVER AN INTERVAL THE CLOCK CANNOT RESOLVE IS A FABRICATED
+;; NUMBER, and a fabricated number sails over every floor in this file --
+;; the smaller the interval, the larger the rate. `adapter-real-time` reads
+;; milliseconds, so a region that finishes in a handful of them is mostly
+;; quantisation. The rep counts below are sized to keep every region far
+;; above this; the check is what says so if a faster machine, a faster
+;; runtime, or a smaller benchmark input ever drops one under, instead of
+;; letting the lane report nonsense and pass.
+(define minimum-measurable-ms 10)
+
+(define (check-measurable label ms)
+  (check (string-append "the " label " region outlasts the clock's resolution"
+                        " (measured " (number->string ms) "ms, floor "
+                        (number->string minimum-measurable-ms) "ms)")
+         (>= ms minimum-measurable-ms)))
+
+;; Every figure carries the execution mode, because this lane is registered in
+;; BOTH and one release log holds both runs' lines. Without it the six lines
+;; below are six plausible numbers with no way to tell the interpreted ones
+;; from the compiled ones -- which is the reading that matters, since the
+;; compiled figure is the one an embedder gets.
+(define (report label bytes reps raw-ms)
+  (let* ((ms (max 1 raw-ms))
+         (per-sec (div (* 1000 reps) ms))
+         (mb-per-sec (div (* 1000 bytes reps) (* ms 1048576))))
+    (display (string-append "httparse-benchmark: " (adapter-execution-mode)
+                            " " label
                             " " (number->string bytes) "B x" (number->string reps)
                             " in " (number->string ms) "ms = "
                             (number->string per-sec) " msg/s, "
@@ -120,6 +151,7 @@
                (ms (parse-n request 'request (bytevector-length request) reps))
                (rate (report "request/whole" (bytevector-length request) reps ms)))
           (check-equal "every repetition completed a message" completed (+ reps 1))
+          (check-measurable "request/whole" ms)
           ;; The floor is a change of KIND, not a regression threshold.
           (check (string-append "above 1 MB/s (measured " (number->string rate) ")")
                  (>= rate 1)))))
@@ -130,6 +162,7 @@
                (ms (parse-n response 'response (bytevector-length response) reps))
                (rate (report "response/whole" (bytevector-length response) reps ms)))
           (check-equal "every repetition completed a message" completed (+ reps 1))
+          (check-measurable "response/whole" ms)
           (check (string-append "above 1 MB/s (measured " (number->string rate) ")")
                  (>= rate 1)))))))
 
@@ -144,6 +177,7 @@
                (ms (parse-n request 'request 1 reps))
                (rate (report "request/1-byte-feeds" (bytevector-length request) reps ms)))
           (check-equal "every repetition completed a message" completed (+ reps 1))
+          (check-measurable "request/1-byte-feeds" ms)
           (check (string-append "above 0.1 MB/s (measured " (number->string rate) ")")
                  (>= (* 10 rate) 1)))))))
 

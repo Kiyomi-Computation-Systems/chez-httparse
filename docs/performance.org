@@ -1,7 +1,9 @@
 #+TITLE: What chez-httparse costs
 #+OPTIONS: toc:2
 
-Two lanes measure this, and they answer different kinds of question.
+Two lanes measure this, and they answer different kinds of question. Each is
+registered twice — once running from source, once from ahead-of-time compiled
+objects — for the reason at the bottom of this page.
 
 * Allocation: a shape, asserted
 
@@ -17,8 +19,8 @@ bytevector. Nothing is copied, so a large body costs what a small one does.
 
 | message                         | allocated per whole-buffer parse |
 |---------------------------------+----------------------------------|
-| =POST= with a 10-byte body      | 6,496 B                          |
-| =POST= with a 10,000-byte body  | 6,548 B                          |
+| =POST= with a 10-byte body      | 6,592 B                          |
+| =POST= with a 10,000-byte body  | 6,640 B                          |
 
 A thousandfold more body, 0.8% more allocation. A parser that copied spans
 would show a thousandfold difference.
@@ -32,7 +34,7 @@ or re-copying consumed input.
 
 | message fed one byte at a time | allocated per feed |
 |--------------------------------+--------------------|
-| 50 bytes                       | 398 B              |
+| 50 bytes                       | 397 B              |
 | 10,043 bytes                   | 384 B              |
 
 Flat, across a message two hundred times longer.
@@ -55,21 +57,60 @@ reasons which are not about this code. The lane prints its figures and
 asserts only a floor loose enough that only a change of *kind* crosses it —
 an accidental quadratic, a per-byte allocation, a rescan.
 
-On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, source mode:
+On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, over three runs
+of each mode on 2026-09-17:
 
-| what                                         |    msg/s |   MB/s |
-|----------------------------------------------+----------+--------|
-| 308-byte request, 8 headers, whole buffer    |   20,000 |      6 |
-| 1,166-byte response, 1 KB body, whole buffer |   35,000 |     39 |
-| the same request, fed one byte at a time     |   11,000 |      3 |
+| what                                         |         msg/s | MB/s |
+|----------------------------------------------+---------------+------|
+| 308-byte request, 8 headers, whole buffer    | 14,925–15,037 |    4 |
+| 1,166-byte response, 1 KB body, whole buffer | 28,169–28,571 |   31 |
+| the same request, fed one byte at a time     |   8,000–8,695 |    2 |
 
-Read these as an order of magnitude, not a specification. They are here so
-that a later change can be compared against something, and so the cost of
-the worst case a resumable parser can be asked for — a byte at a time — is
-on the record rather than guessed at.
+The ranges are the full spread across all six runs, source and compiled
+together. Read them as an order of magnitude, not a specification. They are
+here so that a later change can be compared against something, and so the
+cost of the worst case a resumable parser can be asked for — a byte at a
+time — is on the record rather than guessed at.
+
+A rate is a quotient, and the denominator is a clock. =adapter-real-time=
+reads whole milliseconds, so a region that finishes in a handful of them is
+mostly quantisation — and the smaller the interval, the *larger* and more
+impressive the fabricated rate, which would sail over every floor above. The
+repetition counts are sized to keep each region two orders of magnitude clear
+of that, and a check asserts it, so a faster machine gets a failure rather
+than a flattering number.
 
 To take your own:
 
 #+begin_src sh
 ctest --preset release -R benchmark
 #+end_src
+
+* Source and compiled cost the same, and that is a measurement
+
+Every cost lane runs twice, =.chez.source= and =.chez.aot=. These were added
+expecting the compiled figures to beat the source ones — on the assumption,
+never checked, that a lane named "source" interprets.
+
+It does not. Measured on 2026-09-17 against Chez 10.4.1, a hot loop of
+20,000,000 iterations:
+
+| how the same code ran                         | steady state |
+|-----------------------------------------------+--------------|
+| =--script=, from source                       |        27 ms |
+| =--program=, from a =compile-program= object  |        28 ms |
+| from source, with =(current-eval interpret)=  |       455 ms |
+
+Chez compiles on load. A =.chez.source= lane is not an interpreted lane; it
+is a compiled lane that pays for the compile at startup. What ahead-of-time
+compilation buys is that startup — the allocation lane takes 0.72 s from
+source and 0.17 s compiled — while the measured region inside it is identical
+to the byte: =6,592= / =6,640= and =397= / =384= in both, on every run.
+
+So the compiled half does not publish a faster number. What it publishes is
+that these costs hold in the configuration this project ships, as an
+observation rather than an inference. The two runs print their mode beside
+every figure and sit side by side in one release log; nothing machine-checks
+that they agree, because no cross-lane comparison exists in this tree and the
+failure it would catch — a parser whose cost depends on when it was compiled
+— is not worth inventing one for.

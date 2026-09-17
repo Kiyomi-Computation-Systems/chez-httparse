@@ -722,3 +722,30 @@ superset of what it needs to be costs nothing until you quote it as a reason.
 The check that replaced the comment asserts the direction that is load-bearing
 (nothing diverges unmarked, because unmarked fixtures ARE scanned) and records
 the one mark that is only caution.
+
+**And OUR OWN names are claims — including the ones in a lane id.** This tree
+registers `.chez.source` and `.chez.aot` lanes, and a gap analysis went out
+saying the cost lanes measured only source, so "the compiled figure — the one
+an embedder would actually get — is unmeasured." Every word of that is
+grammatical, plausible, and wrong. Chez compiles on load: measured against
+10.4.1 on 2026-09-17, one hot loop ran in 27 ms from source, 28 ms from a
+`compile-program` object, and 455 ms from that same source with
+`(current-eval interpret)`. `source` names where the TEXT came from, not what
+the runtime does with it. The published figures had been compiled-code figures
+all along.
+
+Two things make this worse than the usual version of the mistake. The first is
+that the inference was *reported as a finding* — not written into a comment
+where it would sit quietly, but handed over as a gap, and work was commissioned
+on the strength of it. An unchecked claim costs more the moment someone else
+acts on it, so the checking threshold for anything you are about to report is
+higher than for anything you are about to write down. The second is that the
+probe took under a minute, and it was available before the claim was: timing a
+loop three ways needs no part of this repository.
+
+The lanes were worth adding anyway, but not for the stated reason, and the
+difference matters. They do not publish a faster number; they publish that the
+cost claims hold in the configuration this project ships. When a measurement
+comes back identical to the one it was supposed to beat, that is the result —
+chase it, and rewrite the reason you gave. Do not keep the reason and shrug at
+the number.

@@ -1357,28 +1357,49 @@ endforeach()
 # benchmark prints numbers and carries a label the pull-request preset does
 # not select, because a measured rate that gates a merge is a lane that fails
 # for reasons which are not about this code.
+#
+# BOTH MODES, AND THEY AGREE -- WHICH IS THE POINT, NOT A DISAPPOINTMENT.
+# These lanes were added expecting the compiled figures to beat the source
+# ones, on the assumption that a "source" lane interprets. It does not.
+# Measured against Chez 10.4.1 on 2026-09-17, a hot loop of 20,000,000
+# iterations: 27ms under `--script` from source, 28ms under `--program` from
+# a compile-program object, and 455ms from that same source with
+# `(current-eval interpret)`. Chez compiles on load; what ahead-of-time
+# compilation buys is STARTUP, not throughput -- visible here as the
+# allocation lane's wall time, 0.72s from source against 0.17s compiled,
+# while the measured region inside it is identical to the byte.
+#
+# So what the aot half adds is not a faster number. It is the observation
+# that the cost claims hold in the configuration this project actually ships,
+# rather than the inference that they must. Both programs print the execution
+# mode beside every figure; the release log carries the two runs side by side
+# and a reader compares them there. That comparison is NOT machine-checked:
+# no cross-lane comparison exists in this tree, and the failure it would
+# catch -- a parser whose cost depends on when it was compiled -- is not
+# worth inventing one for.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.property.allocation.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/allocation-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GENERATED_PARSER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/allocation-tests.sps"
+    TIMEOUT 300
+    LABELS property)
 
-httparse_add_scheme_lane(
-  NAME httparse.property.allocation.chez.source
-  BACKEND chez
-  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/allocation-tests.sps"
-  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
-          ${HTTPARSE_GENERATOR_SOURCES}
-          ${HTTPARSE_GENERATED_PARSER}
-          "${CMAKE_CURRENT_LIST_DIR}/common/allocation-tests.sps"
-  TIMEOUT 300
-  LABELS property)
-
-httparse_add_scheme_lane(
-  NAME httparse.benchmark.throughput.chez.source
-  BACKEND chez
-  PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
-  SOURCES ${HTTPARSE_HARNESS_MANIFEST}
-          ${HTTPARSE_GENERATOR_SOURCES}
-          ${HTTPARSE_GENERATED_PARSER}
-          "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
-  TIMEOUT 300
-  LABELS benchmark)
+  httparse_add_scheme_lane(
+    NAME httparse.benchmark.throughput.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GENERATED_PARSER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
+    TIMEOUT 300
+    LABELS benchmark)
+endforeach()
 
 # --- The live llhttp differential: local, opt-in, never a merge gate --------
 #

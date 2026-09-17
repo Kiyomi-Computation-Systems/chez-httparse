@@ -6,7 +6,39 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Both cost lanes run in both execution modes.** `httparse.property.allocation`
+  and `httparse.benchmark.throughput` were registered only as `.chez.source`;
+  each now also runs as `.chez.aot`, and every figure prints its mode so one
+  release log can be read.
+
+  **They agree, and that is the finding.** These lanes were added expecting
+  the compiled numbers to beat the source ones, on the assumption — never
+  checked — that a lane named "source" interprets. Measured against Chez
+  10.4.1 on 2026-09-17, a hot loop of 20,000,000 iterations: 27 ms under
+  `--script` from source, 28 ms from a `compile-program` object, and 455 ms
+  from that same source with `(current-eval interpret)`. Chez compiles on
+  load. Ahead-of-time compilation buys startup — 0.72 s against 0.17 s for
+  the allocation lane — and the measured region inside is identical to the
+  byte. So the published costs were never interpreted-code costs, and the
+  compiled half now says so as an observation rather than an inference.
+  See [docs/performance.org](docs/performance.org).
+
 ### Fixed
+
+- **A benchmark could report a rate the clock never measured.** Elapsed time
+  was floored with `(max 1 ...)` before the rate was computed, so a region
+  finishing inside the millisecond clock's resolution would divide by that
+  floor and print a large, entirely fabricated figure — one that passes every
+  throughput floor in the lane, because the smaller the interval the larger
+  the quotient. `parse-n` now returns the raw reading and each case asserts
+  its region outlasted the clock.
+
+- **The allocation figures in `docs/performance.org` were stale**: 6,496 /
+  6,548 B and 398 B where the lane measures 6,592 / 6,640 B and 397 B. The
+  shape the prose draws from them is unchanged; the numbers are now the ones
+  the lane prints.
 
 - **A bare LF after a request's version needs BOTH `OPTIONAL_CR_BEFORE_LF`
   and `OPTIONAL_LF_AFTER_CR`**
