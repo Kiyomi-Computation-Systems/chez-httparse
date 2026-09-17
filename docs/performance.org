@@ -114,3 +114,77 @@ every figure and sit side by side in one release log; nothing machine-checks
 that they agree, because no cross-lane comparison exists in this tree and the
 failure it would catch — a parser whose cost depends on when it was compiled
 — is not worth inventing one for.
+
+* Against llhttp, on llhttp's own benchmark
+
+The absolute rates above move with the machine. A *ratio* taken on one
+machine in one sitting does not, which makes it the more durable figure —
+and it answers the question an absolute MB/s cannot: how much of the cost is
+this parser, and how much is parsing.
+
+** The measurement is upstream's, not ours
+
+=llparse-test-fixture= — the same harness that builds the oracle binaries
+this project already compares traces against — carries a =bench= mode, and
+=npm run bench= in an llhttp checkout drives it. So there is no benchmark
+program to write: the binaries are the ones =tools/oracle/= already builds,
+invoked as =http-request-c bench <input>= rather than for a trace.
+
+In that mode the callbacks still fire; =llparse__print= and
+=llparse__print_span= return early instead of writing, so what is timed is
+the parse and the dispatch, with the I/O removed. That is the same shape as
+this project's benchmark bindings, which are bound, called, and do nothing.
+
+Upstream sizes its loop by a fixed total of *bytes* — =kBytes= is 8 GiB, and
+the iteration count is derived from the input length. That is a better
+instrument than the fixed repetition count in =benchmark-tests.sps=, because
+it holds the measured interval steady as the input changes rather than
+letting a short input shrink it.
+
+** The figures
+
+Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-17. Upstream's
+own three bench inputs, their binary and ours on the same bytes:
+
+| input                                |    llhttp | chez-httparse | ratio |
+|--------------------------------------+-----------+---------------+-------|
+| 703 B request, 8 headers, big cookie | 2,621 MB/s|      5.4 MB/s |  485× |
+| 520 B chunked =POST=                 | 1,739 MB/s|      4.8 MB/s |  365× |
+| 52 B URL                             | 2,099 MB/s|     23.6 MB/s |   89× |
+
+Computed from operations per second instead of bytes per second, the same
+three ratios come out 489×, 366× and 89× — the two readings agree, as they
+must, and neither is doing any work the other is not.
+
+** What the spread says
+
+The ratio is *not constant*, and the variance is on this side of it.
+llhttp's URL and message parsers are within 1.5× of each other per byte;
+these two differ by **4.5×** — 23.6 MB/s for the URL machine against 5.4 for
+the message machine. So the gap is not a uniform cost of being Scheme, which
+would show up as one number in all three rows. Something is concentrated in
+the message machine.
+
+The benchmark lane's own figures point the same way from a different angle: a
+1,166-byte response whose last kilobyte is body runs at 31 MB/s, while a
+308-byte request that is almost all header section runs at 4. Body bytes are
+one span and bulk; header bytes are not. Whatever the 4.5× is, it is being
+spent in the header section rather than in framing, in construction, or in
+callback dispatch — construction is 2.5% of a parse, measured by reusing one
+parser across repetitions instead of building a fresh one, which moved the
+rate from 5.2 MB/s to 5.4.
+
+** Taking these yourself
+
+The =bench= mode needs a built llhttp checkout, named the same way the
+differential names one (decision 0010):
+
+#+begin_src sh
+cmake --preset dev -DHTTPARSE_LLHTTP_ROOT=/path/to/llhttp
+cmake --build build/dev
+build/dev/llhttp-oracle/http-request-c bench "$(printf 'GET / HTTP/1.1\r\nHost: x\r\n\r\n')"
+#+end_src
+
+These figures are recorded rather than gated. A ratio is stable enough to
+gate on, which an absolute rate is not — but gating one now would lock in a
+number while the 4.5× above is still unexplained.

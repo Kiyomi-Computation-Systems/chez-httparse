@@ -25,6 +25,19 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   compiled half now says so as an observation rather than an inference.
   See [docs/performance.org](docs/performance.org).
 
+- **A recorded comparison against llhttp**, on llhttp's own benchmark.
+  `llparse-test-fixture` carries a `bench` mode and upstream's `npm run bench`
+  drives the very binaries `tools/oracle/` already builds, so there is no
+  benchmark program to write and the methodology is upstream's rather than
+  ours. On upstream's three bench inputs: 485x on a 703-byte request, 365x on
+  a 520-byte chunked `POST`, 89x on a 52-byte URL.
+
+  **The ratio is not constant, and the variance is on our side.** llhttp's URL
+  and message parsers are within 1.5x of each other per byte; ours differ by
+  4.5x. Recorded rather than gated: a ratio is stable enough to gate on where
+  an absolute rate is not, but gating one now would lock in a number while
+  that 4.5x is unexplained.
+
 ### Fixed
 
 - **A benchmark could report a rate the clock never measured.** Elapsed time
