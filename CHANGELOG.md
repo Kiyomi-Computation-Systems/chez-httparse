@@ -6,6 +6,48 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The byte-machine pin moves to `69276b5`, and the parser gets four times
+  faster** ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  item 3; the bump exists to deliver
+  [0027](.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md)).
+  Upstream range `bce3a6b..69276b5`, two commits: byte-machine's PR #133 and
+  its close-out. That project's decisions 0048 and 0049 replace the emitted
+  `(case st ...)` -- which Chez compiles as a linear scan -- with one procedure
+  per state and direct tail calls between them.
+
+  **The generated ABI is re-read at the pin and is still 8** (0005 item 5), so
+  item 2 is unamended. **Both IR fingerprints are unchanged**, which is the
+  point: `httparse-url-machine` is still `3216037711265608570` and
+  `httparse-message-machine` still `318434098601601619`. The emitter moved and
+  the IR did not, so the regenerated sources are a pure re-rendering of the
+  same machines. They grow: 298,126 -> 334,508 bytes for the message parser
+  (+12.2%) and 61,431 -> 65,806 for the url parser (+7.1%).
+
+  Throughput, both execution modes, three runs each:
+
+  | what | before | after |
+  |---|---|---|
+  | 308 B request, 8 headers, whole buffer | 14,925-15,037 msg/s | **60,377-64,000** |
+  | 1,166 B response, 1 KB body, whole buffer | 28,169-28,571 | **103,225-106,666** |
+  | the same request, one byte at a time | 8,000-8,695 | **18,823-19,753** |
+
+  Against llhttp's own `bench` mode on its own inputs, the ratio falls from
+  **485x to 104x** on a 703-byte request, **365x to 89x** on a chunked `POST`,
+  and **89x to 67x** on a url. The spread between the three has largely
+  collapsed, which is the confirmation that the position term is gone.
+
+- **The benchmark calibrates its repetition count instead of carrying three
+  literals.** Those literals were right for one parser on one machine: at the
+  new pin the same counts measured 31 ms, 19 ms and 10 ms where they had
+  measured 135, 70 and 23 -- the byte-at-a-time case landing exactly on the
+  10 ms floor added a day earlier, one improvement from failing. Each case now
+  doubles its repetitions until the region clears 50 ms and prints the count it
+  arrived at, so two runs need not agree on repetitions. The floor still
+  exists; what it catches now is calibration giving up rather than a literal
+  gone stale.
+
 ### Added
 
 - **Both cost lanes run in both execution modes.** `httparse.property.allocation`

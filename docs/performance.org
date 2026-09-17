@@ -34,7 +34,7 @@ or re-copying consumed input.
 
 | message fed one byte at a time | allocated per feed |
 |--------------------------------+--------------------|
-| 50 bytes                       | 397 B              |
+| 50 bytes                       | 398 B              |
 | 10,043 bytes                   | 384 B              |
 
 Flat, across a message two hundred times longer.
@@ -60,11 +60,11 @@ an accidental quadratic, a per-byte allocation, a rescan.
 On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, over three runs
 of each mode on 2026-09-17:
 
-| what                                         |         msg/s | MB/s |
-|----------------------------------------------+---------------+------|
-| 308-byte request, 8 headers, whole buffer    | 14,925–15,037 |    4 |
-| 1,166-byte response, 1 KB body, whole buffer | 28,169–28,571 |   31 |
-| the same request, fed one byte at a time     |   8,000–8,695 |    2 |
+| what                                         |           msg/s |    MB/s |
+|----------------------------------------------+-----------------+---------|
+| 308-byte request, 8 headers, whole buffer    |   60,377–64,000 |   17–18 |
+| 1,166-byte response, 1 KB body, whole buffer | 103,225–106,666 | 114–118 |
+| the same request, fed one byte at a time     |   18,823–19,753 |       5 |
 
 The ranges are the full spread across all six runs, source and compiled
 together. Read them as an order of magnitude, not a specification. They are
@@ -72,13 +72,23 @@ here so that a later change can be compared against something, and so the
 cost of the worst case a resumable parser can be asked for — a byte at a
 time — is on the record rather than guessed at.
 
+These are four times what this page carried a day earlier — 14,925 msg/s,
+28,169 and 8,695. The change is not in this repository; see *Against llhttp*
+below.
+
 A rate is a quotient, and the denominator is a clock. =adapter-real-time=
 reads whole milliseconds, so a region that finishes in a handful of them is
 mostly quantisation — and the smaller the interval, the *larger* and more
-impressive the fabricated rate, which would sail over every floor above. The
-repetition counts are sized to keep each region two orders of magnitude clear
-of that, and a check asserts it, so a faster machine gets a failure rather
-than a flattering number.
+impressive the fabricated rate, which would sail over every floor above.
+
+**So the repetition count is calibrated rather than chosen.** It used to be
+three literals, and they were right for one parser on one machine: when the
+dispatch changed, those same counts measured 31 ms, 19 ms and 10 ms where they
+had measured 135, 70 and 23 — the byte-at-a-time case landing exactly on the
+10 ms floor, one improvement from failing. Each case now doubles its
+repetitions until the region clears 50 ms and prints the count it arrived at,
+so two runs of this lane need not agree on repetitions and were never meant
+to. The floor still exists; what it catches now is calibration giving up.
 
 To take your own:
 
@@ -103,9 +113,9 @@ It does not. Measured on 2026-09-17 against Chez 10.4.1, a hot loop of
 
 Chez compiles on load. A =.chez.source= lane is not an interpreted lane; it
 is a compiled lane that pays for the compile at startup. What ahead-of-time
-compilation buys is that startup — the allocation lane takes 0.72 s from
-source and 0.17 s compiled — while the measured region inside it is identical
-to the byte: =6,592= / =6,640= and =397= / =384= in both, on every run.
+compilation buys is that startup — the allocation lane takes 0.63 s from
+source and 0.16 s compiled — while the measured region inside it is identical
+to the byte: =6,592= / =6,640= and =398= / =384= in both, on every run.
 
 So the compiled half does not publish a faster number. What it publishes is
 that these costs hold in the configuration this project ships, as an
@@ -146,48 +156,58 @@ letting a short input shrink it.
 Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-17. Upstream's
 own three bench inputs, their binary and ours on the same bytes:
 
-| input                                |    llhttp | chez-httparse | ratio |
-|--------------------------------------+-----------+---------------+-------|
-| 703 B request, 8 headers, big cookie | 2,621 MB/s|      5.4 MB/s |  485× |
-| 520 B chunked =POST=                 | 1,739 MB/s|      4.8 MB/s |  365× |
-| 52 B URL                             | 2,099 MB/s|     23.6 MB/s |   89× |
+| input                                |     llhttp | chez-httparse | ratio |
+|--------------------------------------+------------+---------------+-------|
+| 703 B request, 8 headers, big cookie | 2,621 MB/s |     25.3 MB/s |  104× |
+| 520 B chunked =POST=                 | 1,739 MB/s |     19.5 MB/s |   89× |
+| 52 B URL                             | 2,099 MB/s |     31.5 MB/s |   67× |
 
-Computed from operations per second instead of bytes per second, the same
-three ratios come out 489×, 366× and 89× — the two readings agree, as they
-must, and neither is doing any work the other is not.
+Computed from operations per second instead of bytes per second the same
+three ratios come back within a point — the two readings agree, as they must,
+and neither is doing any work the other is not.
 
-** What the spread says
+** What the spread said, and what closing it was worth
 
-The ratio is *not constant*, and the variance is on this side of it.
-llhttp's URL and message parsers are within 1.5× of each other per byte;
-these two differ by **4.5×** — 23.6 MB/s for the URL machine against 5.4 for
-the message machine. So the gap is not a uniform cost of being Scheme, which
-would show up as one number in all three rows. Something is concentrated in
-the message machine.
+These ratios were **485×, 365× and 89×** when first taken, and the spread
+between them is the only reason this page has anything useful on it. A uniform
+cost of being Scheme would have been one number in all three rows and would
+have closed the question. It was not: llhttp's URL and message parsers are
+within 1.5× of each other per byte, while ours differed by **4.5×** — 23.6
+MB/s for the URL machine against 5.4 for the message machine.
 
-It was chased, and it is *state numbering*. Chez compiles =(case st ...)= over
+It was chased, and it was *state numbering*. Chez compiles =(case st ...)= over
 integer keys as a linear scan — about 0.31 ns per arm skipped, with the total
 number of arms irrelevant and only the matching arm's position counting, at
-every optimize level. The emitted message machine has 530 states and its hot
-scanning states are numbered late (=url-path= 468, =value-loop= 235,
+every optimize level. The emitted message machine had 530 states with its hot
+scanning states numbered late (=url-path= 468, =value-loop= 235,
 =header-field-loop= 170); the standalone url machine runs the same url grammar
 at =url-path= 15 because it has only 75 states.
 
-Permuting the emitted =case= arms — which changes no semantics — moves the
-cost exactly as that model predicts: the request-target figure goes from 239.8
-to **42.4 ns/byte**, a 5.7× swing, with the url machine unmoved as a control.
-Nothing in this project's grammar, artifact or runtime is at fault; the
-dispatch is emitted by byte-machine's =render-machine=, and the fix belongs
-there. [[file:../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md][Decision 0027]] records the measurements and why no
-number here became a gate.
+Permuting the emitted =case= arms — which changes no semantics — moved the cost
+exactly as that model predicts: the request-target figure went from 239.8 to
+42.4 ns/byte, with the url machine unmoved as a control. Nothing in this
+project's grammar, artifact or runtime was at fault; the dispatch is emitted by
+byte-machine's =render-machine=, and the fix landed there as that project's
+decisions 0048 and 0049 — every state is now a procedure, and a transition to
+a target known at emit time is a direct tail call: **0.80 ns against 185.85 ns**
+for the same state, and independent of its id.
+[[file:../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md][Decision 0027]] records the diagnosis and why no number
+here became a gate.
 
-Two things it is *not*. It is not the header section: the message machine
-scanning a request target and the url machine scanning a url are the same work
-8× apart. And it is not construction, which is 2.5% of a parse — measured by
-reusing one parser across repetitions instead of building a fresh one, which
-moved the rate from 5.2 MB/s to 5.4. Body bytes stay cheap throughout at
-~17 ns/byte, because a =Content-Length= body consumes in bulk rather than one
-dispatch per byte.
+The ratios in the table are what remains, and **the spread has largely
+collapsed with them** — 104×, 89×, 67× where it was 485×, 365×, 89×. That is
+the confirmation that the position term is gone: what is left is a genuine
+cost difference rather than an artifact of where a generator happened to
+number things.
+
+Two things it was *not*, both measured before the cause was found. It was not
+the header section: the message machine scanning a request target and the url
+machine scanning a url were the same work 8× apart. And it was not
+construction, which is 2.5% of a parse — measured by reusing one parser across
+repetitions instead of building a fresh one, which moved the rate from 5.2
+MB/s to 5.4. Body bytes were cheap throughout at ~17 ns/byte, because a
+=Content-Length= body consumes in bulk rather than one dispatch per byte;
+they are now ~6.4.
 
 ** Taking these yourself
 
