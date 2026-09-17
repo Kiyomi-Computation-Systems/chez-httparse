@@ -165,14 +165,29 @@ the message machine. So the gap is not a uniform cost of being Scheme, which
 would show up as one number in all three rows. Something is concentrated in
 the message machine.
 
-The benchmark lane's own figures point the same way from a different angle: a
-1,166-byte response whose last kilobyte is body runs at 31 MB/s, while a
-308-byte request that is almost all header section runs at 4. Body bytes are
-one span and bulk; header bytes are not. Whatever the 4.5× is, it is being
-spent in the header section rather than in framing, in construction, or in
-callback dispatch — construction is 2.5% of a parse, measured by reusing one
-parser across repetitions instead of building a fresh one, which moved the
-rate from 5.2 MB/s to 5.4.
+It was chased, and it is *state numbering*. Chez compiles =(case st ...)= over
+integer keys as a linear scan — about 0.31 ns per arm skipped, with the total
+number of arms irrelevant and only the matching arm's position counting, at
+every optimize level. The emitted message machine has 530 states and its hot
+scanning states are numbered late (=url-path= 468, =value-loop= 235,
+=header-field-loop= 170); the standalone url machine runs the same url grammar
+at =url-path= 15 because it has only 75 states.
+
+Permuting the emitted =case= arms — which changes no semantics — moves the
+cost exactly as that model predicts: the request-target figure goes from 239.8
+to **42.4 ns/byte**, a 5.7× swing, with the url machine unmoved as a control.
+Nothing in this project's grammar, artifact or runtime is at fault; the
+dispatch is emitted by byte-machine's =render-machine=, and the fix belongs
+there. [[file:../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md][Decision 0027]] records the measurements and why no
+number here became a gate.
+
+Two things it is *not*. It is not the header section: the message machine
+scanning a request target and the url machine scanning a url are the same work
+8× apart. And it is not construction, which is 2.5% of a parse — measured by
+reusing one parser across repetitions instead of building a fresh one, which
+moved the rate from 5.2 MB/s to 5.4. Body bytes stay cheap throughout at
+~17 ns/byte, because a =Content-Length= body consumes in bulk rather than one
+dispatch per byte.
 
 ** Taking these yourself
 

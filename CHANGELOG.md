@@ -38,6 +38,20 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   an absolute rate is not, but gating one now would lock in a number while
   that 4.5x is unexplained.
 
+- **The 4.5x is state numbering, and the cause is recorded**
+  ([0027](.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md)).
+  Chez compiles `(case st ...)` over integer keys as a linear scan -- ~0.31 ns
+  per arm skipped, the total arm count irrelevant, identical at every optimize
+  level. The emitted message machine has 530 states with its hot scanning
+  states numbered late (`url-path` 468, `value-loop` 235); the standalone url
+  machine runs the same url grammar at `url-path` 15. Permuting the emitted
+  `case` arms, which changes no semantics, moves the request-target figure
+  from 239.8 to 42.4 ns/byte.
+
+  Nothing in this repository's grammar, generated artifact or runtime is at
+  fault. The dispatch is emitted by byte-machine's `render-machine`, and the
+  fix belongs there, through that project's own admission rule.
+
 ### Fixed
 
 - **A benchmark could report a rate the clock never measured.** Elapsed time
