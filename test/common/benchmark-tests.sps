@@ -99,6 +99,10 @@
               (when (eq? (parser-result-status r) 'need-input)
                 (loop end)))))))
     (one)
+    ;; Only the timed repetitions are counted, so the calibration below can
+    ;; parse as many times as it likes without the completion check having to
+    ;; know how many attempts it took.
+    (set! completed 0)
     (let ((start (adapter-real-time)))
       (let loop ((i 0)) (when (< i reps) (one) (loop (+ i 1))))
       ;; The RAW reading, zero included. Guarding against dividing by it is
@@ -110,10 +114,33 @@
 ;; NUMBER, and a fabricated number sails over every floor in this file --
 ;; the smaller the interval, the larger the rate. `adapter-real-time` reads
 ;; milliseconds, so a region that finishes in a handful of them is mostly
-;; quantisation. The rep counts below are sized to keep every region far
-;; above this; the check is what says so if a faster machine, a faster
-;; runtime, or a smaller benchmark input ever drops one under, instead of
-;; letting the lane report nonsense and pass.
+;; quantisation.
+;;
+;; THE REPETITION COUNT IS CALIBRATED, NOT CHOSEN. It used to be three
+;; literals, and they were right for one parser on one machine: when the
+;; generated parser's state dispatch changed underneath them, the same counts
+;; measured 31ms, 19ms and 10ms where they had measured 135, 70 and 23 -- the
+;; byte-at-a-time case landing exactly on the floor below, one improvement from
+;; failing. A number that has to be re-tuned whenever the code gets faster is a
+;; number that will be re-tuned late, and the symptom of re-tuning it late is a
+;; flattering rate rather than a red lane. So each case doubles its repetitions
+;; until the region is worth timing, and reports the count it arrived at.
+(define target-ms 50)
+(define calibration-cap 4000000)
+
+;; measure : Bytevector Symbol Nat -> (values Nat Nat)
+;; Repetitions and elapsed milliseconds, doubled until the region clears
+;; `target-ms` or the cap refuses to keep going.
+(define (measure bv kind chunk)
+  (let loop ((reps 100))
+    (let ((ms (parse-n bv kind chunk reps)))
+      (if (or (>= ms target-ms) (>= reps calibration-cap))
+          (values reps ms)
+          (loop (* reps 2))))))
+
+;; The floor still exists, and it is no longer a statement about the literals
+;; above -- it is what fires if calibration hit its cap without ever clearing
+;; the clock, which is the one way this lane can still print a fabricated rate.
 (define minimum-measurable-ms 10)
 
 (define (check-measurable label ms)
@@ -146,25 +173,21 @@
   (lambda ()
     (harness-case "a request with a real header section"
       (lambda ()
-        (set! completed 0)
-        (let* ((reps 2000)
-               (ms (parse-n request 'request (bytevector-length request) reps))
-               (rate (report "request/whole" (bytevector-length request) reps ms)))
-          (check-equal "every repetition completed a message" completed (+ reps 1))
-          (check-measurable "request/whole" ms)
-          ;; The floor is a change of KIND, not a regression threshold.
-          (check (string-append "above 1 MB/s (measured " (number->string rate) ")")
-                 (>= rate 1)))))
+        (let*-values (((reps ms) (measure request 'request (bytevector-length request))))
+          (let ((rate (report "request/whole" (bytevector-length request) reps ms)))
+            (check-equal "every repetition completed a message" completed reps)
+            (check-measurable "request/whole" ms)
+            ;; The floor is a change of KIND, not a regression threshold.
+            (check (string-append "above 1 MB/s (measured " (number->string rate) ")")
+                   (>= rate 1))))))
     (harness-case "a response with a kilobyte body"
       (lambda ()
-        (set! completed 0)
-        (let* ((reps 2000)
-               (ms (parse-n response 'response (bytevector-length response) reps))
-               (rate (report "response/whole" (bytevector-length response) reps ms)))
-          (check-equal "every repetition completed a message" completed (+ reps 1))
-          (check-measurable "response/whole" ms)
-          (check (string-append "above 1 MB/s (measured " (number->string rate) ")")
-                 (>= rate 1)))))))
+        (let*-values (((reps ms) (measure response 'response (bytevector-length response))))
+          (let ((rate (report "response/whole" (bytevector-length response) reps ms)))
+            (check-equal "every repetition completed a message" completed reps)
+            (check-measurable "response/whole" ms)
+            (check (string-append "above 1 MB/s (measured " (number->string rate) ")")
+                   (>= rate 1))))))))
 
 (harness-group "the cost of arriving in pieces"
   (lambda ()
@@ -172,13 +195,11 @@
       (lambda ()
         ;; The worst case a resumable parser can be asked for, and the figure
         ;; an embedder reading from a socket a byte at a time would see.
-        (set! completed 0)
-        (let* ((reps 200)
-               (ms (parse-n request 'request 1 reps))
-               (rate (report "request/1-byte-feeds" (bytevector-length request) reps ms)))
-          (check-equal "every repetition completed a message" completed (+ reps 1))
-          (check-measurable "request/1-byte-feeds" ms)
-          (check (string-append "above 0.1 MB/s (measured " (number->string rate) ")")
-                 (>= (* 10 rate) 1)))))))
+        (let*-values (((reps ms) (measure request 'request 1)))
+          (let ((rate (report "request/1-byte-feeds" (bytevector-length request) reps ms)))
+            (check-equal "every repetition completed a message" completed reps)
+            (check-measurable "request/1-byte-feeds" ms)
+            (check (string-append "above 0.1 MB/s (measured " (number->string rate) ")")
+                   (>= (* 10 rate) 1))))))))
 
 (harness-finish)
