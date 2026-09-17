@@ -601,19 +601,47 @@ pinned to one seed is a lane that can be silently lucky.
 `unit.url` for the standalone build and `unit.request-target` for the HTTP
 one, both against the live binaries' own bytes.
 
+### After M11 — both properties, both machines — DONE
+
+The asymmetry the last section named, and the one that mattered more, because
+the property lane is a MERGE GATE where the differential is local and opt-in.
+Decision [0025](decisions/0025-both-properties-are-asked-of-both-machines.md).
+
+The kind now picks an artifact and an interpreted twin per case, so
+fragmentation invariance and the executor comparison are both asked of the url
+machine. Error-free inputs **request 39 · response 26 · url 115**; executor
+comparisons **145 · 95 · 240**.
+
+**The floor was right and adding a subject made it wrong WITHOUT FAILING.**
+Both properties pass vacuously over a run that selected nothing, so both were
+guarded by a floor — one number over the whole run. The message kinds produce
+65 error-free inputs between them, so the global floor of 20 stays green
+whatever the url machine does, including contributing nothing. Now three
+floors, one per kind, at 15 against a worst observed 26 over six seeds, with
+the per-kind tally printed beside them. Witnessed with
+`HTTPARSE_PROPERTY_URL_CASES=0`.
+
+**Fragmentation invariance holds for the url machine on the same terms** — all
+115 error-free url inputs invariant, and 249 url probes disagreeing once the
+qualifier is dropped. The exception has a url twin measured against the url
+binary.
+
+**Upstream's `noScan` became a check rather than a quotation.** It marks
+`url.md`'s four error fixtures; only three of them actually diverge. "Failing
+on broken schema" closes its schema span before the error, so no boundary has
+an open span to flush — and llhttp does not diverge on it either.
+
+**An emitter bug in the url artifact is caught by three of the four groups.**
+The mutation was chosen to leave the grammar alone, because an executor
+comparison fires for any un-re-emitted grammar edit and that says nothing
+about a compiler bug.
+
 ### Deferred
 
-Nothing carried over. The three milestones that carried deferrals -- M9's 26,
-M10's 37 and M11's 21 -- have all landed, and no upstream gap is open: the
-fourth brief was discharged at the `v0.5.0` pin move.
-
-**One asymmetry is worth knowing and is not a deferral.** The PROPERTY lane is
-message-only. It runs on every pull request and needs no llhttp, and both its
-properties -- fragmentation invariance, and the two executors agreeing -- hold
-of the url machine as much as the message one. Nothing yet compares
-`httparse-url-machine` against its interpreted twin on input the corpus does
-not contain, which is the one place a compiler bug could hide from the
-conformance lane.
+Nothing. The three milestones that carried deferrals -- M9's 26, M10's 37 and
+M11's 21 -- have all landed, no upstream gap is open (the fourth brief was
+discharged at the `v0.5.0` pin move), and both generated-input lanes now cover
+both machines.
 
 ## Reachable ceilings, measured
 

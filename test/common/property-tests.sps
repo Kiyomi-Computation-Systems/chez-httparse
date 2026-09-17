@@ -21,6 +21,16 @@
 ;;;    them on corpus inputs; this compares them where no expectation exists,
 ;;;    which is the only place a compiler bug could hide from that lane.
 ;;;
+;;; BOTH PROPERTIES ARE ASKED OF BOTH MACHINES. The url sub-parser has its own
+;;; emitted artifact and its own interpreted twin, and 21 fixtures is not much
+;;; to judge a twenty-node machine on. The kind travels with each case and
+;;; picks the pair, exactly as the conformance driver picks one per fixture.
+;;;
+;;; EVERY FLOOR HERE IS PER KIND. A floor over all kinds is satisfied by one
+;;; kind: a url machine that errored on everything it was given, or stopped
+;;; being generated at all, would leave a global floor cleared by the other
+;;; two and this lane green with nothing to say about it.
+;;;
 ;;; A REFUSAL IS A FINDING, NOT A CRASH. The adapter has no row for an outcome
 ;;; llhttp never prints, and a generated input is the likeliest way to reach
 ;;; one. Reported here as a failing case naming the seed and the origin, so it
@@ -33,7 +43,9 @@
         (httparse test drive)
         (httparse test adapter)
         (httparse grammar)
+        (httparse url-grammar)
         (generated httparse-message)
+        (generated httparse-url)
         (byte-machine verify)
         (byte-machine interpret))
 
@@ -50,9 +62,28 @@
   (let ((v (adapter-environment-variable "HTTPARSE_PROPERTY_CASES")))
     (or (and (string? v) (string->number v)) 120)))
 
-(define generated httparse-message-machine)
-(define interpreted
+(define url-case-count
+  (let ((v (adapter-environment-variable "HTTPARSE_PROPERTY_URL_CASES")))
+    (or (and (string? v) (string->number v)) case-count)))
+
+;; TWO MACHINES, AND THE CASE'S KIND SAYS WHICH -- the same resolution the
+;; conformance driver makes per fixture and the differential makes per case.
+;; Both are built here, so the executor comparison below is made twice: once
+;; for the message parser and once for the url sub-parser, which has its own
+;; emitted artifact and its own interpreted twin.
+(define interpreted-message
   (make-interpreted-machine (verify-machine (make-message-machine))))
+(define interpreted-url
+  (make-interpreted-machine (verify-machine (make-url-machine))))
+
+(define (generated-for kind)
+  (if (eq? kind 'url) httparse-url-machine httparse-message-machine))
+(define (interpreted-for kind)
+  (if (eq? kind 'url) interpreted-url interpreted-message))
+
+;; The message lane's own name for the message artifact, kept because the
+;; measured exception below is a response and says so.
+(define generated httparse-message-machine)
 
 ;; --- bases -------------------------------------------------------------
 ;;
@@ -98,14 +129,78 @@
                                  acc)
                            acc))))))))
 
+;; `url.md` entire, as in the differential: 21 inputs is small enough not to
+;; need choosing from, and every one is a shape somebody thought worth
+;; recording -- which is what a mutation wants under it.
+(define url-bases
+  (let inner ((fs (corpus-parse-file (read-text (string-append corpus-dir "/url.md"))))
+              (i 1) (acc '()))
+    (if (null? fs)
+        (reverse acc)
+        (let ((bv (corpus-decode-input (fixture-input-text (car fs)))))
+          (inner (cdr fs) (+ i 1)
+                 (if (generate-safe-bytes? bv)
+                     (cons (cons 'url
+                                 (cons (string-append "url.md#" (number->string i)) bv))
+                           acc)
+                     acc))))))
+
+;; THE URL CASES ARE A SEPARATE RUN, not more bases in the existing one --
+;; the same reason the differential keeps them apart. `HTTPARSE_PROPERTY_URL_CASES=0`
+;; reproduces this lane as it was before the url kind existed, so a finding
+;; here has one possible source.
 (define cases
   (append (generate-structured seed case-count)
-          (generate-mutants seed case-count bases)))
+          (generate-mutants seed case-count bases)
+          (generate-urls seed url-case-count)
+          (generate-mutants seed url-case-count url-bases)))
 
 (define (trace-text lines)
   (harness-join (map utf8->string lines) "\n"))
 
 (define (describe c) (gen-case-origin c))
+
+;; --- counting per kind ----------------------------------------------------
+;;
+;; A FLOOR OVER ALL KINDS IS SATISFIED BY ONE KIND. Both properties below are
+;; guarded by a floor, because a run that selected nothing would pass them
+;; vacuously -- and once a third kind shares the lane, the floor has to be
+;; per kind or the two message kinds go on satisfying it alone while the url
+;; machine contributes nothing and nobody notices.
+(define kinds '(request response url))
+
+(define (tally-new) (map (lambda (k) (cons k 0)) kinds))
+
+(define (tally-add t kind)
+  (map (lambda (row) (if (eq? (car row) kind) (cons (car row) (+ (cdr row) 1)) row)) t))
+
+(define (tally-ref t kind) (cdr (assq kind t)))
+
+(define (tally-show label t)
+  (display (string-append "httparse-property: " label))
+  (for-each (lambda (row)
+              (display (string-append " " (symbol->string (car row))
+                                      "=" (number->string (cdr row)))))
+            t)
+  (display "\n")
+  (adapter-flush-output))
+
+;; The floor each kind must clear on its own. MEASURED RATHER THAN CHOSEN --
+;; error-free inputs per kind at the default count, over six seeds:
+;;
+;;     seed        request  response  url
+;;     20260915      39        26     115
+;;     1             32        29      98
+;;     2             28        28     102
+;;     777           37        29     103
+;;     20260916      37        34      93
+;;     31337         31        29     104
+;;
+;; The smallest anyone produced is 26, and what the floor has to catch is a
+;; kind contributing nothing at all. 15 clears every seed tried by eleven and
+;; still lands far above a kind that stopped being generated, or whose every
+;; input became an error.
+(define kind-floor 15)
 
 (harness-begin "property.generated-input")
 
@@ -118,7 +213,8 @@
            ((null? cs)
             (check-equal "refusals" refused '()))
            (else
-            (let ((t (drive-trace generated (gen-case-kind (car cs))
+            (let ((t (drive-trace (generated-for (gen-case-kind (car cs)))
+                                  (gen-case-kind (car cs))
                                   (gen-case-bytes (car cs))
                                   (max 1 (bytevector-length (gen-case-bytes (car cs)))))))
               (loop (cdr cs)
@@ -136,26 +232,35 @@
   (lambda ()
     (harness-case "every chunk size yields the trace the whole buffer does"
       (lambda ()
-        (let loop ((cs cases) (bad '()) (clean 0))
+        (let loop ((cs cases) (bad '()) (clean (tally-new)))
           (cond
            ((null? cs)
             (check-equal "divergences" bad '())
+            (tally-show "error-free inputs" clean)
             ;; Without a floor this passes by selecting nothing: a generator
-            ;; that only ever produced errors would leave it green.
-            (check "enough error-free inputs to be a property"
-                   (> clean 20)))
+            ;; that only ever produced errors would leave it green. Per kind,
+            ;; because a url machine that errored on everything it was given
+            ;; would still leave a global floor cleared by the other two.
+            (for-each
+             (lambda (k)
+               (check (string-append "enough error-free " (symbol->string k)
+                                     " inputs to be a property")
+                      (> (tally-ref clean k) kind-floor)))
+             kinds))
            (else
             (let* ((c (car cs))
                    (bv (gen-case-bytes c))
                    (len (bytevector-length bv))
-                   (whole (drive-trace generated (gen-case-kind c) bv (max 1 len))))
+                   (whole (drive-trace (generated-for (gen-case-kind c))
+                                       (gen-case-kind c) bv (max 1 len))))
               (if (or (drive-refusal? whole) (has-error? whole))
                   (loop (cdr cs) bad clean)
                   (let ((ref (trace-text whole)))
                     (let inner ((ss (drive-chunk-ladder len)) (bad bad))
                       (if (null? ss)
-                          (loop (cdr cs) bad (+ clean 1))
-                          (let ((t (drive-trace generated (gen-case-kind c) bv (car ss))))
+                          (loop (cdr cs) bad (tally-add clean (gen-case-kind c)))
+                          (let ((t (drive-trace (generated-for (gen-case-kind c))
+                                                (gen-case-kind c) bv (car ss))))
                             (inner (cdr ss)
                                    (if (and (not (drive-refusal? t))
                                             (string=? (trace-text t) ref))
@@ -221,6 +326,117 @@
         ;; someone made them the same by accident.
         (check-not-equal "52 vs 1" (trace-of 52) (trace-of 1))))))
 
+;;; AND THE URL MACHINE HAS THE SAME EXCEPTION, which is why the qualifier
+;;; above is not a message-parser quirk. Every span the url parser has is a
+;;; part of the url, so an error with one open is the ordinary case rather
+;;; than a corner: 249 of this lane's url probes disagree across chunk sizes
+;;; once the error-free qualifier is dropped.
+;;;
+;;; UPSTREAM ANNOTATES IT, THOUGH NOT EXACTLY. `url.md` marks four of its 21
+;;; fixtures `noScan`, and the group after this one measures which of them
+;;; actually need it.
+;;;
+;;; The input below is `url.md`'s "Double `@`" verbatim, and BOTH TRACES ARE
+;;; llhttp'S OWN OUTPUT from the url fixture binary at v9.4.3 -- the
+;;; whole-buffer one as printed, the one-byte one through the same coalescing
+;;; upstream's checker applies. They are not this parser's output written
+;;; down.
+(define open-host-span-input
+  (string->utf8 "http://a:b@@hostname:443/"))
+
+(define (url-trace-of size)
+  (let ((t (drive-trace httparse-url-machine 'url open-host-span-input size)))
+    (if (drive-refusal? t)
+        (list (string-append "refused: " (drive-refusal-detail t)))
+        (map utf8->string t))))
+
+(harness-group "a url span still open when the parse fails"
+  (lambda ()
+    (harness-case "the whole buffer never prints the host"
+      (lambda ()
+        ;; The schema span CLOSED and so it prints; the host span was open at
+        ;; the error and does not. An error abandons an open span rather than
+        ;; flushing it.
+        (check-equal "25 bytes at once"
+                     (url-trace-of 25)
+                     '("off=0 len=4 span[url.schema]=\"http\""
+                       "off=12 error code=7 reason=\"Double @ in url\""))))
+    (harness-case "one byte at a time prints what the boundaries flushed"
+      (lambda ()
+        ;; `a:b@` -- the four host bytes read before the second `@`, already
+        ;; delivered by four chunk boundaries and coalesced into one line.
+        (check-equal "size 1"
+                     (url-trace-of 1)
+                     '("off=0 len=4 span[url.schema]=\"http\""
+                       "off=7 len=4 span[url.host]=\"a:b@\""
+                       "off=12 error code=7 reason=\"Double @ in url\""))))
+    (harness-case "so the two differ, which is why upstream marks it noScan"
+      (lambda ()
+        (check-not-equal "25 vs 1" (url-trace-of 25) (url-trace-of 1))))))
+
+;;; WHICH FIXTURES NEED `noScan`, AND WHICH ONLY CARRY IT. Upstream's
+;;; annotation is what tells the conformance driver not to replay a fixture at
+;;; every chunk size, so it is the corpus's own statement about where the
+;;; exception above bites. It is worth checking against rather than quoting,
+;;; and the two directions are not the same claim.
+;;;
+;;; THE DIRECTION THAT MATTERS is that nothing diverges unmarked: an unmarked
+;;; fixture IS replayed at every chunk size and compared bit-exactly, so one
+;;; whose trace depended on chunking would make that comparison meaningless.
+;;;
+;;; The other direction is upstream being cautious, and MEASURED rather than
+;;; assumed: `url.md`'s four marked fixtures are its four error fixtures, but
+;;; only three of them diverge. "Failing on broken schema" does not -- its
+;;; schema span is CLOSED before the error, so there is no open span for a
+;;; chunk boundary to flush early. llhttp does not diverge on it either,
+;;; checked against the url fixture binary at both sizes.
+(define url-fixtures
+  (corpus-parse-file (read-text (string-append corpus-dir "/url.md"))))
+
+(define (chunking-changes-the-trace? f)
+  (let* ((bv (corpus-decode-input (fixture-input-text f)))
+         (n (bytevector-length bv))
+         (whole (drive-trace httparse-url-machine 'url bv (max 1 n)))
+         (one (drive-trace httparse-url-machine 'url bv 1)))
+    (not (and (not (drive-refusal? whole))
+              (not (drive-refusal? one))
+              (string=? (trace-text whole) (trace-text one))))))
+
+(define (url-fixture-numbers pred)
+  (let loop ((fs url-fixtures) (i 1) (acc '()))
+    (cond ((null? fs) (reverse acc))
+          ((pred (car fs)) (loop (cdr fs) (+ i 1) (cons i acc)))
+          (else (loop (cdr fs) (+ i 1) acc)))))
+
+(harness-group "upstream's noScan, against where the exception actually bites"
+  (lambda ()
+    (harness-case "the corpus still carries the four marks this rests on"
+      (lambda ()
+        ;; A refresh that dropped or added one changes what the group below
+        ;; means, so the set is written down rather than derived twice.
+        (check-equal "marked noScan"
+                     (url-fixture-numbers
+                      (lambda (f) (and (fixture-meta-ref f 'noScan #f) #t)))
+                     '(3 15 20 21))))
+    (harness-case "no url fixture diverges without being marked"
+      (lambda ()
+        ;; The load-bearing direction. An unmarked fixture is replayed at every
+        ;; chunk size by the conformance driver and compared bit-exactly.
+        (let ((diverging (url-fixture-numbers chunking-changes-the-trace?)))
+          (check-equal "diverging and unmarked"
+                       (filter (lambda (n) (not (memv n '(3 15 20 21)))) diverging)
+                       '())
+          (check-equal "diverging" diverging '(15 20 21)))))
+    (harness-case "and one marked fixture does not need the mark"
+      (lambda ()
+        ;; `schema:/path...` -- the schema span is CLOSED before the error, so
+        ;; no chunk boundary has an open span to flush early. Stated as a case
+        ;; because the set above would otherwise look like an exact
+        ;; correspondence, and it is not one.
+        (check "3 is marked" (memv 3 '(3 15 20 21)))
+        (check "3 does not diverge"
+               (not (chunking-changes-the-trace? (list-ref url-fixtures 2))))))))
+
 (harness-group "the shipped artifact and the grammar agree"
   (lambda ()
     (harness-case "both executors produce the same trace for every generated input"
@@ -228,17 +444,24 @@
         ;; The conformance lane makes this comparison over the corpus. Here it
         ;; is made where nothing recorded the answer, which is the only place
         ;; an emitter bug could survive that lane.
-        (let loop ((cs cases) (bad '()) (checked 0))
+        (let loop ((cs cases) (bad '()) (checked (tally-new)))
           (cond
            ((null? cs)
             (check-equal "divergences" bad '())
-            (check "some comparisons happened" (> checked 0)))
+            (tally-show "executor comparisons" checked)
+            (for-each
+             (lambda (k)
+               (check (string-append "some " (symbol->string k) " comparisons happened")
+                      (> (tally-ref checked k) kind-floor)))
+             kinds))
            (else
             (let* ((c (car cs))
                    (bv (gen-case-bytes c))
                    (size (max 1 (bytevector-length bv)))
-                   (a (drive-trace generated (gen-case-kind c) bv size))
-                   (b (drive-trace interpreted (gen-case-kind c) bv size))
+                   (a (drive-trace (generated-for (gen-case-kind c))
+                                   (gen-case-kind c) bv size))
+                   (b (drive-trace (interpreted-for (gen-case-kind c))
+                                   (gen-case-kind c) bv size))
                    (same (cond ((and (drive-refusal? a) (drive-refusal? b))
                                 (string=? (drive-refusal-detail a)
                                           (drive-refusal-detail b)))
@@ -246,6 +469,6 @@
                                (else (string=? (trace-text a) (trace-text b))))))
               (loop (cdr cs)
                     (if same bad (cons (describe c) bad))
-                    (+ checked 1))))))))))
+                    (tally-add checked (gen-case-kind c)))))))))))
 
 (harness-finish)

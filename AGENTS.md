@@ -539,6 +539,28 @@ comment. And when you find yourself writing "X is Y without edge Z", that
 sentence is a claim about a graph — go and check it against a running oracle,
 because a fixture that exercises the shared part will pass either way.
 
+## A floor that guards a lane is satisfied by its easiest member
+
+Both of the property lane's properties are guarded by a floor, because both
+would pass vacuously over a run that selected nothing: "every error-free parse
+is fragmentation-invariant" is true of zero error-free parses. The floor was
+one number over the whole run, and it was right while the lane had one
+subject.
+
+Adding the url kind made it wrong without making it fail. At the default seed
+the message kinds produce 65 error-free inputs between them, so
+`> clean 20` stays green whatever the url machine does — including
+contributing nothing at all, which is exactly the failure the floor exists to
+catch. Setting `HTTPARSE_PROPERTY_URL_CASES=0` proves it: the global floor
+passes, the per-kind floors fail.
+
+**So when a lane gains a subject, re-split every vacuity guard in it.** The
+old subjects will go on satisfying a shared guard, and the new one's absence
+looks exactly like its presence. Pick the new floors from measured counts
+across several seeds rather than from the first number you see — ours is 15
+against a worst observed 26 — and print the per-kind tally beside the check,
+so a reader can see which member is carrying it.
+
 ## Explain the behaviour in the code and the version in the changelog
 
 The rename audit has caught the same thing in four consecutive milestones, most
@@ -630,3 +652,17 @@ second one.
 So: when a fixture has been red for more than one milestone and you have an
 explanation for it, the explanation being true is not evidence that it is
 complete. Go and read the thing that produces the line.
+
+**Upstream's metadata is a claim too, and it can be conservative.** A comment
+was about to say that `url.md`'s four `noScan` marks are exactly the fixtures
+whose trace depends on chunking — true-sounding, and it is exactly their four
+error fixtures. Measured, three of the four diverge and "Failing on broken
+schema" does not: its schema span is closed before the error, so no boundary
+has an open span to flush early. llhttp does not diverge on it either, checked
+against the url fixture binary at both chunk sizes.
+
+Nothing was broken by the belief, which is the point — an annotation that is a
+superset of what it needs to be costs nothing until you quote it as a reason.
+The check that replaced the comment asserts the direction that is load-bearing
+(nothing diverges unmarked, because unmarked fixtures ARE scanned) and records
+the one mark that is only caution.
