@@ -2217,3 +2217,82 @@ as the message one. Nothing yet compares `httparse-url-machine` against its
 interpreted twin on input the corpus does not contain, which is the one place
 a compiler bug could hide from the conformance lane. Named in 0024 and in the
 plan's *Deferred*, not built.
+
+## 2026-09-17 — both properties, both machines (#23)
+
+Merged as `d2df9d9`. The gap the last close-out named, and the one that
+mattered more than the differential's: the property lane is a MERGE GATE
+where the differential is local and opt-in, so nothing compared the emitted
+url parser against its interpreted twin over input the corpus does not
+contain. That is the only place a compiler bug can hide from the conformance
+lane, which runs both executors but only over 21 recorded url fixtures.
+Decision
+[0025](../../.plans/decisions/0025-both-properties-are-asked-of-both-machines.md).
+
+No grammar change and no artifact change. All lane.
+
+    httparse-property: error-free inputs     request=39  response=26  url=115
+    httparse-property: executor comparisons  request=145 response=95  url=240
+
+**THE FLOOR WAS RIGHT, AND ADDING A SUBJECT MADE IT WRONG WITHOUT MAKING IT
+FAIL.** Both properties pass vacuously over a run that selected nothing --
+"every error-free parse is fragmentation-invariant" is true of zero of them --
+so both were guarded by a floor. One number over the whole run, correct while
+the lane had one subject. The message kinds produce 65 error-free inputs
+between them, so `> clean 20` stays green whatever the url machine does,
+INCLUDING CONTRIBUTING NOTHING, which is exactly the failure the floor exists
+to catch. Three floors now, one per kind, at 15 against a worst observed 26
+over six seeds, with the per-kind tally printed beside them. Witnessed:
+`HTTPARSE_PROPERTY_URL_CASES=0` passes the old global floor at 65 and fails
+both new ones. In AGENTS.md as **a floor that guards a lane is satisfied by
+its easiest member**.
+
+**A COMMENT I WAS ABOUT TO WRITE WAS WRONG, AND CHECKING IT WAS THE WHOLE
+FINDING.** The draft said `url.md`'s four `noScan` marks are exactly the
+fixtures whose trace depends on chunking. True-sounding, and they ARE exactly
+its four error fixtures. Measured, three of the four diverge: "Failing on
+broken schema" closes its schema span before the error, so no chunk boundary
+has an open span to flush early -- and llhttp does not diverge on it either,
+checked against the url fixture binary at both sizes. The comment became a
+check stating the two directions separately: nothing diverges UNMARKED (the
+load-bearing one, since unmarked fixtures ARE scanned bit-exactly), and the
+marked set `(3 15 20 21)` against the diverging set `(15 20 21)`, both written
+down so a refresh that moves either fires. Folded into AGENTS.md's *claims
+about other people's code*: an annotation that is a superset of what it needs
+to be costs nothing until you quote it as a reason.
+
+**Fragmentation invariance holds for the url machine on the same terms.** All
+115 error-free url inputs invariant across the full ladder; drop the qualifier
+and 249 url probes disagree. So the qualifier is not a message-parser quirk,
+and the exception has a url twin -- `url.md`'s "Double `@`", both traces
+llhttp's own output, the host span printed only at chunk sizes where a
+boundary flushed it.
+
+**The emitter mutation was chosen to leave the grammar alone.** AGENTS.md
+already records that an executor comparison fires for ANY un-re-emitted
+grammar edit, which says nothing about catching a compiler bug. Hand-editing
+one byte case in `src/generated/httparse-url.sls` -- routing `p` in a path to
+the query node -- reddens three of the four groups, including the `noScan`
+one, whose diverging set becomes `(1 2 13 14 15 20 21)`.
+
+**THE FIRST MUTATION ATTEMPT CAUGHT NOTHING, AND THAT WAS THE BETTER RESULT.**
+Routing `[` from `url-server` to `url-server-with-at` changed no trace: no
+pool in `generate-urls` puts an `@` after a bracket, so the edge is
+unreachable from this lane's input. Recorded rather than quietly replaced with
+a mutation that worked -- the generator's reach is not the machine's, and
+that is a limit of the instrument worth writing down beside its successes.
+
+Verified on MERGED main: `make clean`, then **86 of 86** at the default preset
+and **87 of 87** with the oracle enabled, ratchet **274 passing / 0 not-yet /
+0 deferred**, differential unchanged at `agreed=7730 late-complete=4
+early-complete=0 unclassified=0`. Reconfigured back to the default preset
+afterwards. SSH still down; `gh` over HTTPS did everything, and
+`gh pr merge --squash --delete-branch` succeeded outright again.
+
+CI: the billing refusal, `steps=0` plus the annotation, on both the PR
+(`105035016516`) and merged main (`105037080603`).
+
+**What is left.** Nothing named. The plan's *Deferred* section reads "Nothing"
+for the first time with no asymmetry beneath it: the ladder is complete, no
+upstream gap is open, and both generated-input lanes -- the merge-gated
+property lane and the opt-in differential -- now cover both machines.
