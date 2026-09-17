@@ -152,9 +152,8 @@ fixtures the qualifier holds for.
 
 * Things found this way
 
-The live differential is not decoration. Building it turned up three defects
-the 190-fixture corpus could not see, all now fixed and pinned by offline
-checks:
+The live differential is not decoration. Building it turned up four defects
+the corpus could not see, all now fixed and pinned by offline checks:
 
 1. =message begin= was withheld when the first byte was one no method may
    start with. No fixture begins with such a byte.
@@ -165,6 +164,33 @@ checks:
    llhttp's map keys them =GET_PARAMETER= and =SET_PARAMETER= — underscores,
    as RFC 2326 spells them — and only ='M-SEARCH'= is quoted and
    hyphenated. Six milestones of a wrong name that no fixture uses.
+4. A host holding two =@= that are not adjacent was refused. llhttp accepts
+   =http://a@b@c/p= and refuses only =a@@b=; =url.md='s "Double =@=" fixture
+   has its two adjacent, so neither the corpus nor the oracle-measured cases
+   could tell the two rules apart.
+
+* Three kinds, three binaries
+
+=request= and =response= are two modes of llhttp's message parser. =url= is
+its URL sub-parser built standalone — =test/md-test.ts='s =buildURL()=, with
+both exits looped back to the entry, which is the program =url.md= was
+recorded from. The kind travels with each generated case and picks the binary
+on llhttp's side and the machine on ours, so a url case is never asked of a
+message parser.
+
+=HTTPARSE_DIFFERENTIAL_URL_CASES=0= turns the url kind off and reproduces the
+run as it was before it existed.
+
+* One seed is not a lane
+
+The run is the seed it is given and its *two successors*, and that is a
+measurement rather than a precaution. The =@= defect above did not appear at
+the default seed; it appeared at three of the five seeds tried. A lane pinned
+to one seed can be silently lucky, and =unclassified=0= reads as evidence
+either way.
+
+=HTTPARSE_DIFFERENTIAL_SEED= still names the run with one number, and any
+member of a sweep replays alone by being named directly.
 
 * Running it yourself
 

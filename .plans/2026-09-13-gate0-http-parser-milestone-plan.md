@@ -572,17 +572,48 @@ description tested in one configuration.
 **This made the parser stricter**, and it is the first change here that turns
 a previously-parsed message into an error.
 
+### After M11 — the url is generated input too — DONE
+
+The asymmetry the last section left: the live differential covered `request`
+and `response` only, so a twenty-node machine with six error arms was being
+judged by 21 fixtures and a target pool of ten strings that all parse.
+Decision [0024](decisions/0024-the-url-input-generator-and-the-second-at.md).
+
+A third producer (`generate-urls`), a third oracle binary (`buildURL()`, the
+program `url.md` was recorded from), and `url.md` entire as a mutation base.
+`agreed` 1142 → **7730** across the sweep, with the message inputs byte for
+byte what they were: `HTTPARSE_DIFFERENTIAL_URL_CASES=0` reproduces 1142
+exactly.
+
+**It found a real bug on its first sweep.** llhttp rejects only ADJACENT `@`:
+`http://a@b@c/` is a host, and only `a@@b` is `Double @ in url`. Upstream's
+loop names `server` explicitly where this parser read the loop variable, so
+`server_with_at` is one byte wide and any ordinary host byte re-arms `@`.
+`url.md`'s "Double `@`" fixture has its two adjacent, so the corpus cannot
+tell the two rules apart.
+
+**THE DEFAULT SEED DID NOT FIND IT.** Three of the five seeds tried did. So
+the lane now sweeps the seed it is given and its two successors — one number
+still names the run, and re-introducing the bug turns the default red. A lane
+pinned to one seed is a lane that can be silently lucky.
+
+**The fix is pinned twice, because the description is built twice.**
+`unit.url` for the standalone build and `unit.request-target` for the HTTP
+one, both against the live binaries' own bytes.
+
 ### Deferred
 
-Nothing. The three milestones that carried deferrals -- M9's 26, M10's 37 and
-M11's 21 -- have all landed, and no upstream gap is open: the fourth brief was
-discharged at the `v0.5.0` pin move.
+Nothing carried over. The three milestones that carried deferrals -- M9's 26,
+M10's 37 and M11's 21 -- have all landed, and no upstream gap is open: the
+fourth brief was discharged at the `v0.5.0` pin move.
 
-**One asymmetry is worth knowing and is not a deferral.** The live
-generated-input differential covers `request` and `response` only; the url
-machine's evidence is its 21 fixtures at every chunk size, the executor
-differential, and six oracle-measured cases. A URL input generator would be
-separate work.
+**One asymmetry is worth knowing and is not a deferral.** The PROPERTY lane is
+message-only. It runs on every pull request and needs no llhttp, and both its
+properties -- fragmentation invariance, and the two executors agreeing -- hold
+of the url machine as much as the message one. Nothing yet compares
+`httparse-url-machine` against its interpreted twin on input the corpus does
+not contain, which is the one place a compiler bug could hide from the
+conformance lane.
 
 ## Reachable ceilings, measured
 

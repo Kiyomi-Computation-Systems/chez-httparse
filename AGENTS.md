@@ -493,6 +493,52 @@ leaving it at zero; keep its witness, inverted, asserting the agreement it now
 produces. A count going to zero is a number; two identical traces are the
 behaviour.
 
+## One seed is not a lane
+
+The live differential runs generated input from a seed, and the seed had been
+a single number since the lane was built. The first url run at that seed found
+nothing. Seeds 1, 777 and 20260916 each found the same real bug; seed 2 found
+nothing.
+
+So the default's green was luck, and it would have been read as evidence —
+`agreed=2573 unclassified=0` looks exactly like a lane with nothing to say.
+
+**Before trusting a generated-input lane, vary the seed and count.** If a
+different seed finds something, the lane's default is too narrow, and widening
+it is a measurement you now have. The sweep here is the seed it was given plus
+its two successors: one number still names the run, any member replays alone,
+and re-introducing the bug turns the DEFAULT red. Deriving the extra seeds
+arithmetically matters — picking the three that happened to catch this bug
+would have been fitting the lane to its own history.
+
+## A loop variable is not the node the edges name
+
+llhttp builds two nodes from one loop:
+
+```js
+for (const node of [ server, serverWithAt ]) {
+  node.match(USERINFO_CHARS, server)   // server, NOT node
+      .match([ '[', ']' ], server);    // server, NOT node
+  if (node !== serverWithAt) { node.match('@', serverWithAt); }
+}
+```
+
+Read at a glance, that is "the same node twice, one with an extra edge". It is
+not. The edges name `server` explicitly, so `serverWithAt` is **one byte
+wide** — any ordinary host byte returns to `server` and re-arms `@`. Only
+`@@` is an error; `a@b@c` is a host.
+
+This parser transliterated the glance, and the comment it left said so in as
+many words. **Twenty-one fixtures, six oracle-measured cases and 274 corpus
+replays all passed**, because upstream's own `Double @` fixture has its two
+`@` adjacent and cannot tell the two rules apart.
+
+Two habits. When upstream writes a loop over nodes, **read every target inside
+it for whether it is the loop variable or a fixture**, and say which in the
+comment. And when you find yourself writing "X is Y without edge Z", that
+sentence is a claim about a graph — go and check it against a running oracle,
+because a fixture that exercises the shared part will pass either way.
+
 ## Explain the behaviour in the code and the version in the changelog
 
 The rename audit has caught the same thing in four consecutive milestones, most

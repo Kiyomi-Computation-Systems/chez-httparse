@@ -342,10 +342,21 @@
        ;; --- server (host, and the userinfo that may precede it) ----------------
        (part-span-start c 'url-host-open 'host-span 'url-server)
        (list
-        ;; `@` moves to the twin below, which is this node without that edge.
-        ;; Upstream builds both from one loop and withholds `@` from the
-        ;; second; here they are written twice, because the alternative is a
-        ;; field and a branch for a distinction that costs one node.
+        ;; `@` moves to the twin below, WHICH IS ONE BYTE WIDE. Upstream
+        ;; builds the two from one loop, and the edges inside that loop name
+        ;; `server` explicitly rather than the loop variable --
+        ;;
+        ;;     .match(USERINFO_CHARS, server)
+        ;;     .match([ '[', ']' ], server)
+        ;;
+        ;; -- so any ordinary host byte sends the twin straight back here and
+        ;; re-arms `@`. Only `@@` is `Double @ in url`; `a@b@c` is a host.
+        ;;
+        ;; READING THAT LOOP AS "the same node twice, minus one edge" IS THE
+        ;; MISTAKE THIS CODE MADE, and `url.md`'s "Double `@`" fixture cannot
+        ;; catch it, because its two `@` are adjacent. The live differential
+        ;; found it over generated input at three of the five seeds tried --
+        ;; and not at the default one, which is why that lane now sweeps.
         (url-node c 'url-server 'host-span
           (append
            (list (bytes-case '(47) (part-span-end-target c 'url-server-path path-entry)
@@ -364,8 +375,8 @@
                  (bytes-case '(63) (part-span-end-target c 'url-server-query query-entry)
                              'advance)
                  (bytes-case '(64) (cfg-err c "double-at") 'advance)
-                 (bytes-case httparse-userinfo-bytes 'url-server-with-at 'advance)
-                 (bytes-case '(91 93) 'url-server-with-at 'advance))
+                 (bytes-case httparse-userinfo-bytes 'url-server 'advance)
+                 (bytes-case '(91 93) 'url-server 'advance))
            (exit-cases c "url-server" 'host-span))
           (make-edge (cfg-err c "bad-server") 'reexecute)))
 

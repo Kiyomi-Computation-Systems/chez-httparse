@@ -140,6 +140,11 @@ authority form for =CONNECT= and at the general form for everything else.
 is open when the refusal happens, and an error abandons an open span rather
 than flushing it.
 
+A target with *two userinfo =@= that are not adjacent* is accepted, because
+llhttp accepts it: =http://a@b@c/p= is a host of =a@b@c=. Only =@@= is
+=Double @ in url=. This parser refused the second =@= wherever it fell until
+the live differential said otherwise.
+
 If you want the target broken into schema, host, path, query and fragment,
 that is the separate parser below.
 

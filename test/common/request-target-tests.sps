@@ -132,4 +132,46 @@
                        "off=4 len=1 span[url]=\"/\""
                        "off=6 error code=7 reason=\"Expected CRLF\""))))))
 
+;;; THE SECOND CONFIGURATION OF ONE DESCRIPTION. `url-subgraph` is built
+;;; twice -- once standalone for `url.md`, once spliced in here with the five
+;;; part spans stubbed and one whole-target span in their place. A fix to the
+;;; shared description is tested in the build that found it and NOT in the
+;;; other one unless something says so, which is what this group is.
+;;;
+;;; These two are the `@` rule, whose edges the live differential caught this
+;;; parser getting wrong. Both traces are the live request binary's, measured
+;;; through `tools/oracle/run-oracle.mjs` rather than read off this parser.
+(harness-group "the userinfo `@` rule, in the request target"
+  (lambda ()
+    (harness-case "two `@` separated by a host byte are a target like any other"
+      (lambda ()
+        ;; THE WHOLE MESSAGE PARSES. With the parts stubbed there is one
+        ;; `span[url]` covering all of it, which is the difference between
+        ;; this build and the standalone one -- and the reason a green
+        ;; `unit.url` does not settle it.
+        (check-equal "trace"
+                     (trace "GET http://a@b@c/p HTTP/1.1\r\n\r\n")
+                     '("off=0 message begin"
+                       "off=0 len=3 span[method]=\"GET\""
+                       "off=3 method complete"
+                       "off=4 len=14 span[url]=\"http://a@b@c/p\""
+                       "off=19 url complete"
+                       "off=19 len=4 span[protocol]=\"HTTP\""
+                       "off=23 protocol complete"
+                       "off=24 len=3 span[version]=\"1.1\""
+                       "off=27 version complete"
+                       "off=31 headers complete method=1 v=1/1 flags=0 content_length=0"
+                       "off=31 message complete"))))
+    (harness-case "adjacent ones still stop the message, with the target span open"
+      (lambda ()
+        ;; No `span[url]`: the target span is open when the url machine
+        ;; refuses, and an error abandons an open span rather than flushing
+        ;; it. Same rule `span[method]` follows.
+        (check-equal "trace"
+                     (trace "GET http://a@@b/p HTTP/1.1\r\n\r\n")
+                     '("off=0 message begin"
+                       "off=0 len=3 span[method]=\"GET\""
+                       "off=3 method complete"
+                       "off=14 error code=7 reason=\"Double @ in url\""))))))
+
 (harness-finish)

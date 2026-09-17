@@ -25,9 +25,13 @@ if (!binDir || !casesFile || !outFile) {
   process.exit(2);
 }
 
+// The kind names the PARSER, not a mode of one parser: `url` is llhttp's URL
+// sub-parser built standalone, and its binary is named the way upstream's own
+// harness names it.
 const bins = {
   request: path.join(binDir, 'http-request-c'),
   response: path.join(binDir, 'http-response-c'),
+  url: path.join(binDir, 'url-url-c'),
 };
 
 const lines = fs.readFileSync(casesFile, 'utf8').split('\n').filter((l) => l.length > 0);
