@@ -169,6 +169,26 @@ the corpus could not see, all now fixed and pinned by offline checks:
    has its two adjacent, so neither the corpus nor the oracle-measured cases
    could tell the two rules apart.
 
+* Both properties, both machines
+
+The property lane needs no llhttp and runs on every pull request. It asks two
+things of generated input — a parse that reaches no error produces the same
+trace however the bytes arrive, and the shipped artifact agrees with the
+interpreted grammar — and it asks both of *both* machines, the message parser
+and the url sub-parser, each with its own artifact and its own twin.
+
+Every floor in that lane is *per kind*. Both properties pass vacuously over a
+run that selected nothing, so both are guarded by a floor; one floor over the
+whole run is satisfied by the message kinds alone, whatever the url machine
+contributes. `HTTPARSE_PROPERTY_URL_CASES=0` shows it: the global floor
+passes, the per-kind ones fail.
+
+=url.md='s =noScan= annotation is *checked, not quoted*. It marks that file's
+four error fixtures; only three of them actually diverge across chunk sizes.
+"Failing on broken schema" closes its schema span before the error, so no
+chunk boundary has an open span to flush early — and llhttp does not diverge
+on it either.
+
 * Three kinds, three binaries
 
 =request= and =response= are two modes of llhttp's message parser. =url= is

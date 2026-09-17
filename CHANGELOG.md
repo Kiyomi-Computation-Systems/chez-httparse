@@ -26,6 +26,24 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Both generated-input properties are now asked of both machines**
+  ([0025](.plans/decisions/0025-both-properties-are-asked-of-both-machines.md)).
+  The property lane is a merge gate and was message-only, so nothing compared
+  the emitted url parser against its interpreted twin over input the corpus
+  does not contain — the one place a compiler bug could hide from the
+  conformance lane. Error-free inputs `request=39 response=26 url=115`;
+  executor comparisons `145 / 95 / 240`.
+
+  **Every floor in the lane is now per kind.** Both properties pass vacuously
+  over a run that selected nothing, so both are guarded by a floor — and one
+  global floor is satisfied by the message kinds alone, whatever the url
+  machine contributes. Three floors now, picked from measured counts over six
+  seeds, with the per-kind tally printed beside them.
+
+  Upstream's `url.md` `noScan` annotation is checked rather than quoted: it
+  marks the four error fixtures, and only three of them actually diverge
+  across chunk sizes.
+
 - **The live differential compares a third kind, and sweeps three seeds**
   ([0024](.plans/decisions/0024-the-url-input-generator-and-the-second-at.md)).
   `generate-urls` assembles urls from llhttp's own decision points, `url.md`
