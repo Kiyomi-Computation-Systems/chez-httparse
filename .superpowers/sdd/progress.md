@@ -2383,3 +2383,67 @@ CI: the billing refusal, `steps=0` plus the annotation, on both the PR
 **What is left.** Nothing named. Both generated-input lanes cover both
 machines and both modes, and the combination space upstream's harness cannot
 express is walked in full every run.
+
+## 2026-09-17 — the cost lanes in both modes, and what the ratio was hiding
+
+PR #25 (squash `f372c00` on main; base `6ccf51e`). Decision
+[0027](../../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md).
+
+**Started from a wrong claim of mine, reported as a finding.** Asked whether any benchmarking existed,
+I answered that it did, and added that the cost lanes ran only from source so "the compiled figure —
+the one an embedder would actually get — is unmeasured." Work was commissioned on that. It is false:
+Chez compiles on load. Measured against 10.4.1, a hot loop of 20,000,000 iterations runs in 27ms under
+`--script` from source, 28ms from a `compile-program` object, and 455ms from that same source with
+`(current-eval interpret)`. `source` names where the text came from, not what the runtime does with
+it, and the published costs had been compiled-code costs all along. The probe took under a minute and
+was available before the claim was.
+
+The lanes were still worth adding, for a different reason, and the registration says the real one:
+the two modes **agree**, so the cost claims now hold in the shipped configuration as an observation
+rather than an inference. Both print their mode beside every figure. What ahead-of-time compilation
+buys is startup — 0.72s against 0.17s for the allocation lane — with the measured region inside
+identical to the byte.
+
+**Two defects fell out of it.** A rate could be reported over an interval the clock never measured:
+elapsed time was floored with `(max 1 ...)` *before* the division, so a region finishing inside the
+millisecond clock divides by that floor, and the smaller the interval the LARGER the fabricated rate,
+sailing over every throughput floor asserted below it. `parse-n` now returns the raw reading and each
+case asserts its region outlasted the clock; watched fail with the floor raised to 10000ms. And the
+allocation figures in `docs/performance.org` were stale — 6,496/6,548 and 398 where the lane measures
+6,592/6,640 and 397.
+
+**Then the comparison against llhttp, on llhttp's own benchmark.** `llparse-test-fixture` carries a
+`bench` mode and upstream's `npm run bench` drives the very binaries `tools/oracle/` already builds,
+so no benchmark program had to be written and the methodology is upstream's rather than ours; in that
+mode the callbacks still fire and only the printing returns early, which is the same shape as this
+project's no-op bindings. 485x on a 703-byte request, 365x on a chunked `POST`, 89x on a url.
+
+**The ratio was not constant, and that was the whole value of taking it.** A uniform cost of being
+Scheme would have been one number in all three rows. The variance was on our side — our url machine is
+4.5x faster per byte than our message machine where llhttp's two are within 1.5x — so it had a cause,
+and 0027 records it: Chez compiles `(case st ...)` over integer keys as a **linear scan**, about
+0.31ns per arm skipped, identical at every optimize level. The emitted message machine has 530 states
+and numbers its hot scanning states late (`url-path` 468, `value-loop` 235); the standalone url
+machine runs the same url grammar at `url-path` 15. Nothing in this repository's grammar, artifact or
+runtime is at fault. The fix belonged in `byte-machine` and landed there as its PR #133 (`e8b042e`),
+after which a request target scans at **27.9 ns/byte** where it scanned at 241.9 and the llhttp ratio
+falls from 485x to **105x**.
+
+Verification on merged main, clean rebuild: **88/88** at the default preset, **89/89** with
+`HTTPARSE_LLHTTP_ROOT`. Conformance ratchet **274 passing / 0 not-yet / 0 deferred**. Differential
+`agreed=9557 late-complete=4 early-complete=0 unclassified=0`. Property tallies unchanged —
+`request=49 response=48 url=115`, `strict=180 lenient=32`, `request=242 response=199 url=240`,
+`strict=480 lenient=201`. CI a billing refusal on the PR (`105161352742`): `steps=0` plus the
+account-payments annotation, decision 0004.
+
+**Still pinned to v0.5.0.** The submodule is untouched at `bce3a6b`, so none of the speedup is in this
+repository yet; the bump plus a parser regeneration is its own branch. When it happens, the benchmark
+lane's byte-at-a-time case measures **exactly 10ms** against the 10ms floor added above — it passes,
+one improvement from failing, and the fix is to raise the repetition count rather than the floor. That
+is the check working, and it is the reason to do the bump deliberately rather than as a drive-by.
+
+Two things kept in AGENTS.md. Our own names are claims too, including the ones in a lane id — and an
+unchecked inference costs more the moment it is reported and someone acts on it. And an experiment
+that swaps a library must prove which copy ran: the first permutation reported no change at all,
+which read exactly like a refuted hypothesis, and the reordered library had simply been second on
+`library-directories`.

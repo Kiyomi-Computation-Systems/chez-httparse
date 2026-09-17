@@ -749,3 +749,31 @@ cost claims hold in the configuration this project ships. When a measurement
 comes back identical to the one it was supposed to beat, that is the result —
 chase it, and rewrite the reason you gave. Do not keep the reason and shrug at
 the number.
+
+## An experiment that swaps a library must prove which copy ran
+
+Decision 0027's central measurement was a permutation of the emitted parser's
+`case` arms — semantics-preserving, so any change in speed is dispatch cost and
+nothing else. The first run reported **no change at all**: 240.6 ns/byte against
+the original's 239.8, flat across every input.
+
+That is exactly what a refuted hypothesis looks like, and it was not one. The
+permuted library was **second** on `library-directories` and the original had
+loaded; the experiment had measured the committed parser twice. Putting the
+copy first and giving it a line to print on load produced 42.4 ns/byte on the
+same input — a 5.7x swing that had been there the whole time.
+
+**So: a scratch experiment that substitutes a library gets a marker in the copy,
+and the marker's output is part of the result.** Not a comment saying which path
+was used — a line the run prints, checked before the numbers are read. The
+launchers under `test/support/launchers/` exist because library resolution in
+Chez is full of this (their headers record `library-directories` pairing both
+halves of a bare string, and the object and source guards that follow from it);
+a scratch script written beside that machinery inherits none of its care and
+hits the hazard immediately.
+
+The general shape is the one under *A build cache that hashes arguments has not
+hashed your file*: **when a change that must do something appears to do nothing,
+suspect the apparatus before the hypothesis.** Both times the apparatus was
+wrong, and both times the tempting move was to accept the null result and go
+looking for a different explanation.
