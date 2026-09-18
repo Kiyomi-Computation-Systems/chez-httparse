@@ -817,3 +817,59 @@ check had to exist before the improvement did.
 Worth noting what the guard cost to be right: it was added a day earlier for a
 reason that never materialised. That is the usual return on this kind of check,
 and it is not a reason to skip the next one.
+
+## A harness you decline to ship is only as good as the list that replaces it
+
+The FFI comparison in `docs/performance.org` needs a C toolchain, so decision
+0010 keeps it out of the tree. What went in instead was a section called
+*Taking these yourself*: four numbered steps, the clang flags, the struct size,
+the shape of the shim.
+
+**That list was cashed in a day later and it worked.** Four generator fixes
+made the Scheme row four times faster, which inverted the section's
+conclusion — a naive wrapper went from buying 3.7× to losing — so every row
+had to be re-taken. The harness was gone; the list rebuilt it, and the rebuilt
+rows came back within a few per cent of the originals (96.7 MB/s against 91.8,
+2,837 against 2,574). One row did not: the batched decode, because the list
+said *what* to build and not *how much work the decode does*, and the rebuild
+delivered a call per event where the original summed fields.
+
+So the list was sufficient to reproduce the measurement and not sufficient to
+reproduce the number. That is the right place for the line to fall, and it is
+only visible because someone tried.
+
+**So: when you decline to ship a harness, the replacement is not prose about
+it — it is the list someone rebuilds from, and it has to name the work, not
+only the parts.** Two things make it checkable. Take the sizes from the
+toolchain rather than quoting them (`sizeof(llhttp_t)` is 96 *because clang
+says so*, and the list now says to ask), and name a fact the rebuild must
+reproduce — the shim counting 47 triples for the 703-byte request is what
+proved the rebuilt harness was measuring the old harness's subject before any
+rate was compared.
+
+The rebuild also retired a number the original could only assert. The crossing
+cost was stated beside the table at 140 ns; it now falls *out* of the table,
+as 7.27 µs minus 0.24 µs over 47 callbacks. A figure a reader can derive from
+the rows beats one they have to trust.
+
+## A number that measures how little something matters expires quietly
+
+That same section said this parser "barely notices" `optimize-level` — nine
+per cent — and cited byte-machine's decision 0049, which records the emitted
+dispatch as costing the same at levels 0, 2 and 3. Both halves were true.
+
+It notices fifty-two per cent now, and nothing about `optimize-level` changed.
+The linear scans dominated the parse, a scan **is** level-insensitive, and the
+parser inherited that insensitivity from its slowest part. Once the scans went,
+what was left was bounds-checked memory access — exactly what level 3 stops
+checking.
+
+The nine per cent was never a property of this parser. It was a property of
+the defect, and it left with the cause.
+
+**So: a measurement of a thing's irrelevance is a measurement of the ratio
+between it and whatever dominates, and fixing the dominant thing invalidates
+it without touching it.** These are the claims that rot silently, because
+nothing about them looks like a number that needs re-taking — they read as
+structural facts. When a sentence says "X barely matters here", write down
+what it was competing with, so the next person can see the claim expire.

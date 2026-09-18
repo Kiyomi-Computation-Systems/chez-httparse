@@ -2572,3 +2572,49 @@ Left standing: `docs/ffi-boundary-cost` is still unmerged and now **two pins sta
 `chez-httparse, pure Scheme` at 24.3 MB/s on the 703 B input where this pin measures 102.2, so its
 headline — "an FFI wrapper written the obvious way buys 3.7x" — is now inverted twice over: the
 wrapper row it compares against was 91.8 MB/s, which this parser has passed.
+
+## 2026-09-18 — the FFI comparison, measured twice (#30)
+
+The section was written when the ratio was 104x and the parser ran at 24.3 MB/s, and concluded that
+a naive llhttp wrapper would buy 3.7x. Four generator fixes later the parser runs at 101.7 and the
+conclusion **inverts**: the same wrapper loses, 0.95x safe and 0.62x unsafe. It loses further unsafe,
+because the parser gains from optimize-level 3 and a boundary crossing does not.
+
+Done in two passes, deliberately. The first re-took the Scheme row and **said plainly that the three
+llhttp rows were carried forward, not re-taken** — the harness that produced them was not in the
+tree. The second rebuilt that harness from the section's own *Taking these yourself* list and
+re-took all four in one sitting. Two passes rather than one because the honest intermediate state
+was worth committing: a table mixing a fresh row with three day-old ones is a real thing to have,
+as long as it says so.
+
+**The list worked, and where it did not is the interesting part.** The llhttp rows came back within
+a few per cent (96.7 against 91.8; 2,837 against 2,574) from four numbered steps written by someone
+who then deleted the code. The batched row did not — 240 against 132 — because the list said what to
+build and not how much work the decode does, and the rebuild delivers a call per event where the
+original summed fields into a variable. Sufficient to reproduce the measurement, not the number.
+
+Three things the rebuild settled that carrying forward could not. **The crossing cost now falls out
+of the table** rather than being asserted beside it: 7.27us at 96.7 MB/s, minus 0.24us with nothing
+bound, over 47 callbacks, is 150ns. **The 47 is not inherited either** — the shim counts 47 triples,
+which is what proved the rebuilt harness had the old one's subject before any rate was compared.
+**And the handoff is free rather than cheap**: passing the caller's bytevector as `u8*` measures
+2,821 MB/s against 2,837 for foreign memory, inside the spread, where the original estimated 35ns.
+
+One paragraph was **wrong rather than stale**, and it is the one worth keeping. It said this parser
+"barely notices" optimize-level — nine per cent — citing byte-machine 0049, which records the
+emitted dispatch as costing the same at every level. Both halves true. It notices 52% now, and
+nothing about optimize-level changed: the linear scans dominated, a scan IS level-insensitive, and
+the parser inherited that insensitivity from its slowest part. The nine per cent was a property of
+the defect and left with the cause. AGENTS.md gains both lessons — the harness list, and the general
+form of this one.
+
+Process note: **this checkout is shared.** Another session created and merged `docs/portability-note`
+(#29) while this work was in flight, switching the branch out from under an edit — which surfaced as
+a python assertion failing against a file that no longer had the section in it. Nothing was lost and
+nothing landed on the wrong branch, because the edit that failed wrote nothing. The rest of this
+work ran in worktrees, including the ritual: main was fast-forwarded by ref rather than by checkout,
+so the other session's branch was never touched.
+
+Left standing: `claude/ecstatic-haslett-2c30f5` (merged as #14) and `docs/portability-note` (merged
+as #29) are both still in the branch list. The second is checked out by the other session, so
+neither was deleted here.
