@@ -612,9 +612,11 @@ was right.
 ## Explain the behaviour in the code and the version in the changelog
 
 The rename audit has caught the same thing in four consecutive milestones, most
-recently in five places at once. It is never the code — it is a *comment*,
-explaining why something is the way it is, and the explanation names the
-dependency and the release it arrived in.
+recently in five places at once — and then **twice in one day**, in two
+unrelated pieces of work: a calibration comment in the benchmark lane, and the
+comment beside the ABI expectation explaining which pin moved it. It is never
+the code — it is a *comment*, explaining why something is the way it is, and
+the explanation names the dependency and the release it arrived in.
 
 That is the shape criterion 5 forbids in the build and test tree, and it is
 easy to write without noticing, because naming the version genuinely is the

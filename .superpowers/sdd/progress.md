@@ -2499,3 +2499,42 @@ Gate 0's cost work is closed. The parser is four times faster than it was this m
 was slow is recorded in three places rather than one, and none of it came from tuning this repository
 — it came from measuring a ratio, noticing the ratio was not constant, and chasing the variance into
 the dependency.
+
+## 2026-09-18 — the ABI-9 pin bump closed (#27)
+
+Decision 0005 item 3's bump over `69276b5..df16902`, carrying three upstream dispatch fixes that
+are all one defect one level further out each time: the inner byte dispatch scanning one arm per
+byte of a character class (21.60ns for a lowercase letter against 1.25 for a range test), the three
+arms that call application code answering a callback's `goto` through the last linear dispatch
+(four crossings per header at ~34ns, with the target always a literal the emitter had just written),
+and the callback seam consing `(goto TARGET)` where it could answer the target (128 B/header).
+
+**Item 5 paid for itself a second time.** "The ABI is re-read at each pin and never remembered"
+turned an ABI 8 -> 9 change into two red lanes naming the version — `unit.generator-abi` and
+`determinism.generated-artifact`, both of which read the number out of the emitted text — instead of
+a discovery at run time. Upstream's 0052 changed what the callback seam ANSWERS, so an ABI-8 parser
+meeting an ABI-9 runtime would misread every callback; it is refused at construction instead. Two
+one-line expectation edits were the whole cost.
+
+Both IR fingerprints unchanged for the third pin running, and the emitted sources SHRINK 42%
+(334,508 -> 193,819 for the message parser), paying back the 12% the state-dispatch pin cost.
+A request runs 62,745 -> **168,421 msg/s**, a response 103,225 -> **191,044**, and the llhttp ratios
+fall 104x/89x/67x -> **27x/31x/20x**, from 485x/365x/89x three days ago. The live differential is
+`agreed=9557 late-complete=4 early-complete=0 unclassified=0`, identical to the previous pin.
+
+Three things worth keeping. **The rename audit caught me twice in one day** — once in a benchmark
+calibration comment and once in the comment beside the ABI expectation, both naming the upstream
+project in prose while explaining *why*. AGENTS.md's count is updated; the habit is the thing, not
+the count. **This repo's allocation lane is blind the same way upstream's was**: its two messages
+carry identical headers, so the 480 bytes that left the whole-buffer figure (fifteen consed callback
+outcomes) could never have shown up as a slope here either — noted in `docs/performance.org` rather
+than grown into a new lane, since the property that matters downstream is the one already asserted.
+And **numbers in prose go stale silently**: `docs/performance.org` carried per-byte body figures from
+two pins ago with nothing saying so. They are now marked as the diagnosis's own rather than
+re-invented.
+
+Left standing: `docs/ffi-boundary-cost` is unmerged and this pin **inverts its headline** — it
+records `chez-httparse, pure Scheme` at 24.3 MB/s on the 703 B input where this pin measures 96.0,
+so "an FFI wrapper written the obvious way buys 3.7x" becomes roughly a wash against
+`llhttp + FFI, a crossing per callback` at 91.8. It needs re-measuring before it merges. The stale
+`claude/ecstatic-haslett-2c30f5` branch (merged as #14) is also still in the list.
