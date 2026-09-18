@@ -91,7 +91,7 @@
         ;; artifact that actually ships.
         (check-equal "abi"
                      (integer-after (text) "(byte-machine-make-compiled-machine ")
-                     8)))
+                     9)))
     (harness-case "it is the library the conformance lanes import"
       (lambda ()
         (let ((s (text)))
@@ -122,7 +122,7 @@
         ;; build that ran the emitter twice against two trees.
         (check-equal "abi"
                      (integer-after (url-text) "(byte-machine-make-compiled-machine ")
-                     8)))
+                     9)))
     (harness-case "it is a DIFFERENT library, not a second copy of the first"
       (lambda ()
         (let ((s (url-text)))

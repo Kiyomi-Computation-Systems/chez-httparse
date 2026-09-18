@@ -8,6 +8,50 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The pin moves to `df16902`, the parser gets 2.6x faster again, and the
+  generated ABI becomes 9**
+  ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  item 3). Upstream range `69276b5..df16902`, four commits: PRs #134 and #135
+  and their close-outs. Three more dispatches, all the same defect one level
+  further out each time.
+
+  - **A byte class is a range** (upstream 0050). The inner `(case b ...)`
+    rendered one arm per byte of a character class; Chez scans those linearly
+    at 21.60 ns for a lowercase letter against 1.25 for a range test. The
+    grouped datum list the emitter's own comment had proposed as the deferred
+    optimization turns out to be *worse* than what it would have replaced.
+  - **A goto target comes from a known set** (upstream 0051). The three arms
+    that call application code answered a callback's `goto` through the one
+    linear dispatch still standing -- four crossings per header, ~34 ns each
+    -- although the target is always one of the literals the emitter wrote
+    into that very call.
+  - **A callback outcome is the object** (upstream 0052). The seam consed
+    `(goto TARGET)` where it could answer the target: 128 bytes per header.
+
+  **The generated ABI is 9** (0005 item 5, and the reason that clause exists).
+  Upstream's 0052 changed what the callback seam answers, so an ABI-8 parser
+  meeting an ABI-9 runtime would read every callback wrong -- and is refused
+  at construction instead. Two expectations move from 8 to 9,
+  `unit.generator-abi`'s and `determinism.generated-artifact`'s, both of which
+  read the number out of the emitted text rather than remembering it. That is
+  the whole cost of the bump here.
+
+  **Both IR fingerprints are unchanged** -- `httparse-url-machine`
+  `3216037711265608570`, `httparse-message-machine` `318434098601601619`. The
+  emitter moved and the IR did not, for the third pin running. The sources
+  **shrink**: 334,508 -> 193,819 bytes for the message parser and 65,806 ->
+  33,239 for the url parser, paying back the 12% the state-dispatch pin cost.
+
+  Throughput, source and compiled: a request **62,745 -> 168,421 msg/s**
+  (18 -> 49 MB/s), a response **103,225 -> 191,044** (114 -> 212 MB/s), the
+  request fed one byte at a time 19,753 -> 25,396. Whole-buffer allocation
+  6,592 -> 6,112 B. Against llhttp on llhttp's own three bench inputs,
+  **104x/89x/67x -> 27x/31x/20x**; they were 485x/365x/89x three days ago.
+
+  Semantics unchanged where it counts: the live llhttp differential reports
+  `agreed=9557 late-complete=4 early-complete=0 unclassified=0`, identical to
+  the previous pin, and the 274-fixture conformance ratchet is bit-exact.
+
 - **The byte-machine pin moves to `69276b5`, and the parser gets four times
   faster** ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
   item 3; the bump exists to deliver
