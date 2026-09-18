@@ -8,7 +8,8 @@ fixture it ships, at every chunk size.*
 
 v0.1 shipped 190 of them, strict-mode only. Pausing and =skipBody= (26) came
 in after it, then the eleven lenient flags (37), then the url sub-parser (21).
-All of that is on =main=, unreleased.
+All of that ships in *v0.2.0*, where the deferral list is empty for the first
+time.
 
 Strict is still the *default* and lenient is still opt-in; what changed since
 is only how you ask. The eleven flags are a bitset you hand =make-parser=,
