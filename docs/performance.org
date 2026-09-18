@@ -19,11 +19,18 @@ bytevector. Nothing is copied, so a large body costs what a small one does.
 
 | message                         | allocated per whole-buffer parse |
 |---------------------------------+----------------------------------|
-| =POST= with a 10-byte body      | 6,592 B                          |
-| =POST= with a 10,000-byte body  | 6,640 B                          |
+| =POST= with a 10-byte body      | 6,112 B                          |
+| =POST= with a 10,000-byte body  | 6,160 B                          |
 
 A thousandfold more body, 0.8% more allocation. A parser that copied spans
 would show a thousandfold difference.
+
+These were 6,592 and 6,640 at the previous pin. The 480 bytes that went away
+are fifteen consed callback outcomes: the generator's callback seam used to
+answer =(goto TARGET)= rather than the target, and its own allocation audit
+could not see the cost because its slope varies a header *value's* length and
+so holds the header *count* fixed. This lane could not see it either, and for
+the same reason — both messages above carry the same headers.
 
 ** A feed costs the same whatever came before it
 
@@ -34,7 +41,7 @@ or re-copying consumed input.
 
 | message fed one byte at a time | allocated per feed |
 |--------------------------------+--------------------|
-| 50 bytes                       | 398 B              |
+| 50 bytes                       | 404 B              |
 | 10,043 bytes                   | 384 B              |
 
 Flat, across a message two hundred times longer.
@@ -62,9 +69,9 @@ of each mode on 2026-09-17:
 
 | what                                         |           msg/s |    MB/s |
 |----------------------------------------------+-----------------+---------|
-| 308-byte request, 8 headers, whole buffer    |   60,377–64,000 |   17–18 |
-| 1,166-byte response, 1 KB body, whole buffer | 103,225–106,666 | 114–118 |
-| the same request, fed one byte at a time     |   18,823–19,753 |       5 |
+| 308-byte request, 8 headers, whole buffer    | 166,233–168,421 |   48–49 |
+| 1,166-byte response, 1 KB body, whole buffer | 188,235–191,044 | 209–212 |
+| the same request, fed one byte at a time     |          25,396 |       7 |
 
 The ranges are the full spread across all six runs, source and compiled
 together. Read them as an order of magnitude, not a specification. They are
@@ -72,9 +79,11 @@ here so that a later change can be compared against something, and so the
 cost of the worst case a resumable parser can be asked for — a byte at a
 time — is on the record rather than guessed at.
 
-These are four times what this page carried a day earlier — 14,925 msg/s,
-28,169 and 8,695. The change is not in this repository; see *Against llhttp*
-below.
+These are eleven times what this page carried two days earlier — 14,925
+msg/s, 28,169 and 8,695 — and between two and three times what it carried
+this morning. **None of the change is in this repository.** Every one of the
+four steps was a dispatch in the generator, and *Against llhttp* below is
+where they are described.
 
 A rate is a quotient, and the denominator is a clock. =adapter-real-time=
 reads whole milliseconds, so a region that finishes in a handful of them is
@@ -158,9 +167,9 @@ own three bench inputs, their binary and ours on the same bytes:
 
 | input                                |     llhttp | chez-httparse | ratio |
 |--------------------------------------+------------+---------------+-------|
-| 703 B request, 8 headers, big cookie | 2,621 MB/s |     25.3 MB/s |  104× |
-| 520 B chunked =POST=                 | 1,739 MB/s |     19.5 MB/s |   89× |
-| 52 B URL                             | 2,099 MB/s |     31.5 MB/s |   67× |
+| 703 B request, 8 headers, big cookie | 2,615 MB/s |     96.0 MB/s |   27× |
+| 520 B chunked =POST=                 | 1,742 MB/s |     56.0 MB/s |   31× |
+| 52 B URL                             | 2,096 MB/s |    104.8 MB/s |   20× |
 
 Computed from operations per second instead of bytes per second the same
 three ratios come back within a point — the two readings agree, as they must,
@@ -194,11 +203,32 @@ for the same state, and independent of its id.
 [[file:../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md][Decision 0027]] records the diagnosis and why no number
 here became a gate.
 
-The ratios in the table are what remains, and **the spread has largely
-collapsed with them** — 104×, 89×, 67× where it was 485×, 365×, 89×. That is
-the confirmation that the position term is gone: what is left is a genuine
-cost difference rather than an artifact of where a generator happened to
-number things.
+That was the first of four, and the same defect turned out to be three levels
+deep. The **byte** dispatch inside each state was a linear scan too, over one
+arm per byte of a character class: 21.60 ns for a lowercase letter, which is
+what HTTP is mostly made of, against 1.25 for the range test that replaces it
+(their decision 0050). Then the three arms that call *application* code
+answered a callback's =goto= through the one dispatch still standing, four
+times per header at ~34 ns each — although the target is always one of the
+literals the emitter wrote two lines above (0051). And the callback seam
+answered a freshly consed =(goto TARGET)= where it could answer the target,
+128 bytes of garbage per header (0052).
+
+The second and third of those were dismissed in writing before they were
+measured. A comment beside the byte dispatch called a grouped datum list a
+"deliberately deferred optimization" — and when finally measured it is *worse*
+than what it would have replaced, 57.40 ns, because =memv= over 94 elements
+loses to the nested-=if= expansion =case= already gets. A comment beside the
+state dispatch said its remaining uses "happen once per callback and never
+once per byte, so a linear case here costs nothing the per-byte path can see",
+which is a true premise and a false conclusion. Neither was wrong about the
+mechanism; both were wrong about the size, and neither had a number.
+
+The ratios in the table are what remains, and **the spread has collapsed with
+them** — 27×, 31×, 20× where it was 485×, 365×, 89×. The position term is
+gone, and so is most of what was behind it. What is left is a genuine cost
+difference rather than an artifact of where a generator happened to number
+things.
 
 Two things it was *not*, both measured before the cause was found. It was not
 the header section: the message machine scanning a request target and the url
@@ -206,8 +236,10 @@ machine scanning a url were the same work 8× apart. And it was not
 construction, which is 2.5% of a parse — measured by reusing one parser across
 repetitions instead of building a fresh one, which moved the rate from 5.2
 MB/s to 5.4. Body bytes were cheap throughout at ~17 ns/byte, because a
-=Content-Length= body consumes in bulk rather than one dispatch per byte;
-they are now ~6.4.
+=Content-Length= body consumes in bulk rather than one dispatch per byte, and
+~6.4 by the pin after the state dispatch was fixed. They have not been
+re-measured since; the per-byte figures in this paragraph are the diagnosis's
+own, not the current pin's.
 
 ** Taking these yourself
 

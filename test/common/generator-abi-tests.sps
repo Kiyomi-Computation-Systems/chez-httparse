@@ -34,7 +34,14 @@
 ;; That is deliberate: the lane answers "what ABI does the pinned generator
 ;; speak", and a machine with a settable field would conflate that with "does
 ;; the feature work" -- which `unit.grammar` and the 253 fixtures answer.
-(define expected-abi 8)
+;;
+;; 9 since the pin moved to `df16902`: the generator's decision 0052 changed
+;; what the callback seam ANSWERS, from a list tagged with the outcome's name
+;; to the outcome object, so a parser emitted at 8 and a runtime at 9 would
+;; disagree about how to read every callback. This lane and the artifact lane
+;; are what made that a one-line expectation change rather than a discovery at
+;; run time.
+(define expected-abi 9)
 
 (define (substring-at? s i sub)
   (and (<= (+ i (string-length sub)) (string-length s))
