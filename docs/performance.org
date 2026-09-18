@@ -65,13 +65,13 @@ asserts only a floor loose enough that only a change of *kind* crosses it —
 an accidental quadratic, a per-byte allocation, a rescan.
 
 On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, over three runs
-of each mode on 2026-09-17:
+of each mode on 2026-09-18:
 
 | what                                         |           msg/s |    MB/s |
 |----------------------------------------------+-----------------+---------|
-| 308-byte request, 8 headers, whole buffer    | 166,233–168,421 |   48–49 |
-| 1,166-byte response, 1 KB body, whole buffer | 188,235–191,044 | 209–212 |
-| the same request, fed one byte at a time     |          25,396 |       7 |
+| 308-byte request, 8 headers, whole buffer    | 170,666–180,281 |   50–52 |
+| 1,166-byte response, 1 KB body, whole buffer |         196,923 |     218 |
+| the same request, fed one byte at a time     |   43,835–45,714 |   12–13 |
 
 The ranges are the full spread across all six runs, source and compiled
 together. Read them as an order of magnitude, not a specification. They are
@@ -79,11 +79,19 @@ here so that a later change can be compared against something, and so the
 cost of the worst case a resumable parser can be asked for — a byte at a
 time — is on the record rather than guessed at.
 
-These are eleven times what this page carried two days earlier — 14,925
-msg/s, 28,169 and 8,695 — and between two and three times what it carried
-this morning. **None of the change is in this repository.** Every one of the
-four steps was a dispatch in the generator, and *Against llhttp* below is
-where they are described.
+These are twelve times what this page carried three days earlier — 14,925
+msg/s, 28,169 and 8,695 — and the byte-at-a-time row is **five times** what it
+was. **None of the change is in this repository.** Every one of the five steps
+was a dispatch in the generator, and *Against llhttp* below is where they are
+described.
+
+The byte-at-a-time row moving furthest is the point rather than a curiosity.
+A parser fed one byte at a time re-enters the generated executor once per
+byte, so it pays the generator's *entry* dispatch 308 times for this message
+where the whole-buffer row pays it once. For four rounds of this work that row
+stood still or slipped a few percent while the others improved, and each time
+it was recorded as unexplained. It was the only row measuring the last linear
+scan.
 
 A rate is a quotient, and the denominator is a clock. =adapter-real-time=
 reads whole milliseconds, so a region that finishes in a handful of them is
@@ -167,9 +175,9 @@ own three bench inputs, their binary and ours on the same bytes:
 
 | input                                |     llhttp | chez-httparse | ratio |
 |--------------------------------------+------------+---------------+-------|
-| 703 B request, 8 headers, big cookie | 2,615 MB/s |     96.0 MB/s |   27× |
-| 520 B chunked =POST=                 | 1,742 MB/s |     56.0 MB/s |   31× |
-| 52 B URL                             | 2,096 MB/s |    104.8 MB/s |   20× |
+| 703 B request, 8 headers, big cookie | 2,607 MB/s |    102.2 MB/s | 25.5× |
+| 520 B chunked =POST=                 | 1,745 MB/s |     59.5 MB/s | 29.3× |
+| 52 B URL                             | 2,103 MB/s |    105.7 MB/s | 19.9× |
 
 Computed from operations per second instead of bytes per second the same
 three ratios come back within a point — the two readings agree, as they must,
@@ -203,30 +211,35 @@ for the same state, and independent of its id.
 [[file:../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md][Decision 0027]] records the diagnosis and why no number
 here became a gate.
 
-That was the first of four, and the same defect turned out to be three levels
+That was the first of five, and the same defect turned out to be four levels
 deep. The **byte** dispatch inside each state was a linear scan too, over one
 arm per byte of a character class: 21.60 ns for a lowercase letter, which is
 what HTTP is mostly made of, against 1.25 for the range test that replaces it
 (their decision 0050). Then the three arms that call *application* code
 answered a callback's =goto= through the one dispatch still standing, four
 times per header at ~34 ns each — although the target is always one of the
-literals the emitter wrote two lines above (0051). And the callback seam
-answered a freshly consed =(goto TARGET)= where it could answer the target,
-128 bytes of garbage per header (0052).
+literals the emitter wrote two lines above (0051). The callback seam answered
+a freshly consed =(goto TARGET)= where it could answer the target, 128 bytes
+of garbage per header (0052). And finally the entry dispatch itself, the one
+target that genuinely *cannot* be a literal because the state comes from the
+parser — which turned out not to need to be one: a balanced binary search over
+530 state ids is ten comparisons where the scan averaged 265 (0053).
 
-The second and third of those were dismissed in writing before they were
-measured. A comment beside the byte dispatch called a grouped datum list a
-"deliberately deferred optimization" — and when finally measured it is *worse*
-than what it would have replaced, 57.40 ns, because =memv= over 94 elements
-loses to the nested-=if= expansion =case= already gets. A comment beside the
-state dispatch said its remaining uses "happen once per callback and never
-once per byte, so a linear case here costs nothing the per-byte path can see",
-which is a true premise and a false conclusion. Neither was wrong about the
-mechanism; both were wrong about the size, and neither had a number.
+**Three of those five were dismissed in writing before they were measured.** A
+comment beside the byte dispatch called a grouped datum list a "deliberately
+deferred optimization" — and when finally measured it is *worse* than what it
+would have replaced, 57.40 ns, because =memv= over 94 elements loses to the
+nested-=if= expansion =case= already gets. A comment beside the state dispatch
+said its remaining uses "happen once per callback and never once per byte, so
+a linear case here costs nothing the per-byte path can see" — a true premise
+and a false conclusion. And the record that fixed *that* wrote of the entry
+dispatch that it "genuinely cannot be a literal", which is true and was never
+the whole question. None was wrong about the mechanism; every one was wrong
+about the size, and none had a number.
 
 The ratios in the table are what remains, and **the spread has collapsed with
-them** — 27×, 31×, 20× where it was 485×, 365×, 89×. The position term is
-gone, and so is most of what was behind it. What is left is a genuine cost
+them** — 25.5×, 29.3×, 19.9× where it was 485×, 365×, 89×. The position term
+is gone, and so is most of what was behind it. What is left is a genuine cost
 difference rather than an artifact of where a generator happened to number
 things.
 

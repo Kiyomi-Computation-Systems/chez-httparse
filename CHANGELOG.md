@@ -8,6 +8,43 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The pin moves to `114a1ab`, and a byte-at-a-time parse gets 77% faster**
+  ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  item 3). Upstream range `df16902..114a1ab`, one commit: PR #136. The last
+  linear scan in the generated parser -- `%dispatch`, which answers the one
+  target that cannot be a literal because the state comes from the parser --
+  is now a balanced binary search over the state ids. Ten comparisons where
+  the scan averaged 265 (upstream 0053).
+
+  **The generated ABI is re-read at the pin and is still 9** (0005 item 5), so
+  no expectation moves and this bump is a pure re-rendering. Both IR
+  fingerprints unchanged for the fourth pin running --
+  `httparse-url-machine` `3216037711265608570`, `httparse-message-machine`
+  `318434098601601619`.
+
+  | | at `df16902` | at `114a1ab` |
+  |---|---:|---:|
+  | 308 B request, whole buffer | 168,421 msg/s | **170,666-180,281** |
+  | 1,166 B response, whole buffer | 191,044 msg/s | **196,923** |
+  | the request, one byte at a time | 25,396 msg/s | **43,835-45,714** |
+
+  A parser fed one byte at a time re-enters the generated executor once per
+  byte, so it paid that dispatch 308 times for this message where the
+  whole-buffer row paid it once. **It is the row that moved furthest at every
+  step of this work in the opposite direction**, standing still or slipping a
+  few percent while the others improved, because it was the only one measuring
+  the scan that was left.
+
+  Against llhttp on llhttp's own three bench inputs, **27x/31x/20x ->
+  25.5x/29.3x/19.9x**. They were 485x/365x/89x four days ago.
+
+  Cost: the emitted message parser grows 193,819 -> 225,797 bytes (+16.5%) and
+  the url parser 33,239 -> 36,712 (+10.4%). Allocation is unchanged -- a
+  dispatch does not allocate. The live llhttp differential reports
+  `agreed=9557 late-complete=4 early-complete=0 unclassified=0`, identical to
+  the previous pin, and the 274-fixture conformance ratchet is bit-exact.
+  88/88 with no test expectation touched.
+
 - **The pin moves to `df16902`, the parser gets 2.6x faster again, and the
   generated ABI becomes 9**
   ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
