@@ -2538,3 +2538,37 @@ records `chez-httparse, pure Scheme` at 24.3 MB/s on the 703 B input where this 
 so "an FFI wrapper written the obvious way buys 3.7x" becomes roughly a wash against
 `llhttp + FFI, a crossing per callback` at 91.8. It needs re-measuring before it merges. The stale
 `claude/ecstatic-haslett-2c30f5` branch (merged as #14) is also still in the list.
+
+## 2026-09-18 — the search-dispatch pin closed (#28)
+
+Decision 0005 item 3's bump over `df16902..114a1ab`, one commit, closing a run of five. Every step
+was a dispatch in the generator, and **three of the five had been dismissed in writing before anyone
+measured them**: a grouped datum list called a "deliberately deferred optimization" that turned out
+2.7x WORSE than the status quo; "a linear case here costs nothing the per-byte path can see", a true
+premise with a false conclusion; and "the feed entry genuinely cannot be a literal", which is true
+and was never the whole question — it cannot be a literal, and it did not have to be linear.
+
+**The ABI is still 9, so nothing in the test tree moved** and this bump is a pure re-rendering; both
+IR fingerprints unchanged for the fourth pin running. A request whole-buffer 168,421 -> ~176,000
+msg/s, a response 191,044 -> 196,923, and byte-at-a-time **25,396 -> ~44,800 (+77%)**. llhttp ratios
+27x/31x/20x -> **25.5x/29.3x/19.9x**; they were 485x/365x/89x four days ago. The differential is
+`agreed=9557 late-complete=4 early-complete=0 unclassified=0`, identical for the third pin running.
+
+**The row that had been going the wrong way was the informative one.** For four rounds
+byte-at-a-time stood still or slipped a few percent while everything else improved, and each time it
+was recorded as unexplained rather than explained away. It re-enters the generated executor once per
+byte, so it paid the entry dispatch 308 times per message where whole-buffer paid it once — the only
+row measuring the last linear scan. The habit of writing "real, unattributed" instead of inventing a
+cause is what made the eventual explanation cheap.
+
+Two more worth keeping. **The prototype was honest about its own error bar**: it predicted +5.6% and
++77%, the shipped emitter delivered +4.5% and +77%, and both were reported rather than the
+flattering one. And **a stale build reads exactly like a broken change** — `make parser-refresh`
+configures but does not rebuild, so the first `ctest` after a pin bump showed 60 failures including
+the harness bootstrap; `make build` cleared all of them. Twice in one session, in the worktree and
+here. Rebuild before believing a post-bump red.
+
+Left standing: `docs/ffi-boundary-cost` is still unmerged and now **two pins stale**. It records
+`chez-httparse, pure Scheme` at 24.3 MB/s on the 703 B input where this pin measures 102.2, so its
+headline — "an FFI wrapper written the obvious way buys 3.7x" — is now inverted twice over: the
+wrapper row it compares against was 91.8 MB/s, which this parser has passed.

@@ -663,6 +663,15 @@ None is obvious from reading the code.
   script, believed it, and was corrected by the emitter, which reads
   `verification-ok?`. The general form: when an instrument ANSWERS rather than
   throws, not reading the answer is indistinguishable from a pass.
+* `make parser-refresh` **configures but does not build**, so the first
+  `ctest` after a pin bump runs the new generated sources against stale
+  compiled artifacts and objects. That reads as a catastrophic regression —
+  sixty of eighty-eight lanes red, including `harness.bootstrap`, which has
+  nothing to do with the parser — and it happened twice in one afternoon,
+  once in a throwaway worktree and once in the main checkout. `make build`
+  clears all of it. The general form: **a red lane whose failures include
+  something the change could not possibly touch is a build-state failure
+  until proven otherwise.** Rebuild, then read.
 
 ## Claims about other people's code
 
