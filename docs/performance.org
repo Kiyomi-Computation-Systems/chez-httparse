@@ -279,12 +279,13 @@ builds a =.so= — so why is this a Scheme parser at all? The answer is that
 **the ratio does not transfer**, and this section is here so the question can
 be settled without taking the measurement again.
 
-It transferred even less well than it looked. The section below was written
-when the ratio was 104× and concluded that a naive wrapper would buy 3.7×;
-re-measured one day and four generator fixes later, **the same naive wrapper
-loses to the parser it would replace**, and the batched one is 1.3× rather
-than 36×. Only the Scheme row moved. The question is the same question and
-the answer is now further from "wrap llhttp" than it was.
+It transferred even less well than it looked. This section was written when
+the ratio was 104× and concluded that a naive wrapper would buy 3.7×. Every
+row has since been re-taken on a rebuilt harness, one day and four generator
+fixes later: **the same naive wrapper now loses to the parser it would
+replace**, and the batched one buys 2.4× rather than 36×. The three llhttp
+rows moved a few per cent; the Scheme row moved fourfold. The question is the
+same question and the answer is further from "wrap llhttp" than it was.
 
 ** What 25.5× is a ratio between
 
@@ -296,67 +297,77 @@ span to anybody.
 
 An FFI wrapper does not have that option. The spans have to arrive in Scheme,
 and each one is a boundary crossing. For the 703-byte request llhttp fires
-**47 callbacks** to parse what it parses in **262 ns**, and a Chez
-=foreign-callable= crossing costs **140 ns** — 133 to 150 across the runs
-below. The arithmetic is the whole answer: 47 crossings is 6.6 µs against
-0.26 µs of parsing, so **96% of a naive wrapper's time is the boundary and
-not the parse**.
+**47 callbacks** to parse what it parses in **248 ns**, and a Chez
+=foreign-callable= crossing costs **150 ns**. The arithmetic is the whole
+answer: 47 crossings is 7.0 µs against 0.25 µs of parsing, so **96% of a naive
+wrapper's time is the boundary and not the parse**.
 
-And that 6.6 µs is now the number to hold onto, because **this parser reads
-the whole 703-byte request in 6.6 µs**. A naive wrapper's boundary crossings
-alone cost what the entire Scheme parse costs. The two figures were 6.7 µs
-against 28 µs when this section was first written; the parse got four times
-faster and the crossings did not move.
+And that 7.0 µs is the number to hold onto, because **this parser reads the
+whole 703-byte request in 6.6 µs**. A naive wrapper's boundary crossings alone
+cost more than the entire Scheme parse. The two figures were 6.6 µs against
+28 µs when this section was first written; the parse got four times faster and
+the crossings did not move.
 
-The same 47 callbacks into C disappear into the noise. A shim with all 25
-bound and recording every event measures 271 ns against 260 ns for llhttp with
-none bound at all — under a nanosecond apiece, against 140 for the crossing.
+The same 47 callbacks into C stay in the noise. One C program, two loops: the
+shim with all 25 bound and recording every event runs at 1,934 MB/s against
+2,546 with nothing bound at all — 347 ns against 263 ns, so **1.8 ns an
+event**, against 150 for a crossing into Scheme. Eighty-three times.
 
 ** The figures
 
-Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, on the same two
-upstream bench inputs the table above uses:
+Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-18, on the same
+two upstream bench inputs the table above uses. **Every row was re-taken in one
+sitting on one rebuilt harness**; medians of three runs.
 
-| what runs                                  | 703 B safe | 703 B unsafe | 520 B safe | 520 B unsafe |
-|--------------------------------------------+------------+--------------+------------+--------------|
-| chez-httparse, pure Scheme                 | 101.0 MB/s |   155.1 MB/s |  59.7 MB/s |    88.1 MB/s |
-| llhttp + FFI, a crossing per callback      |  91.8 MB/s |    97.5 MB/s |  63.5 MB/s |    58.3 MB/s |
-| llhttp + FFI, a crossing per message       | 131.9 MB/s |   948.4 MB/s |  85.5 MB/s |   681.7 MB/s |
-| llhttp + FFI, no callbacks bound           | 2,574 MB/s |   2,563 MB/s | 1,309 MB/s |   1,712 MB/s |
+| what runs                             |  703 B safe | 703 B unsafe | 520 B safe | 520 B unsafe |
+|---------------------------------------+-------------+--------------+------------+--------------|
+| chez-httparse, pure Scheme            |  101.7 MB/s |   154.4 MB/s |  59.9 MB/s |    88.4 MB/s |
+| llhttp + FFI, a crossing per callback |   96.7 MB/s |    95.7 MB/s |  58.9 MB/s |    59.9 MB/s |
+| llhttp + FFI, a crossing per message  |  240.3 MB/s |  1,356 MB/s  | 152.7 MB/s |   826.5 MB/s |
+| llhttp + FFI, no callbacks bound      | 2,837 MB/s  |  2,783 MB/s  | 1,784 MB/s |   1,812 MB/s |
 
 "Safe" is =optimize-level 0=, which is what this project ships; "unsafe" is
-=optimize-level 3=.
+=optimize-level 3= — and it is the level the WHOLE harness compiles at, the
+=foreign-callable= bodies and the decode loop included, not just this parser.
 
-**THE TOP ROW WAS RE-TAKEN AND THE THREE BELOW IT WERE NOT.** The Scheme row
-is 2026-09-18, the mean of three runs at the current pin, every parse counted
-for completion. The FFI rows are 2026-09-17 and are carried forward: they
-measure llhttp and the Chez foreign-function boundary, neither of which this
-project's pin can move, and the harness that took them is not in this tree
-(below). A reader comparing across the rows is comparing two sittings a day
-apart on one machine, and should know it.
+So a wrapper written the obvious way **loses**: 0.95× and 0.98× safe, 0.62×
+and 0.68× unsafe. It loses further at level 3 than at level 0, because the
+parser gains from unsafe and a boundary crossing does not. A wrapper designed
+around the boundary buys **2.4–2.6× safe and 8.8–9.4× unsafe**. And the 25.5×
+is not reachable from Scheme at all — the bottom row is the speed of llhttp
+talking to nobody.
 
-So a wrapper written the obvious way **loses** — 0.91× safe and 0.63× unsafe
-on the 703-byte request, and 1.06× / 0.66× on the chunked =POST=. A wrapper
-designed around the boundary buys **1.3× safe and 6.1× unsafe**. And the
-25.5× is not reachable from Scheme at all — the bottom row is the speed of
-llhttp talking to nobody.
+Those three numbers were **3.7×, 36× and 104×** when this section was first
+written, against a Scheme row of 24.3 MB/s. The llhttp rows came back within a
+few per cent of themselves on the rebuilt harness — 96.7 against 91.8, 2,837
+against 2,574 — except the batched row, which is 240 against 132 because this
+harness's decode delivers one call per event where the first one summed
+fields. The whole change in the *conclusions* is in the top row.
 
-Those three numbers were **3.7×, 36×, and 104×** when this section was
-written, one day and four generator fixes ago. Only the first row moved.
+**The crossing cost falls out of the table rather than being asserted.** 703
+bytes at 96.7 MB/s is 7.27 µs; the same parse with nothing bound is 0.24 µs;
+the difference over 47 callbacks is **150 ns a crossing**, the top of the 133
+to 150 range this section first reported.
 
 ** The design is the whole variable, and so is =optimize-level=
 
 The third row is a C shim that appends =(kind, offset, length)= to a flat
 array as llhttp's callbacks fire, so Scheme crosses **once per message** and
-then reads the array. Nothing is copied: with the caller's bytevector locked
-and passed as =u8*=, the offsets are offsets into that bytevector, and the
-wrapper can hand back the same =(bv from to)= triple this parser's own span
-bindings receive.
+then reads the array, delivering one call per event the way a span binding
+would be called. Nothing is copied: the bytevector goes to C as =u8*= and the
+offsets are offsets into it, so the wrapper hands back the same =(bv from to)=
+triple this parser's own span bindings receive. **That handoff measured free**
+— 2,821 MB/s with the input in a Scheme bytevector against 2,837 with it in
+foreign memory, inside the run-to-run spread — which is the thing that has to
+be true before any of these rows describe something an embedder could have.
 
-That row is also where =optimize-level= decides the answer. Decoding 47 events
-costs **4,562 ns** safe and **409 ns** unsafe, because =foreign-ref= pays a
-check per field — 32 ns against 2.9 ns. The entire distance between 132 MB/s
-and 948 MB/s is that one switch.
+That row is also where =optimize-level= decides the answer, and the table lets
+you subtract for it. A 703-byte message costs 2.79 µs through the batched
+wrapper safe and 0.49 µs unsafe, against 0.24 µs for the same parse with
+nothing bound at all — so **delivering 47 events costs 2,550 ns safe and 253
+ns unsafe**, about 54 ns an event against 5.4. =foreign-ref= pays a check per
+field and the delivery pays a call per event; level 3 drops the first. The
+entire distance between 240 MB/s and 1,356 MB/s is that one switch.
 
 *This parser barely notices the same switch* is what this paragraph said a day
 ago, on 24.3 → 26.5 MB/s, nine per cent — and it cited byte-machine's
@@ -364,7 +375,7 @@ ago, on 24.3 → 26.5 MB/s, nine per cent — and it cited byte-machine's
 0049]], which records the emitted dispatch as costing the same at
 optimize-level 0, 2 and 3.
 
-**It notices now: 101.0 → 155.1 MB/s, fifty-three per cent.** Nothing about
+**It notices now: 101.7 → 154.4 MB/s, fifty-two per cent.** Nothing about
 =optimize-level= changed. What changed is what the parse is *made of*. When
 the dispatches were linear scans they dominated, and 0049 is right that a scan
 costs the same at every level — so the parser inherited that insensitivity
@@ -377,40 +388,42 @@ the thing that was wrong with it, and it went away with the cause. **A number
 that measures how little something matters stops being true when something
 else stops mattering more.**
 
-The headline 6.1× is therefore really *6.1× if the decode runs unsafe*, and
+The headline 8.8× is therefore really *8.8× if the decode runs unsafe*, and
 unsafe Scheme reading a C-written array is a different proposition on bytes
-off a socket than it is in a benchmark. Safe against safe it is 1.3×. The
+off a socket than it is in a benchmark. Safe against safe it is 2.4×. The
 pure-Scheme path now asks the same question of itself, and answers it with a
 53% figure it cannot spend without giving up the bounds checks on
 attacker-controlled offsets — which is the same trade, one layer down.
 
 ** What was checked, so these are not flattered
 
-- **The two endpoints still reproduce this page.** The pure-Scheme row lands
-  on the 102.2 MB/s in the table above — it was written to reproduce 25.3, and
-  it tracked that row through a fourfold change without being adjusted, which
-  is a stronger check than the original agreement was. The no-callbacks row
-  landed on 2,621 MB/s when taken and this page now reads 2,607 for the same
-  measurement. A harness that could not recover both figures would not be
-  measuring the same thing they measured.
-- **The handoff is not free, and was not assumed to be.** The FFI rows kept
-  their input in foreign memory, which an embedder holding a Scheme bytevector
-  does not get. The honest path costs almost nothing — =lock-object= plus
-  =unlock-object= is 35 ns, and the parse goes from 277 ns to 307 ns passed as
-  =u8*=. What is *not* affordable is copying in: 21.6 µs for 703 bytes, which
-  would swallow the wrapper's entire advantage.
+- **Both endpoints reproduce this page.** The pure-Scheme row lands on the
+  102.2 MB/s in the llhttp table above, and the no-callbacks row on its 2,607.
+  A harness that could not recover both figures would not be measuring the
+  same thing they measured. The Scheme row is the stronger of the two checks
+  now: it was written to reproduce 25.3 MB/s and tracked that row through a
+  fourfold change without being adjusted.
+- **The event count reproduces too, from the C side.** The shim records **47
+  triples** for the 703-byte request, which is the callback count this section
+  reasoned from before any of it was rebuilt.
+- **The handoff is free, and was not assumed to be.** The rows keep their
+  input in foreign memory, which an embedder holding a Scheme bytevector does
+  not have. Passing the bytevector straight to C as =u8*= measures 2,821 MB/s
+  against 2,837 for foreign memory — inside the run-to-run spread, so the
+  difference is not resolvable here. What is *not* affordable is copying in:
+  21.6 µs for 703 bytes would swallow the wrapper's entire advantage.
 - **Every parse completed.** The same rule =benchmark-tests.sps= applies to
-  itself: a parser erroring on the first byte is fast and meaningless, so the
-  Scheme rows count =on-message-complete= against the repetition count and the
-  llhttp rows check the errno. The re-taken row counts 381,842 completions
-  against 381,842 repetitions on the 703-byte input and 516,222 against
-  516,222 on the chunked one.
-- **The Scheme row is three runs; the FFI rows are single runs, ±10%.** Read
-  the ratios, not the rates — and read the two nearest ratios, 0.91× and 1.3×,
-  as "about the same" rather than as an ordering. What the table can carry is
-  that a naive wrapper is no longer ahead and a batched one is no longer far
-  ahead; it cannot carry which of two figures within 10% of each other is
-  larger.
+  itself: a parser erroring on the first byte is fast and meaningless. The
+  Scheme row counts =on-message-complete= against the repetition count —
+  381,842 of 381,842 on the 703-byte input, 516,222 of 516,222 on the chunked
+  one. The per-callback row counts the same event arriving through its own
+  =foreign-callable=, the per-message row counts kind 12 in the decoded array,
+  and the no-callbacks row checks =llhttp_execute='s errno on every call,
+  because it has no callback to count.
+- **Medians of three runs at each level.** Read the ratios, not the rates —
+  and read 0.96× and 0.99× as "the same" rather than as an ordering. What the
+  table carries is that a naive wrapper is no longer ahead; it cannot carry
+  which of two figures three per cent apart is larger.
 
 ** What it does not measure
 
@@ -435,20 +448,26 @@ is meaningless.
 
 The FFI harness is not in this tree, and that is deliberate: decision 0010
 keeps llhttp tooling local and opt-in, and a benchmark needing a C toolchain
-is the thing this parser exists not to need. It is why the three FFI rows are
-carried forward rather than re-taken. It is about a hundred and twenty lines,
-and the shape is all of it —
+is the thing this parser exists not to need. It is about two hundred lines,
+it has been rebuilt from this list once already, and the shape is all of it —
 
-1. =npm run build= in an llhttp checkout, then =clang -dynamiclib= over
-   =build/c/llhttp.c= and =src/native/{api,http}.c=.
-2. =load-shared-object=, an =ftype= for =llhttp_t= held to =sizeof= from
-   clang (96 bytes at 9.4.3), and a 200-byte settings block of 25 entry
-   points from =foreign-callable= — each one =lock-object='d, or the
-   collector moves the address C is holding.
-3. For the batched row, a C shim owning the 25 callbacks and appending
-   =(kind, offset, length)= to a caller-owned array.
-4. Calibrate by doubling until the region clears the clock, the way
-   =benchmark-tests.sps= does.
+1. =npm run build= in an llhttp checkout, then =clang -O3 -dynamiclib= over
+   =build/c/llhttp.c=, =src/native/{api,http}.c= and the shim below.
+2. =load-shared-object=, then the three sizes taken from clang rather than
+   from this page: =sizeof(llhttp_t)= is 96, =sizeof(llhttp_settings_t)= is
+   200, and =offsetof(llhttp_t, data)= is 48 at 9.4.3. =HTTP_REQUEST= is 1.
+3. The settings block is 25 pointers in the declaration order of =struct
+   llhttp_settings_s=, so slot *i* is at byte *8i*. For the per-callback row
+   each is a =foreign-callable= — =lock-object='d, or the collector moves the
+   address C is holding — with the ten data callbacks at =(void* void*
+   size_t) int= and the fifteen events at =(void*) int=.
+4. For the batched row, a C shim owning those 25 and appending =(kind,
+   offset, length)= to a caller-owned array, reached through =parser->data=.
+   Scheme resets the count, executes, and walks the array.
+5. Size the loop by a fixed total of BYTES, the way upstream's =bench= mode
+   does, so the measured interval holds steady as the input changes.
+6. Count completions on every row, each in whatever way that row can: its own
+   =foreign-callable=, kind 12 in the array, or =llhttp_execute='s errno.
 
 The inputs are upstream's own, pulled out of =bench/native.ts= — 703 and 520
 bytes, the same two rows as the table above.
