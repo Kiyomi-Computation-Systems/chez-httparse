@@ -83,6 +83,43 @@ The CMake-layer specifications run with no Scheme installed, via the
 =no-scheme= preset. The optional live-llhttp differential additionally needs
 Node and a C toolchain; it is off unless you ask for it.
 
+* Portability
+
+The libraries are *pure R6RS*. Nothing under =src/= imports =(chezscheme)=: the
+grammars import =(rnrs)= and =(byte-machine graph)=, and both generated artifacts
+import =(rnrs)= and =(byte-machine runtime)= and nothing else. The same holds for
+byte-machine's own =src/=. Porting to Guile, Racket or another R6RS system is
+therefore a *tooling* job, not a library one.
+
+Chez appears in four places, all of them build- or test-time:
+
+- the test harness — =(only (chezscheme) machine-type scheme-version getenv
+  system statistics sstats-bytes real-time with-output-to-string
+  display-condition)=, eight names enumerated rather than a blanket import
+- =tools/emit-machine.ss= — command-line arguments, file output, =exit=
+- byte-machine's bench runner — timing, allocation, and =compile-file= for the
+  ahead-of-time lane
+- =cmake/HttparseChez.cmake= — probing for the executable
+
+Most of those eight have a direct equivalent or a short replacement. The
+exception is =statistics= / =sstats-bytes=, which back the allocation lane:
+allocation accounting has no portable spelling, so that lane is Chez-only by
+construction and a port would reimplement or drop it.
+
+Two things to expect. Library resolution differs — Racket wants =#lang r6rs=
+wrapping, Guile has its own search rules — and the generated parser is a large
+mutually-recursive set of internal definitions leaning on proper tail calls, a
+shape Chez compiles particularly well; the figures in
+[[file:docs/performance.org][docs/performance.org]] are Chez's and would need
+re-measuring.
+
+Every Scheme lane in the build already takes a =BACKEND= argument
+(=cmake/HttparseSchemeLane.cmake=), with =chez= as the only value it knows. That
+is where a second runtime attaches.
+
+*None of this has been tried.* The library is portable by construction, not by
+measurement — and this project does not claim a property it has not measured.
+
 * Building and testing
 
 Run =make= (or =make help=) for the full target list. The main entries:
