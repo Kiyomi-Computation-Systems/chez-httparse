@@ -6,6 +6,42 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-18
+
+**Every fixture llhttp ships now passes, at every chunk size.** The ratchet
+stands at **274 of 274** with an empty deferral list — v0.1 shipped 190,
+strict-mode only. What closed the gap: pausing and `skipBody` (26 fixtures),
+the eleven lenient flags as a bitset rather than eleven callbacks (37), and the
+url sub-parser (21), which is a second generated parser for the five spans
+llhttp's own url binary reports.
+
+The live differential against a built llhttp agrees on **9,557 generated inputs**
+with `late-complete=4 early-complete=0 unclassified=0`, and it found three
+defects in this parser that the corpus did not.
+
+**And the parser is twelve times faster than it was three days ago**, entirely
+from the generator:
+
+| | v0.1.0 | v0.2.0 |
+|---|---:|---:|
+| 308 B request, 8 headers, whole buffer | 14,925 msg/s | **170,666–180,281** |
+| 1,166 B response, 1 KB body, whole buffer | 28,169 msg/s | **196,923** |
+| the request, fed one byte at a time | 8,695 msg/s | **43,835–45,714** |
+
+Against llhttp on llhttp's own three bench inputs the ratios fall from
+**485× / 365× / 89×** to **25.5× / 29.3× / 19.9×**. `docs/performance.org`
+records how, and what an FFI wrapper would actually buy — which is now less
+than nothing for the obvious design.
+
+**The pin is a tag, not a commit.** `vendor/byte-machine` moves to `v0.6.0`,
+and the regenerated parsers are **byte-identical** to the ones emitted at
+`114a1ab`: the two commits between them change no `src/`. So this release names
+an upstream release rather than a point in its history, at no cost to what
+ships.
+
+Generated-runtime ABI 9. No API change since v0.1 beyond what the entries below
+record.
+
 ### Changed
 
 - **The pin moves to `114a1ab`, and a byte-at-a-time parse gets 77% faster**
