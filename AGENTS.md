@@ -873,3 +873,25 @@ it without touching it.** These are the claims that rot silently, because
 nothing about them looks like a number that needs re-taking — they read as
 structural facts. When a sentence says "X barely matters here", write down
 what it was competing with, so the next person can see the claim expire.
+
+## A version surface is anywhere the text asserts a relationship to the release
+
+Cutting v0.2.0 meant moving the version string in `CHANGELOG.md` and the
+`README.org` status paragraph — the two places a checklist would name. The
+third was `docs/conformance.org`, which carried no version number at all:
+
+> v0.1 shipped 190 of them, strict-mode only. Pausing and `skipBody` (26) came
+> in after it, then the eleven lenient flags (37), then the url sub-parser
+> (21). **All of that is on `main`, unreleased.**
+
+Nothing in that paragraph is a version string, and the release makes its last
+sentence false. A grep for `0.1.0` would not have found it; a grep for `v0.1`
+would have found the harmless historical half of the same paragraph and not
+the claim.
+
+**So: before a release, search for the RELATIONSHIP, not the number.**
+"unreleased", "on `main`", "not yet shipped", "deferred to", "since the last
+release" — each of those is a version surface that stops being true the moment
+a tag exists, and none of them looks like one. The byte-machine side of this
+project makes the same point from the other direction: its release ledger
+names its surfaces as a list *because* they cannot be found by searching.

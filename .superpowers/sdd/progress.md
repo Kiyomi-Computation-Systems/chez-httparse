@@ -2618,3 +2618,30 @@ so the other session's branch was never touched.
 Left standing: `claude/ecstatic-haslett-2c30f5` (merged as #14) and `docs/portability-note` (merged
 as #29) are both still in the branch list. The second is checked out by the other session, so
 neither was deleted here.
+
+## 2026-09-18 — v0.2.0 shipped (#31)
+
+v0.1 shipped 190 of llhttp's 274 conformance fixtures, strict-mode only. **274 of 274 with an empty
+deferral list** ships here, for the first time: pausing and `skipBody` closed 26, the eleven lenient
+flags 37, and the url sub-parser the last 21. The live differential agrees on 9,557 generated inputs
+besides, `late-complete=4 early-complete=0 unclassified=0`.
+
+And the parser is **twelve times faster than v0.1 without a line of this repository being
+responsible** — 14,925 → ~175,000 msg/s on a 308-byte request, 8,695 → ~44,800 byte-at-a-time. Four
+dispatch fixes in the generator; the llhttp ratios fall 485x/365x/89x → 25.5x/29.3x/19.9x.
+
+**The pin is a tag, not a commit.** `vendor/byte-machine` moves `114a1ab` → `v0.6.0`, and the
+regenerated parsers are BYTE-IDENTICAL, because the two upstream commits between them change no
+`src/`. So the release names an upstream release rather than a point in its history at no cost to
+what ships — which is the whole reason to cut this one after byte-machine's rather than before, and
+worth remembering as the ordering rule for the next pair.
+
+Three surfaces carry the version, and the third is the one a checklist would have missed:
+`CHANGELOG.md`, `README.org`, and `docs/conformance.org` — whose sentence *"All of that is on `main`,
+unreleased"* is precisely what this release makes false. A version surface is not only where the
+number appears; it is anywhere the text asserts a RELATIONSHIP to the released version.
+
+88/88, no `src/` change in the release PR at all. Annotated `v0.2.0` tag on `3a59839`.
+
+Both repositories are now released and consistent: byte-machine `v0.6.0` (ABI 9), chez-httparse
+`v0.2.0` pinned to it by tag.
