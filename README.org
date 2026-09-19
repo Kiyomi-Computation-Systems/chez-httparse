@@ -11,13 +11,19 @@ byte, at every chunk size.
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
-*Status: v0.2.0.* Request and response parsing, strict and lenient: *all 274*
+*Status: v0.3.0.* Request and response parsing, strict and lenient: *all 274*
 fixtures in llhttp's conformance corpus — every HTTP fixture and every URL
 fixture it ships — at every chunk size from 1 to the input length, with an
 empty deferral list. The URL fixtures are a second generated parser, for the
 five spans llhttp's own url binary reports. A live differential against a built
 llhttp agrees on 9,557 generated inputs besides. See
 [[file:docs/conformance.org][docs/conformance.org]].
+
+v0.3.0 adds two pure, runtime-safe libraries for embedders, lifted out of the
+build-time grammar: =(httparse methods)= (llhttp's method name/number tables)
+and =(httparse decisions)= (its keep-alive / needs-eof rules and the flag bits
+they read). Additive — conformance and performance are unchanged, and the
+shipped parser is byte-identical.
 
 v0.1 shipped 190 fixtures, strict-mode only, and parsed a 308-byte request at
 14,925 msg/s; v0.2 parses the same request at *175,000*. None of that twelvefold
