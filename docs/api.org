@@ -11,6 +11,7 @@ bytevector rather than a string.
 #+begin_src scheme
 (import (generated httparse-message)   ; httparse-message-machine
         (httparse modes)               ; the mode tables, pure
+        (httparse methods)             ; the method table, pure
         (byte-machine runtime))        ; make-parser, parser-feed!, ...
 #+end_src
 
@@ -23,6 +24,14 @@ diff and loadable without running a generator. It depends on
 mode tables and the arithmetic over them. You need it only to spell the
 fourth argument below; the integers are llhttp's own, so a caller that
 already has one may pass it directly.
+
+=(httparse methods)= is pure in the same way — llhttp's 47 method names and the
+number it prints for each. =headers complete= reports the method as that
+number; =httparse-method-name= turns it into a symbol for logging or routing
+(and =httparse-method-number= goes back), so you need this only when you read
+the method a parsed message reports. Like the modes, an unknown name or number
+is *refused, never defaulted* — zero is =DELETE=, a real method, so a typo must
+not read as one.
 
 * Making a parser
 

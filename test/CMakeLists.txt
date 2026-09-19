@@ -794,6 +794,12 @@ httparse_add_scheme_lane(
 # nothing and the dependency vanishes without a word.
 set(HTTPARSE_MODES "${CMAKE_SOURCE_DIR}/src/httparse/modes.sls")
 
+# The pure method table, imported by the grammar and readable by an embedder:
+# llhttp's 47 method names and the number it prints for each. Set here for the
+# same reason as HTTPARSE_MODES above -- an unset variable in SOURCES expands to
+# nothing and the dependency vanishes without a word.
+set(HTTPARSE_METHODS "${CMAKE_SOURCE_DIR}/src/httparse/methods.sls")
+
 set(HTTPARSE_TRACE_FORMAT
     "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/trace-format.sls")
 
@@ -924,14 +930,36 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- The method table -------------------------------------------------------
+#
+# Pure data with real invariants, like the mode tables above: 47 distinct
+# names, a dense 0..46 numbering with no gap or repeat, and two accessors that
+# are inverse across the whole table. It has its own lane because the grammar
+# and an embedder both import it and neither would notice a table that drifted
+# -- a duplicated number collides two methods onto one, and a fixture typed for
+# either still passes.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.methods.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/methods-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_METHODS}
+            "${CMAKE_CURRENT_LIST_DIR}/common/methods-tests.sps"
+    TIMEOUT 120
+    LABELS unit)
+endforeach()
+
 # --- The grammar (M2) -------------------------------------------------------
 
-# Three files: the grammar imports (httparse modes), so a lane that has one
-# and not the other would compile against a stale table. The url sub-parser's
-# grammar rides along rather than getting a variable of its own -- it is a
-# second machine in the same build-time layer, and every lane that needs one
-# builder needs the other.
+# The grammar imports (httparse modes) and (httparse methods), so a lane that
+# has the grammar but not both pure tables would compile against a stale one.
+# Both come first, in dependency order (each depends only on (rnrs)). The url
+# sub-parser's grammar rides along rather than getting a variable of its own --
+# it is a second machine in the same build-time layer, and every lane that
+# needs one builder needs the other.
 set(HTTPARSE_GRAMMAR ${HTTPARSE_MODES}
+                     ${HTTPARSE_METHODS}
                      "${CMAKE_SOURCE_DIR}/src/httparse/grammar.sls"
                      "${CMAKE_SOURCE_DIR}/src/httparse/url-grammar.sls")
 

@@ -103,7 +103,8 @@
           httparse-method-names httparse-method-numbers
           httparse-http-methods httparse-rtsp-methods httparse-ice-methods
           method-name->identifier)
-  (import (rnrs) (byte-machine graph) (httparse modes) (httparse url-grammar))
+  (import (rnrs) (byte-machine graph)
+          (httparse modes) (httparse methods) (httparse url-grammar))
 
   (define (range lo hi)
     (let loop ((i hi) (acc '())) (if (< i lo) acc (loop (- i 1) (cons i acc)))))
@@ -135,14 +136,20 @@
 
   ;; --- the method table ---------------------------------------------------
   ;;
+  ;; `httparse-method-names` and `httparse-method-numbers` are llhttp's, and
+  ;; they now live in the pure `(httparse methods)` library, imported above and
+  ;; re-exported below so there is ONE source: an embedder reads the same two
+  ;; tables at run time without pulling in `(byte-machine graph)`, exactly as
+  ;; `(httparse modes)` is threaded in. What stays here is only how the grammar
+  ;; CONSUMES them.
+  ;;
   ;; llhttp matches the method against a TABLE, not against `1*tchar`, and the
   ;; difference is observable: `MKCOLA / HTTP/1.1` records
   ;; `span[method]="MKCOL"` and then `error code=6 "Expected space after
   ;; method"` at offset 5. A tchar loop would take `MKCOLA` whole and accept it.
-  ;;
-  ;; The union is all 47 names llhttp knows, RTSP and HTTP/2 included: the
-  ;; corpus shows `ANNOUNCE` (RTSP-only) parsed into a method span and rejected
-  ;; only later, by the method-versus-protocol rule, so the matcher accepts it.
+  ;; The union is all 47 names, RTSP and HTTP/2 included: the corpus shows
+  ;; `ANNOUNCE` (RTSP-only) parsed into a method span and rejected only later,
+  ;; by the method-versus-protocol rule, so the matcher accepts it.
   ;;
   ;; WHY `keyword-table` AND NOT `make-sequence-dispatch-node`. Sequence
   ;; dispatch rejects a case list where one entry is a proper prefix of another
@@ -152,38 +159,6 @@
   ;; reaches it, the shorter when the next byte cannot extend it, and the
   ;; closing byte is reexecuted so the span ends at the keyword's own length.
   ;; That is what makes `MKCOLA` close the span at MKCOL and fail after it.
-  (define httparse-method-names
-    '("ACL" "ANNOUNCE" "BIND" "CHECKOUT" "CONNECT" "COPY" "DELETE" "DESCRIBE"
-      "FLUSH" "GET" "GET_PARAMETER" "HEAD" "LINK" "LOCK" "M-SEARCH" "MERGE"
-      "MKACTIVITY" "MKCALENDAR" "MKCOL" "MOVE" "NOTIFY" "OPTIONS" "PATCH"
-      "PAUSE" "PLAY" "POST" "PRI" "PROPFIND" "PROPPATCH" "PURGE" "PUT" "QUERY"
-      "REBIND" "RECORD" "REDIRECT" "REPORT" "SEARCH" "SET_PARAMETER" "SETUP"
-      "SOURCE" "SUBSCRIBE" "TEARDOWN" "TRACE" "UNBIND" "UNLINK" "UNLOCK"
-      "UNSUBSCRIBE"))
-
-  ;; THE NUMBER llhttp PRINTS. `headers complete` carries `method=%d`, and the
-  ;; number is the method's value in llhttp's own `METHODS` map -- NOT its
-  ;; position in the list above, which is alphabetical. The map is assembled
-  ;; from eight sub-maps with explicit values and one alias, so the pairs are
-  ;; extracted by script and given two invariants to violate: the key set must
-  ;; equal `httparse-method-names` (checked in the unit lane) and the values
-  ;; must be exactly 0..46 with no gap or repeat. The corpus is the third
-  ;; check, and the strongest -- sixteen fixtures print a method span and a
-  ;; `method=` on the same trace, so the conformance lane compares the pairs
-  ;; against the oracle directly.
-  (define httparse-method-numbers
-    '(("ACL" . 19) ("ANNOUNCE" . 36) ("BIND" . 16) ("CHECKOUT" . 22)
-      ("CONNECT" . 5) ("COPY" . 8) ("DELETE" . 0) ("DESCRIBE" . 35)
-      ("FLUSH" . 45) ("GET" . 1) ("GET_PARAMETER" . 41) ("HEAD" . 2)
-      ("LINK" . 31) ("LOCK" . 9) ("M-SEARCH" . 24) ("MERGE" . 23)
-      ("MKACTIVITY" . 21) ("MKCALENDAR" . 30) ("MKCOL" . 10) ("MOVE" . 11)
-      ("NOTIFY" . 25) ("OPTIONS" . 6) ("PATCH" . 28) ("PAUSE" . 39)
-      ("PLAY" . 38) ("POST" . 3) ("PRI" . 34) ("PROPFIND" . 12)
-      ("PROPPATCH" . 13) ("PURGE" . 29) ("PUT" . 4) ("QUERY" . 46)
-      ("REBIND" . 17) ("RECORD" . 44) ("REDIRECT" . 43) ("REPORT" . 20)
-      ("SEARCH" . 14) ("SET_PARAMETER" . 42) ("SETUP" . 37) ("SOURCE" . 33)
-      ("SUBSCRIBE" . 26) ("TEARDOWN" . 40) ("TRACE" . 7) ("UNBIND" . 18)
-      ("UNLINK" . 32) ("UNLOCK" . 15) ("UNSUBSCRIBE" . 27)))
 
   (define (method-number name)
     (let ((row (assoc name httparse-method-numbers)))
