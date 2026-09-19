@@ -371,13 +371,18 @@
     (harness-case "a protocol not followed by a slash is rejected"
       (lambda ()
         (check-equal "code" (error-code-of "GET / HTTP 1.1\r\n") 'invalid-constant)))
-    (harness-case "end of input inside the method is unexpected-eof"
+    (harness-case "end of input inside the method is llhttp's Invalid EOF state"
       (lambda ()
+        ;; A finish from any UNSAFE state is llhttp's HPE_INVALID_EOF_STATE
+        ;; (code 14, reason verbatim -- #42), not a numberless error of our own.
+        ;; The corpus never finishes (decision 0016), so this is where it is
+        ;; pinned; `unit.finish` holds the other unsafe states.
         (let* ((bv (string->utf8 "GE"))
                (p (make-parser compiled (ignoring-bindings) #f request-init)))
           (parser-feed! p bv 0 2)
-          (check-equal "code" (parser-error-code (parser-result-error (parser-finish! p)))
-                       'unexpected-eof))))
+          (let ((e (parser-result-error (parser-finish! p))))
+            (check-equal "code" (parser-error-code e) 'invalid-eof-state)
+            (check-equal "reason" (parser-error-reason e) "Invalid EOF state")))))
     (harness-case "end of input before any byte finishes cleanly"
       (lambda ()
         ;; Between messages, clean end of input is `finished`, not an error --

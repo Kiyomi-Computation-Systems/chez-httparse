@@ -70,13 +70,15 @@
 ;;; ERROR NODES ARE PER SPAN STATE, NOT PER CODE. A node reached with two
 ;;; different span states is rejected by the verifier's flat lattice, so end of
 ;;; input inside each span needs its own node even though they all name one
-;;; `unexpected-eof` declaration -- and so does a refusal two productions can
+;;; `invalid-eof-state` declaration -- and so does a refusal two productions can
 ;;; reach with different spans open. The error codes and reasons are llhttp's
 ;;; own, per decision 0013 -- identity is the (code, reason) pair, because
-;;; eight of its codes carry more than one reason. Two declarations here have
-;;; no llhttp NUMBER at all, and that is also deliberate: `unexpected-eof`,
-;;; because llhttp prints nothing when input runs out mid-token, and
-;;; `unexpected-message-type`, because llhttp cannot reach that state.
+;;; eight of its codes carry more than one reason. ONE declaration here has no
+;;; llhttp number, deliberately: `unexpected-message-type`, because llhttp
+;;; cannot reach that state -- the embedder writes the type, so no answer lands
+;;; there. The finish-from-unsafe error was numberless too until #42, when it
+;;; took llhttp's own `invalid-eof-state` (14); the corpus still never finishes
+;;; to witness it, but `unit.finish` does.
 ;;;
 ;;; TRANSLATING AN llhttp ARM: `.match` CONSUMES; `.peek` AND `.otherwise` DO
 ;;; NOT. An error reached through a match therefore lands one byte LATER than
@@ -738,9 +740,18 @@
      ;; `bad-url` is the one placeholder left: llhttp's url reasons belong to
      ;; the URL sub-parser, deferred by decision 0009.
      (append
-      (list (make-error-declaration 'eof 'unexpected-eof "unexpected end of input" #f)
-           ;; NO llhttp NUMBER, FOR THE SAME REASON `eof` HAS NONE: llhttp
-           ;; cannot reach this state at all, because its type is a field an
+      (list
+           ;; `eof`: a `parser-finish!` from an UNSAFE state (mid-message) is
+           ;; llhttp's HTTP_FINISH_UNSAFE, and `llhttp_finish` answers
+           ;; HPE_INVALID_EOF_STATE -- code 14, reason verbatim (api.c:152).
+           ;; llhttp switches on the `finish` FIELD, not the open span, so this
+           ;; ONE declaration serves every per-span EOF node. No fixture
+           ;; witnesses it -- the corpus never finishes (decision 0016) -- and
+           ;; the FEED path stays silent, answering `need-input` rather than
+           ;; reaching here; `unit.finish` pins it. See #42.
+           (make-error-declaration 'eof 'invalid-eof-state "Invalid EOF state" #f)
+           ;; `no-message-type` has NO llhttp number, deliberately: llhttp
+           ;; cannot reach this state at all, because the type is a field an
            ;; embedder wrote rather than an answer one gives. A binding that
            ;; returns neither branch key lands here, the adapter has no row to
            ;; rename it with, and the fixture fails rather than the lane

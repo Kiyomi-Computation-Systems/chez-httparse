@@ -490,6 +490,7 @@
                        (invalid-content-length . 11)
                        (invalid-chunk-size . 12)
                        (invalid-status . 13)
+                       (invalid-eof-state . 14)
                        (invalid-transfer-encoding . 15)
                        (paused-upgrade . 22) (paused-h2-upgrade . 23)
                        (cr-expected . 25) (unexpected-space . 30)))))
@@ -540,13 +541,15 @@
         (check "refused"
                (refuses? (lambda () (adapter-error-event 'unexpected-message-type
                                                          "x" 0))))))
-    (harness-case "unexpected-eof has no number, deliberately"
+    (harness-case "invalid-eof-state maps to llhttp's 14"
       (lambda ()
-        ;; llhttp prints nothing at all when input runs out mid-token, so a
-        ;; trace can never carry one. Renaming it to some number would invent a
-        ;; line the oracle never records.
-        (check "refused"
-               (refuses? (lambda () (adapter-error-event 'unexpected-eof
-                                                         "unexpected end of input" 3))))))))
+        ;; The finish-from-unsafe error IS llhttp's now -- HPE_INVALID_EOF_STATE,
+        ;; code 14 (#42) -- so unlike the old numberless `unexpected-eof` it has
+        ;; a row. The row is inert, since the driver never finishes (decision
+        ;; 0016 item 1), but 0013 item 4 wants the table total over what the
+        ;; parser can produce, and a finish can produce this one.
+        (check-equal "code 14"
+                     (line (adapter-error-event 'invalid-eof-state "Invalid EOF state" 3))
+                     '("off=3 error code=14 reason=\"Invalid EOF state\""))))))
 
 (harness-finish)

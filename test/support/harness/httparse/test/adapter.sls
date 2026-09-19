@@ -125,9 +125,11 @@
   (define adapter-count-field 'content-length)
 
   ;; Our error code symbols to llhttp's ERROR numbers, one to one. A symbol
-  ;; spanning two numbers, or absent here, is what decision 0013 forbids.
-  ;; `unexpected-eof` has no row deliberately: llhttp reports nothing at all
-  ;; when input runs out mid-token, so a trace can never carry one.
+  ;; spanning two numbers, or absent here for a code the parser can produce, is
+  ;; what decision 0013 forbids. `invalid-eof-state` (14) is the unsafe-finish
+  ;; error (#42): inert, since the driver never finishes (decision 0016), but
+  ;; the parser CAN produce it, so 0013 item 4 keeps it in the table. A feed
+  ;; that runs dry still prints nothing, so no trace ever carries it.
   (define adapter-error-codes
     '((strict                    . 2)
       (lf-expected               . 3)
@@ -141,6 +143,7 @@
       (invalid-content-length    . 11)
       (invalid-chunk-size        . 12)
       (invalid-status            . 13)
+      (invalid-eof-state         . 14)
       (invalid-transfer-encoding . 15)
       ;; PRI's h2 preface is an ERROR in llhttp, not a pause -- `p.error(
       ;; ERROR.PAUSED_H2_UPGRADE, ...)` -- so unlike code 22 it has a code and

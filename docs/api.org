@@ -447,11 +447,13 @@ legal. It runs the machine with input exhausted, taking each state's
 end-of-input route, and returns ='finished=, ='error= or ='paused=.
 
 *The corpus never calls =parser-finish!=* — upstream's harness does not
-either, which took four milestones to notice — so ='error= and ='paused=
-from a finish carry no bit-exact evidence here, though the machinery works.
-A PAUSE FROM A FEED IS DIFFERENT: 24 fixtures record one, and this parser
-matches all of them at every chunk size. See
-[[file:conformance.org][conformance.org]].
+either, which took four milestones to notice — so a finish's outcome carries
+no bit-exact /corpus/ evidence, and =unit.finish= pins it instead: a finish
+from an unsafe (mid-message) state is llhttp's =invalid-eof-state= /
+"Invalid EOF state" (code 14), uniform across every such state, and a
+close-delimited body completes (below). A PAUSE FROM A FEED IS DIFFERENT: 24
+fixtures record one, and this parser matches all of them at every chunk size.
+See [[file:conformance.org][conformance.org]].
 
 A body the *connection* delimits — a response with neither =Content-Length=
 nor =Transfer-Encoding=, the =message-needs-eof?= case above — is the one
