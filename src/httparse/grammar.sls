@@ -104,7 +104,8 @@
           httparse-http-methods httparse-rtsp-methods httparse-ice-methods
           method-name->identifier)
   (import (rnrs) (byte-machine graph)
-          (httparse modes) (httparse methods) (httparse url-grammar))
+          (httparse modes) (httparse methods) (httparse decisions)
+          (httparse url-grammar))
 
   (define (range lo hi)
     (let loop ((i hi) (acc '())) (if (< i lo) acc (loop (- i 1) (cons i acc)))))
@@ -263,6 +264,13 @@
   ;; `header_state` decides which value machine a field name selects. Renaming
   ;; either would mean the adapter had to translate a number back, which is a
   ;; computation it may not do (decision 0014).
+  ;;
+  ;; The FLAGS bits (`F-*`) now live in the pure `(httparse decisions)` library,
+  ;; imported above: the grammar SETS them with its set-mask nodes, and an
+  ;; embedder reads the same bits to decide keep-alive vs close -- one
+  ;; definition, threaded in as `(httparse modes)` is. HEADER_STATE stays here;
+  ;; it is internal to how a field name selects a value machine and nothing
+  ;; outside the grammar reads it.
   (define HS-GENERAL 0)
   (define HS-CONNECTION 1)
   (define HS-CONTENT-LENGTH 2)
@@ -272,26 +280,6 @@
   (define HS-CONNECTION-CLOSE 6)
   (define HS-CONNECTION-UPGRADE 7)
   (define HS-TRANSFER-ENCODING-CHUNKED 8)
-
-  (define F-CONNECTION-KEEP-ALIVE 1)
-  (define F-CONNECTION-CLOSE 2)
-  (define F-CONNECTION-UPGRADE 4)
-  (define F-CHUNKED 8)
-  (define F-UPGRADE 16)
-  (define F-CONTENT-LENGTH 32)
-  ;; Set by the ZERO CHUNK, not by a header, and read by the one place the
-  ;; header section and the chunk reader meet: the empty line that ends a
-  ;; header block fires `chunk complete` when it is set and `headers complete`
-  ;; when it is not.
-  (define F-TRAILING 128)
-  ;; Set by the EMBEDDER'S ANSWER and by nothing in the input: llhttp's
-  ;; `on_headers_complete` returning 1 means "this message has no body after
-  ;; all", which `http.ts` lowers as `setFlag(FLAGS.SKIPBODY)` before
-  ;; rejoining the body decision. A flag and not a jump, because
-  ;; `llhttp__after_headers_complete` reads it in TWO places and a jump could
-  ;; only serve one of them.
-  (define F-SKIP-BODY 64)
-  (define F-TRANSFER-ENCODING 512)
 
   ;; llhttp's LENIENT_FLAGS, its own `i16 lenient_flags` and NOT part of
   ;; `flags`: the restart between two messages stores zero over `flags`, and a
