@@ -351,3 +351,12 @@ from a finish carry no bit-exact evidence here, though the machinery works.
 A PAUSE FROM A FEED IS DIFFERENT: 24 fixtures record one, and this parser
 matches all of them at every chunk size. See
 [[file:conformance.org][conformance.org]].
+
+A body the *connection* delimits — a response with neither =Content-Length=
+nor =Transfer-Encoding=, the =message-needs-eof?= case above — is the one
+message that completes at =parser-finish!= and nowhere else: its body runs to
+the close, so no feed can end it. =on-message-complete= fires on that finish,
+after the body's final bytes, mirroring llhttp's =llhttp_finish= for a
+=SAFE_WITH_CB= body; a pause or failure that callback returns is what the
+finish result carries. This is the single =on-message-complete= the corpus
+cannot reach — it never finishes — so [[file:../test/common/finish-tests.sps][test/common/finish-tests.sps]] is its test.

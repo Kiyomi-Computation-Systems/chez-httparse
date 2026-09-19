@@ -1406,6 +1406,26 @@ foreach(mode source aot)
     LABELS example)
 endforeach()
 
+# --- Finishing a close-delimited body ---------------------------------------
+#
+# The one completion the corpus cannot reach: `parser-finish!` on a body the
+# connection ends. It drives the COMMITTED parser (like the example above), so
+# it carries GENERATED_PARSER rather than the grammar -- the finish callback is
+# a property of what ships, and this lane is red until the artifact is
+# refreshed to match a grammar that fires it.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.finish.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/finish-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GENERATED_PARSER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/finish-tests.sps"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- What parsing costs -----------------------------------------------------
 #
 # The allocation audit asserts a SHAPE and runs on every pull request; the

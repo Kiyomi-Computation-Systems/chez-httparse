@@ -6,6 +6,23 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`parser-finish!` now fires `on-message-complete` for a close-delimited
+  response body** ([#33](https://github.com/Kiyomi-Computation-Systems/chez-httparse/issues/33)).
+  A response with neither `Content-Length` nor `Transfer-Encoding` (and not
+  1xx/204/304) is delimited by the connection closing, and the embedder ends it
+  with `parser-finish!`. The parser raised llhttp's `finish` field to
+  `SAFE_WITH_CB` for that body but never acted on the value, so the completion
+  the field promised never fired. It now fires — after the body's last bytes
+  and before the finish returns — mirroring `llhttp_finish` for a `SAFE_WITH_CB`
+  body (`api.c:143-150`), and a pause or failure the callback returns comes back
+  out of `parser-finish!`. The generated parser gains one node, so its internal
+  state numbering shifts by one; llhttp's error codes and reasons and **every
+  recorded trace are byte-unchanged**, and conformance stands at **274 of 274**.
+  A new `unit.finish` lane is the test the corpus cannot be — its driver never
+  calls `parser-finish!` (decision 0016 is unchanged).
+
 ## [0.3.0] - 2026-09-19
 
 **Two pure, runtime-safe libraries for embedders, lifted out of the build-time

@@ -2108,8 +2108,21 @@
         '() (make-edge 'body-eof-consume 'advance) 'body-eof-end #f)
       ;; Reached only if an embedder calls `parser-finish!`, which the corpus
       ;; driver never does (decision 0016): llhttp's own harness prints the
-      ;; `finish` FIELD and does not end the parse.
-      (make-span-end-node 'body-eof-end 'body-span 'body-eof-stop #f)
+      ;; `finish` FIELD and does not end the parse. The completion fired here is
+      ;; therefore the ONE the corpus cannot witness, and `unit.finish` is its
+      ;; test.
+      ;;
+      ;; llhttp's `llhttp_finish` fires `on_message_complete` for a SAFE_WITH_CB
+      ;; finish (`api.c:143-150`) and propagates a non-OK return from it before
+      ;; answering OK. `finish` is SAFE_WITH_CB on exactly the path that reaches
+      ;; here -- `body-eof` set it above -- so the completion is unconditional
+      ;; rather than a read of the field: the graph already tells the arms
+      ;; apart. The span END comes first, flushing the identity-eof body llhttp
+      ;; delivers before it completes; then `on-message-complete`, whose `ev`
+      ;; pause arm carries a callback's non-OK answer back out of
+      ;; `parser-finish!`.
+      (make-span-end-node 'body-eof-end 'body-span 'body-eof-complete #f)
+      (ev 'body-eof-complete 'on-message-complete 'body-eof-stop)
       (make-finish-node 'body-eof-stop #f)
 
       ;; --- chunked bodies ------------------------------------------------------
