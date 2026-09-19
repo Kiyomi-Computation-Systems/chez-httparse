@@ -2586,6 +2586,12 @@
       (make-error-node 'e-te-with-content-length 'te-with-content-length #f)
       (make-error-node 'e-cl-with-te 'cl-with-te #f)
       (make-error-node 'e-bad-te-value 'bad-te-value #f)
+      ;; `e-request-invalid-te` is a DOCUMENTED embedder surface, not just an
+      ;; internal label: it is the one `invalid-transfer-encoding` node that
+      ;; maps to 501 rather than 400 (RFC 9112 §6.1), and docs/api.org tells
+      ;; embedders to split on it via `parser-error-node-name` -- decision 0013
+      ;; keeps the CODE one-per-llhttp-number, so the node name is what carries
+      ;; the finer status distinction. Renaming it is a public change.
       (make-error-node 'e-request-invalid-te 'request-invalid-te #f)
       ;; All five are reached with NO span open -- the chunk size and its
       ;; delimiters carry none, and the body span is closed by the counted

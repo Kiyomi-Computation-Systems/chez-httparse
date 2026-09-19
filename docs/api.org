@@ -84,13 +84,46 @@ Statuses:
 
 ** Errors
 
-: parser-error-code   : ParserError -> Symbol   ; e.g. 'invalid-header-token
-: parser-error-reason : ParserError -> String   ; llhttp's own text
-: parser-error-offset : ParserError -> Nat      ; stream offset
+: parser-error-code      : ParserError -> Symbol   ; e.g. 'invalid-header-token
+: parser-error-reason    : ParserError -> String   ; llhttp's own text
+: parser-error-offset    : ParserError -> Nat      ; stream offset
+: parser-error-node-name : ParserError -> Symbol   ; the grammar node that refused
 
 The code/reason pair is llhttp's, deliberately: decision 0013 makes an
 error's identity the pair rather than either half, so a caller can switch on
 the symbol and log the text and get the same answer llhttp would give.
+
+*** Splitting one code: mapping an error to a response status
+
+=parser-error-code= is one-to-one with llhttp's error number (decision 0013):
+several distinct failures share a code, because llhttp gives them one number
+and so do we. Usually that is what you want. But an embedder mapping an error
+to an HTTP *response* status sometimes has to split within a code — and the
+split must not be a reason-string match, which breaks the moment llhttp
+re-words the reason.
+
+=invalid-transfer-encoding= is the case that needs it. Most of its failures
+are a =400=, but a request whose =Transfer-Encoding= is present and not
+chunked-terminated is a =501= (RFC 9112 §6.1; Go, nginx and Node all answer
+501 there). Both carry code =invalid-transfer-encoding=, so the code cannot
+tell them apart — but =parser-error-node-name= can: the =501= arrives at the
+node =e-request-invalid-te=, and every other =invalid-transfer-encoding= at a
+different node.
+
+#+begin_src scheme
+;; 501 for the one node; every other invalid-transfer-encoding is 400.
+(define (transfer-encoding-error->status e)   ; e : ParserError, code invalid-transfer-encoding
+  (if (eq? (parser-error-node-name e) 'e-request-invalid-te) 501 400))
+#+end_src
+
+=parser-error-node-name= is the *grammar's* own label for the node that
+refused — finer than the code (which is how it splits one), but ours rather
+than llhttp's, and a node name can move where a =(code, reason)= pair will not.
+So reach for it only to split within a code you have already matched; the pair
+stays the stable, llhttp-faithful identity. One declaration can also surface
+under several node names when it is reachable with different spans open
+(end-of-input is the extreme), so a node name marks a *site*, not always a
+one-per-failure key — for =e-request-invalid-te= it is one.
 
 ** Pausing, and where to resume
 
