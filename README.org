@@ -11,13 +11,24 @@ byte, at every chunk size.
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
-*Status: v0.3.0.* Request and response parsing, strict and lenient: *all 274*
+*Status: v0.4.0.* Request and response parsing, strict and lenient: *all 274*
 fixtures in llhttp's conformance corpus — every HTTP fixture and every URL
 fixture it ships — at every chunk size from 1 to the input length, with an
 empty deferral list. The URL fixtures are a second generated parser, for the
 five spans llhttp's own url binary reports. A live differential against a built
 llhttp agrees on 9,557 generated inputs besides. See
 [[file:docs/conformance.org][docs/conformance.org]].
+
+v0.4.0 aligns the =parser-finish!= path with llhttp on the two points the
+corpus cannot reach. A close-delimited response body now fires
+=on-message-complete= when the embedder finishes the parse, and a finish from a
+half-read message reports llhttp's =invalid-eof-state= / "Invalid EOF state" in
+place of an error of our own. Conformance holds at 274/274 — no fixture
+finishes — but the shipped parser is no longer byte-identical: v0.3.0's
+additions did not touch it, these do (a node added, an error renamed). The
+release also documents the result surfaces a connection layer reads at a pause
+or an upgrade hand-off, and how =parser-error-node-name= splits one error code
+across two response statuses.
 
 v0.3.0 adds two pure, runtime-safe libraries for embedders, lifted out of the
 build-time grammar: =(httparse methods)= (llhttp's method name/number tables)

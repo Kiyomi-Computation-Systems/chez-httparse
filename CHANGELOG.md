@@ -6,6 +6,20 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-19
+
+**Two llhttp-fidelity corrections on the `parser-finish!` path — the one the
+conformance corpus never exercises.** An embedder that ends a message with
+`parser-finish!` now gets llhttp's behaviour: `on-message-complete` fires for a
+close-delimited body, and a finish from a half-read message answers
+`invalid-eof-state` / "Invalid EOF state". Conformance is unchanged at **274 of
+274** (no fixture finishes), but the generated parser is **no longer
+byte-identical** to v0.3.0 — a node added, one error-table entry renamed;
+generated-runtime ABI still 9. The release also documents the result surfaces a
+connection layer reads at a pause or upgrade hand-off (`parser-result-next` and
+the two hand-off channels, #34) and how `parser-error-node-name` maps one error
+code to two response statuses (#36).
+
 ### Changed
 
 - **An unsafe `parser-finish!` now reports llhttp's `invalid-eof-state`, not a
