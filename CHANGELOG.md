@@ -6,6 +6,59 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-19
+
+**Two pure, runtime-safe libraries for embedders, lifted out of the build-time
+grammar.** A server on this parser needs llhttp's method table and its
+keep-alive / needs-eof rules at run time, but both lived only in
+`(httparse grammar)`, which is build-time and imports `(byte-machine graph)`.
+So each consumer hand-copied the bits and pinned them with a test. Both now
+have a pure home, imported by the grammar so there is one definition — the same
+shape `(httparse modes)` already had.
+
+**Additive, and the shipped parser does not move.** No existing API changes,
+the generated `src/generated/httparse-message.sls` is byte-identical (the
+determinism lane is green), the byte-machine pin does not move, and conformance
+stands at **274 of 274** as it did at v0.2.0. Generated-runtime ABI 9,
+unchanged.
+
+### Added
+
+- **`(httparse methods)` — llhttp's 47 method names and the number it prints
+  for each, as pure data** ([#35](https://github.com/Kiyomi-Computation-Systems/chez-httparse/pull/37)).
+  The two tables move out of `(httparse grammar)` and the grammar imports and
+  re-exports them, so `(httparse grammar)` consumers are unaffected. New
+  symbol-facing accessors `httparse-method-name : Nat -> Symbol` and
+  `httparse-method-number : Symbol -> Nat`, each **refusing rather than
+  defaulting** on an unknown name or number — `0` is `DELETE`, a real method,
+  so a routing typo must not read as one. New `unit.methods` lane judging the
+  tables as pure data: 47 distinct names, a dense 0..46 numbering, and the two
+  accessors inverse across the whole table.
+
+- **`(httparse decisions)` — llhttp's `should_keep_alive` / `message_needs_eof`,
+  and the FLAGS bits they read** ([#32](https://github.com/Kiyomi-Computation-Systems/chez-httparse/pull/39)).
+
+  ```scheme
+  should-keep-alive? : Nat Nat Symbol Nat Nat -> Boolean  ; major minor type status-code flags
+  message-needs-eof? : Symbol Nat Nat -> Boolean          ; type status-code flags
+  ```
+
+  Both are transcribed from llhttp's `src/native/http.c`, not read off a parse.
+  `should-keep-alive?` mirrors `llhttp_should_keep_alive` whole — the
+  version/`Connection` gate **and** `not (message-needs-eof? …)` — and its
+  version test is llhttp's literal `http_major > 0 && http_minor > 0`
+  (`http.c:157`), **not** `>= 1.1`: HTTP/1.2 takes the 1.1 branch, while
+  HTTP/2.0 (minor 0) and HTTP/0.9 take the 1.0 branch and need an explicit
+  `keep-alive`. No corpus fixture reaches the version comparison, so the
+  `unit.decisions` lane pins one row per quadrant against `http.c`.
+  `message-needs-eof?` keeps the `F-SKIP-BODY` branch the grammar's own
+  needs-eof graph omits on purpose, which a standalone caller with arbitrary
+  flags (a HEAD response) needs. An unknown `type` symbol is refused.
+
+  The `F-*` flag constants move here too, under llhttp's own names and values
+  (`F-CONNECTION-CLOSE` = 2, `F-SKIP-BODY` = 64, …); the grammar imports them,
+  so there is one definition an embedder can pin its own copy against.
+
 ## [0.2.0] - 2026-09-18
 
 **Every fixture llhttp ships now passes, at every chunk size.** The ratchet
