@@ -12,6 +12,7 @@ bytevector rather than a string.
 (import (generated httparse-message)   ; httparse-message-machine
         (httparse modes)               ; the mode tables, pure
         (httparse methods)             ; the method table, pure
+        (httparse decisions)           ; keep-alive / needs-eof, pure
         (byte-machine runtime))        ; make-parser, parser-feed!, ...
 #+end_src
 
@@ -290,6 +291,40 @@ than inferred, and reproduced rather than repaired.
 =content-length= counts *down* as the body arrives, which is llhttp's own
 behaviour. Read it inside =on-headers-complete= if you want the declared
 length; by =on-message-complete= it is zero.
+
+** Deciding keep-alive vs close
+
+=(httparse decisions)= is pure and turns those fields into llhttp's own two
+after-a-message decisions:
+
+: should-keep-alive? : Nat Nat Symbol Nat Nat -> Boolean  ; major minor type status-code flags
+: message-needs-eof? : Symbol Nat Nat -> Boolean          ; type status-code flags
+
+They mirror =llhttp_should_keep_alive= and =llhttp_message_needs_eof=
+exactly. =should-keep-alive?= is the version/=Connection= gate *and* not
+needing eof, so it takes both the version and =message-needs-eof?='s inputs;
+the version test is llhttp's literal =major > 0 && minor > 0=, so HTTP/2.0
+(minor 0) needs an explicit =keep-alive= where a naïve =>= 1.1= would not.
+
+*Read the flags inside =on-headers-complete= or =on-message-complete=*, and
+pass the =type= symbol you gave =make-parser= — the inter-message reset zeroes
+=flags= before the next message. The library also exports the =F-*= flag bits
+(=F-CONNECTION-CLOSE=, =F-SKIP-BODY=, …) under llhttp's names and values, so
+you can name a bit rather than hard-code =2=; the grammar imports the same
+definitions. An unknown =type= is *refused, never defaulted*.
+
+#+begin_src scheme
+(list 'on-message-complete
+      (lambda (p ctx)
+        (define keep?
+          (should-keep-alive? (parser-field-ref p 'http-major)
+                              (parser-field-ref p 'http-minor)
+                              response-or-request        ; the symbol you passed
+                              (parser-field-ref p 'status-code)
+                              (parser-field-ref p 'flags)))
+        (remember-keep-alive ctx keep?)
+        callback-continue))
+#+end_src
 
 * Lifecycle
 
