@@ -110,8 +110,10 @@
 ;; "finish=%d", s->finish)`. It never calls `llhttp_finish`, so no callback
 ;; fires and no end-of-input state is entered; the trace simply gains
 ;; `off=NULL finish=N` after the last feed. Driving this parser to its
-;; eof-targets instead would invent an `unexpected-eof` the oracle never
-;; records, which is what the adapter was refusing before M6.
+;; eof-targets instead would produce a finish error the oracle records on no
+;; fixture -- `invalid-eof-state` now (#42), the numberless `unexpected-eof`
+;; the adapter refused before M6 -- so decision 0016 has the driver print the
+;; `finish` field rather than finish.
 (define (finishing? f)
   (let ((type (fixture-meta-ref f 'type #f)))
     (and (string? type)

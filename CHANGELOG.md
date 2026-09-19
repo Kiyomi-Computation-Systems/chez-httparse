@@ -6,6 +6,22 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **An unsafe `parser-finish!` now reports llhttp's `invalid-eof-state`, not a
+  numberless `unexpected-eof`** ([#42](https://github.com/Kiyomi-Computation-Systems/chez-httparse/issues/42)).
+  Finishing mid-message — llhttp's `HTTP_FINISH_UNSAFE` case — is
+  `HPE_INVALID_EOF_STATE` (`api.c:152`): `parser-error-code` is now
+  `invalid-eof-state` (llhttp number 14) and `parser-error-reason` is
+  `"Invalid EOF state"`, where both were previously an error of our own with no
+  llhttp number. It is **uniform** across every unsafe state — llhttp switches
+  on the `finish` field, not the open span — so mid-method, mid-header and
+  mid-body all report it. The corpus cannot witness this (its driver never
+  finishes, decision 0016), so a new `unit.finish` group pins it against
+  llhttp's own `finish=2` fixtures. Every recorded trace is unchanged,
+  conformance holds at **274 of 274**, and the generated parser changes only
+  one error-table entry; ABI 9.
+
 ### Fixed
 
 - **`parser-finish!` now fires `on-message-complete` for a close-delimited

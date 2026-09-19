@@ -28,7 +28,7 @@
 ;; it fired, and returns `complete-outcome` -- `callback-continue` for the
 ;; ordinary case, `callback-pause` to check that a non-OK answer comes back out
 ;; of `parser-finish!`. The three readers close over the mutable state.
-(define (make-response-parser complete-outcome)
+(define (make-parser-of-type type complete-outcome)
   (let ((body "") (complete-count 0) (body-at-complete #f))
     (define (ignore-event p ctx) callback-continue)
     (define (ignore-span p ctx bv from to) callback-continue)
@@ -75,15 +75,26 @@
                      (set! body-at-complete body)
                      complete-outcome)))
             #f
-            ;; A response, because nothing in the bytes says so and the body
-            ;; framing that reaches `body-eof` is a response's.
-            (list (cons 'type (httparse-message-type-value 'response))))))
+            ;; The kind is the caller's: a response for a close-delimited body,
+            ;; a request for the unsafe-finish cases below.
+            (list (cons 'type (httparse-message-type-value type))))))
       (values parser
               (lambda () body)
               (lambda () complete-count)
               (lambda () body-at-complete)))))
 
 (define (utf8 s) (string->utf8 s))
+
+;; unsafe-finish-error : String -> ParserError
+;; The error a finish returns from an UNSAFE state (mid-message). The callbacks
+;; do not matter here -- the parse errors rather than completing -- so a plain
+;; request parser that would continue on completion is enough.
+(define (unsafe-finish-error input)
+  (let-values (((p get-body get-count get-at)
+                (make-parser-of-type 'request callback-continue)))
+    (let ((bv (utf8 input)))
+      (parser-feed! p bv 0 (bytevector-length bv))
+      (parser-result-error (parser-finish! p)))))
 
 (harness-begin "unit.finish")
 
@@ -96,7 +107,7 @@
         ;; -- the body runs to EOF -- so it asks for more; `parser-finish!` is
         ;; what says the input stopped.
         (let-values (((p get-body get-count get-at)
-                      (make-response-parser callback-continue)))
+                      (make-parser-of-type 'response callback-continue)))
           (let* ((bv (utf8 "HTTP/1.1 200 OK\r\n\r\nhello world"))
                  (fed (parser-feed! p bv 0 (bytevector-length bv)))
                  (fin (parser-finish! p)))
@@ -114,7 +125,7 @@
         ;; length 0, close-delimited. The corpus stops at `finish=1`; here the
         ;; embedder finishes and the completion fires with an empty body.
         (let-values (((p get-body get-count get-at)
-                      (make-response-parser callback-continue)))
+                      (make-parser-of-type 'response callback-continue)))
           (let* ((bv (utf8 "HTTP/1.1 200 OK\r\n\r\n"))
                  (fed (parser-feed! p bv 0 (bytevector-length bv)))
                  (fin (parser-finish! p)))
@@ -132,7 +143,7 @@
         ;; therefore make `parser-finish!` answer `paused`, not `finished` --
         ;; and it must still have fired.
         (let-values (((p get-body get-count get-at)
-                      (make-response-parser callback-pause)))
+                      (make-parser-of-type 'response callback-pause)))
           (let* ((bv (utf8 "HTTP/1.1 200 OK\r\n\r\nhello world"))
                  (fed (parser-feed! p bv 0 (bytevector-length bv)))
                  (fin (parser-finish! p)))
@@ -148,9 +159,39 @@
         ;; message began, so none completes: the new callback is on the
         ;; close-delimited path alone, not on every finish.
         (let-values (((p get-body get-count get-at)
-                      (make-response-parser callback-continue)))
+                      (make-parser-of-type 'response callback-continue)))
           (let ((fin (parser-finish! p)))
             (check-equal "the finish is finished" (parser-result-status fin) 'finished)
             (check-equal "nothing completed" (get-count) 0)))))))
+
+(harness-group "an unsafe finish is llhttp's Invalid EOF state"
+  (lambda ()
+    ;; `parser-finish!` from a state that is not a clean boundary is llhttp's
+    ;; HTTP_FINISH_UNSAFE: `llhttp_finish` answers HPE_INVALID_EOF_STATE (code
+    ;; 14, `api.c:152`), reason "Invalid EOF state" verbatim -- see #42. The
+    ;; corpus cannot witness it (its driver never finishes, decision 0016), so
+    ;; this lane pins it. llhttp switches on the `finish` FIELD, not the open
+    ;; span, so EVERY unsafe state answers the ONE identity -- the four below
+    ;; span method, header field, header value and body to hold that uniform.
+    (harness-case "mid-header-value -- request/finish.md#2 (off=NULL finish=2)"
+      (lambda ()
+        (let ((e (unsafe-finish-error "PUT / HTTP/1.1\r\nContent-Length: 100")))
+          (check-equal "code" (parser-error-code e) 'invalid-eof-state)
+          (check-equal "reason" (parser-error-reason e) "Invalid EOF state"))))
+    (harness-case "mid-header-field -- request/finish.md#3 (off=NULL finish=2)"
+      (lambda ()
+        (let ((e (unsafe-finish-error "PUT / HTTP/1.1\r\nContent-Leng")))
+          (check-equal "code" (parser-error-code e) 'invalid-eof-state)
+          (check-equal "reason" (parser-error-reason e) "Invalid EOF state"))))
+    (harness-case "mid-method"
+      (lambda ()
+        (let ((e (unsafe-finish-error "GE")))
+          (check-equal "code" (parser-error-code e) 'invalid-eof-state)
+          (check-equal "reason" (parser-error-reason e) "Invalid EOF state"))))
+    (harness-case "mid-body"
+      (lambda ()
+        (let ((e (unsafe-finish-error "PUT / HTTP/1.1\r\nContent-Length: 5\r\n\r\nab")))
+          (check-equal "code" (parser-error-code e) 'invalid-eof-state)
+          (check-equal "reason" (parser-error-reason e) "Invalid EOF state"))))))
 
 (harness-finish)
