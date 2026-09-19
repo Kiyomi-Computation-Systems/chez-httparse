@@ -63,6 +63,7 @@ result as one whole buffer. (One exception is measured and documented in
 
 | =parser-result-status=        | see below                                    |
 | =parser-result-consumed=      | bytes taken from this feed                   |
+| =parser-result-next=          | where to resume in this buffer (see below)   |
 | =parser-result-stream-offset= | bytes taken since the parser was made        |
 | =parser-result-error=         | a =ParserError= when the status is ='error=  |
 | =parser-result-pause=         | the pause reason when the status is ='paused=|
@@ -72,11 +73,13 @@ Statuses:
 - ='need-input= — the range is consumed; feed more. This is the ordinary
   outcome, including *after a complete message*: a connection may carry
   another one.
-- ='error= — the message is malformed. =parser-result-error= carries the
-  detail; the parser will not make further progress.
-- ='paused= — a callback returned =callback-pause=. Resume with
-  =parser-resume!=. (Not exercised by v0.1's corpus coverage — see
-  [[file:conformance.org][conformance.org]].)
+- ='error= — the message is malformed, *or* the HTTP/2 preface handed off on
+  this channel (see *Upgrades hand off on two channels* below).
+  =parser-result-error= carries the detail; for a malformation the parser makes
+  no further progress.
+- ='paused= — a callback returned =callback-pause=, or the parser reached a
+  CONNECT/Upgrade hand-off (again, *Upgrades* below). Resume with
+  =parser-resume!= and feed again from =parser-result-next=.
 - ='finished= / ='stopped= — the machine reached a terminal state.
 
 ** Errors
@@ -88,6 +91,71 @@ Statuses:
 The code/reason pair is llhttp's, deliberately: decision 0013 makes an
 error's identity the pair rather than either half, so a caller can switch on
 the symbol and log the text and get the same answer llhttp would give.
+
+** Pausing, and where to resume
+
+A feed can stop before the end of your buffer — a callback returned
+=callback-pause=, or the parser reached an upgrade hand-off (below). Either
+way =parser-result-next= is *the offset in the buffer you just fed* where the
+unconsumed tail begins, and it is what you feed from next. It shares the
+coordinate of the =start=/=end= you passed to =parser-feed!=, so it feeds
+straight back in; =parser-result-stream-offset= is the absolute count since the
+parser was made, and is what you log.
+
+The byte that stopped the parser is already behind it. At a pause,
+=parser-result-consumed= *includes* the fragment delivered to the pausing
+callback, and =parser-result-next= points one past it — so a resume re-enters
+where an unpaused run would have gone, not at that fragment again.
+
+#+begin_src scheme
+;; Feed one buffer, honouring any pauses within it.
+(let loop ((at 0))
+  (let ((r (parser-feed! parser buf at (bytevector-length buf))))
+    (case (parser-result-status r)
+      ((paused)
+       (act-on-the-pause r)          ; your reason for pausing; then continue
+       (parser-resume! parser)
+       (loop (parser-result-next r)))  ; the tail starts here, not at `at`
+      (else r))))
+#+end_src
+
+On ='need-input= the whole buffer was taken — =next= equals your =end= and
+there is nothing to re-feed, so you supply the next buffer instead.
+
+** Upgrades hand off on two channels
+
+When a message hands the connection to another protocol, the parser stops and
+tells you — but on *two different result channels*, so a dispatch on
+=parser-result-status= alone will miss one:
+
+| Hand-off                                     | =status=  | reason from           | code                |
+|----------------------------------------------+-----------+-----------------------+---------------------|
+| CONNECT tunnel · =Connection: upgrade= · 101 | ='paused= | =parser-result-pause= | =paused-upgrade=    |
+| HTTP/2 preface (=PRI * HTTP/2.0=)            | ='error=  | =parser-result-error= | =paused-h2-upgrade= |
+
+The first is a pause because the parse could resume; the second is an =error=
+because llhttp implements the h2 preface that way — its reason still reads
+"Pause". In both, =parser-result-next= is where the tunnelled or next-protocol
+bytes begin in the buffer you fed: hand that tail to whatever takes the
+connection.
+
+Because the two arrive differently, recognising a hand-off means checking both
+channels:
+
+#+begin_src scheme
+;; #t when the result is either upgrade hand-off, whichever channel it took.
+(define (result-hands-off-stream? r)
+  (or (and (eq? (parser-result-status r) 'paused)
+           (let ((p (parser-result-pause r)))
+             (and p (eq? (parser-error-code p) 'paused-upgrade))))
+      (and (eq? (parser-result-status r) 'error)
+           (let ((e (parser-result-error r)))
+             (and e (eq? (parser-error-code e) 'paused-h2-upgrade))))))
+#+end_src
+
+A plain =callback-pause= is also ='paused=, but it carries no reason
+(=parser-result-pause= is =#f=), so the code check tells a hand-off from an
+ordinary pause.
 
 * Callbacks
 
