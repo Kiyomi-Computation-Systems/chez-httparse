@@ -1918,13 +1918,13 @@
                               'bhc-upgrade-request 'bhc-check-connect #f)
       (make-field-branch-node 'bhc-upgrade-request 'equal (list 'type TYPE-REQUEST)
                               'bhc-upgrade-yes 'bhc-switching #f)
-      ;; AND THIS ONE SETS A FIELD THE 101 PATH NEVER READS, so the mutation
-      ;; that moves it to 100 survives every lane. `upgrade` is consulted by
-      ;; the body decision and by the end of a body; a 101 takes neither,
-      ;; because `ahc-switching` pauses it by a second and independent route.
-      ;; The value still matters -- llhttp's `parser->upgrade` is what an
-      ;; embedder reads after a paused-upgrade result, which is a surface no
-      ;; trace can show -- so it is llhttp's and it stays.
+      ;; AND THIS ONE SETS A FIELD THE 101 PATH NEVER READS. `upgrade` is
+      ;; consulted by the body decision and by the end of a body; a 101 takes
+      ;; neither, because `ahc-switching` pauses it by a second and
+      ;; independent route, so no trace can see the value. An embedder can --
+      ;; `upgrade` is documented as llhttp's `llhttp_get_upgrade` -- and
+      ;; `unit.upgrade-field` is the witness: moving this test to 100 fails it
+      ;; on the two 101 fixtures that carry both upgrade bits.
       (make-field-branch-node 'bhc-switching 'equal (list 'status-code 101)
                               'bhc-upgrade-yes 'bhc-upgrade-no #f)
       ;; The `else` arm, and it needs no type test of its own: a response's

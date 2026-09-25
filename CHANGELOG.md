@@ -6,6 +6,25 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The `upgrade` field is documented, as llhttp's `llhttp_get_upgrade`**
+  ([#47](https://github.com/Kiyomi-Computation-Systems/chez-httparse/issues/47)).
+  `(parser-field-ref p 'upgrade)` has always carried llhttp's answer — 1 for a
+  `CONNECT`, or for both upgrade headers on a request or a 101 — but
+  `docs/api.org` did not list it, so an embedder deciding at
+  `on-headers-complete` whether to hand off had to copy the rule. It is now in
+  the field table, with when it is valid: set just before
+  `on-headers-complete`, held to the end of the message and the hand-off
+  result, not cleared between messages, zeroed by `parser-reset!`. A new
+  `unit.upgrade-field` lane drives the committed parser over all 212 plain
+  request and response fixtures, whole and a byte at a time, and holds each of
+  the 160 `on-headers-complete` reads to llhttp's rule applied to the method,
+  status and flags the fixture's own log records. It is also the first check
+  that can see the 101 test in the grammar, which previously survived every
+  lane when moved to 100. No parser change; the generated artifact is
+  byte-identical.
+
 ## [0.4.0] - 2026-09-19
 
 **Two llhttp-fidelity corrections on the `parser-finish!` path — the one the
