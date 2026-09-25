@@ -6,6 +6,15 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-25
+
+**Documentation and a test, no parser change.** The `upgrade` field, which has
+always carried llhttp's `llhttp_get_upgrade` answer, is now documented, so an
+embedder deciding at `on-headers-complete` whether to hand off the connection
+reads it instead of copying llhttp's rule. The generated parser is
+byte-identical to v0.4.0, conformance holds at **274 of 274**, and the
+generated-runtime ABI is still 9.
+
 ### Added
 
 - **The `upgrade` field is documented, as llhttp's `llhttp_get_upgrade`**
