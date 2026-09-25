@@ -1426,6 +1426,33 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- The upgrade field ------------------------------------------------------
+#
+# `upgrade` is documented as llhttp's `llhttp_get_upgrade`, and no trace line
+# prints it -- on a 101 nothing inside the machine reads it either -- so this
+# lane is its only witness. It drives the COMMITTED parser over every plain
+# request and response fixture, whole and a byte at a time, and compares the
+# field at each `on-headers-complete` with llhttp's rule applied to the method,
+# status and flags the fixture's own log records.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.upgrade-field.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/upgrade-field-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_CORPUS_DECODE}
+            ${HTTPARSE_CORPUS_LOAD}
+            ${HTTPARSE_MODES}
+            ${HTTPARSE_METHODS}
+            ${HTTPARSE_DECISIONS}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GENERATED_PARSER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/upgrade-field-tests.sps"
+    ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- What parsing costs -----------------------------------------------------
 #
 # The allocation audit asserts a SHAPE and runs on every pull request; the

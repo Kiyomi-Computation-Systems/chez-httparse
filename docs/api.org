@@ -388,10 +388,41 @@ than inferred, and reproduced rather than repaired.
 | ='http-minor=     |                                                         |
 | ='flags=          | llhttp's flag bits                                      |
 | ='content-length= | *what remains to be read*, not what was declared        |
+| ='upgrade=        | 1 if this message upgrades, as =llhttp_get_upgrade=     |
 
 =content-length= counts *down* as the body arrives, which is llhttp's own
 behaviour. Read it inside =on-headers-complete= if you want the declared
 length; by =on-message-complete= it is zero.
+
+** Does this message upgrade?
+
+=upgrade= is llhttp's own answer, so you need not copy its rule. It is 1 when
+the message carries both an =Upgrade= header and =Connection: upgrade= *and*
+is a request or a =101= response, or when it is a =CONNECT= request;
+otherwise 0. A response that sends both headers under any other status is only
+announcing support, and reads 0.
+
+*Read it in =on-headers-complete= or later in the same message.* It is written
+once, just before that callback runs, and then holds through the body,
+=on-message-complete= and the hand-off result. It is *not* cleared between
+messages, so before the next =on-headers-complete= it still holds the previous
+message's answer — after a =CONNECT= and a resume, the next message's
+=on-message-begin= reads 1. =parser-reset!= returns it to 0.
+
+#+begin_src scheme
+(list 'on-headers-complete
+      (lambda (p ctx)
+        (when (= 1 (parser-field-ref p 'upgrade))
+          (plan-to-close-after-this-message ctx))  ; e.g. serve, then hand off
+        callback-continue))
+#+end_src
+
+The field and the hand-off result are separate answers. A =101= always hands
+off (='paused=, =paused-upgrade=), but without the two headers its =upgrade=
+is 0. llhttp also lets =on_headers_complete= return 2 to force an upgrade;
+this parser's callback has no such answer, so =upgrade= is only ever llhttp's
+computed rule. =unit.upgrade-field= holds it to that rule over every plain
+request and response fixture in the corpus.
 
 ** Deciding keep-alive vs close
 
