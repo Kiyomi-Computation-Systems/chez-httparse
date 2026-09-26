@@ -6,6 +6,36 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A request's `invalid-transfer-encoding` is a 400, not a 501**
+  ([#50](https://github.com/Kiyomi-Computation-Systems/chez-httparse/issues/50)).
+  `docs/api.org` told embedders to answer 501 at `e-request-invalid-te` and
+  400 at the code's other nodes. That was wrong in two ways. RFC 9112 §6.3
+  says a server MUST answer 400 to a request whose final coding is not
+  `chunked`, which is what that node reports. And Node answers 400 there,
+  though the note said it answered 501. The section now maps every request
+  failure under the code to 400 and lists all four with their nodes and RFC
+  rules. The note had listed three and missed `e-te-with-content-length`.
+  A 501 is left to the embedder, for a coding it does not implement listed
+  before a final `chunked`, which the parser accepts.
+
+### Added
+
+- **`unit.te-error-nodes` holds the documented node names to the corpus.**
+  Node names are ours, so no trace prints them, and until now no lane could
+  see one renamed. The lane drives the committed parser over every strict
+  request fixture that ends in code 15, whole and a byte at a time. It checks
+  that each one stops at the node the document names for llhttp's recorded
+  reason. A reason the document does not list fails it, and so does a row no
+  fixture reaches. It also reads the committed parser's error table, so a
+  fifth reason under the code fails it even when no fixture reaches that
+  reason. It finds the corpus's request files by listing the directory, so
+  a refresh that adds one cannot leave it unswept. `(httparse test drive)`
+  gains `drive-result`, the last parser result `drive-trace` would render,
+  for lanes that read something no trace line prints. No parser change; the
+  generated artifact is byte-identical.
+
 ## [0.4.1] - 2026-09-25
 
 **Documentation and a test, no parser change.** The `upgrade` field, which has

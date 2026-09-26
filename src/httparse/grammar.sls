@@ -2597,12 +2597,16 @@
       (make-error-node 'e-te-with-content-length 'te-with-content-length #f)
       (make-error-node 'e-cl-with-te 'cl-with-te #f)
       (make-error-node 'e-bad-te-value 'bad-te-value #f)
-      ;; `e-request-invalid-te` is a DOCUMENTED embedder surface, not just an
-      ;; internal label: it is the one `invalid-transfer-encoding` node that
-      ;; maps to 501 rather than 400 (RFC 9112 §6.1), and docs/api.org tells
-      ;; embedders to split on it via `parser-error-node-name` -- decision 0013
-      ;; keeps the CODE one-per-llhttp-number, so the node name is what carries
-      ;; the finer status distinction. Renaming it is a public change.
+      ;; `e-request-invalid-te`, like `e-empty-transfer-encoding`,
+      ;; `e-te-with-content-length` and `e-bad-te-value` above, is a
+      ;; DOCUMENTED embedder surface, not just an internal label. docs/api.org
+      ;; lists the four as what `parser-error-node-name` returns for the four
+      ;; ways a request fails with `invalid-transfer-encoding`. Decision 0013
+      ;; keeps the CODE one-per-llhttp-number, so the node name is how an
+      ;; embedder tells them apart. All four answer 400 (RFC 9112 §6.1 and
+      ;; §6.3), so the name does not carry a status. `unit.te-error-nodes`
+      ;; holds the names to the corpus. Renaming any of them is a public
+      ;; change.
       (make-error-node 'e-request-invalid-te 'request-invalid-te #f)
       ;; All five are reached with NO span open -- the chunk size and its
       ;; delimiters carry none, and the body span is closed by the counted

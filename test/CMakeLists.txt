@@ -1453,6 +1453,37 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- The invalid-transfer-encoding node names -------------------------------
+#
+# docs/api.org names the node `parser-error-node-name` returns for each of the
+# four ways a request fails with `invalid-transfer-encoding`. Node names are
+# ours, so no trace prints them. This lane drives the COMMITTED parser over
+# every strict request fixture that ends in code 15, and holds each to the
+# node the document names for llhttp's recorded reason. It also reads the
+# artifact's error table, so a fifth reason under the code fails it even when
+# no fixture reaches that reason.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.te-error-nodes.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/te-error-nodes-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_CORPUS_DECODE}
+            ${HTTPARSE_CORPUS_LOAD}
+            ${HTTPARSE_MODES}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            ${HTTPARSE_CONFORMANCE}
+            ${HTTPARSE_DRIVE}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GENERATED_PARSER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/te-error-nodes-tests.sps"
+    ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+                "HTTPARSE_GENERATED_PARSER=${HTTPARSE_GENERATED_MESSAGE_PARSER}"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- What parsing costs -----------------------------------------------------
 #
 # The allocation audit asserts a SHAPE and runs on every pull request; the
