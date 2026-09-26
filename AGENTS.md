@@ -895,3 +895,29 @@ release" — each of those is a version surface that stops being true the moment
 a tag exists, and none of them looks like one. The byte-machine side of this
 project makes the same point from the other direction: its release ledger
 names its surfaces as a list *because* they cannot be found by searching.
+
+## A byte-identical parser is not an unchanged one when the runtime moved
+
+The byte-machine `v0.6.1` bump (#53) regenerated both parsers byte for byte
+and left both IR fingerprints where they had been for four pins. Every signal
+this repository reads at a bump said *nothing changed*. What had changed was
+the runtime the generated code calls: the keyword walk stopped copying its
+matched prefix on every byte, and a whole-buffer parse got 35–80% faster.
+
+Fingerprints and goldens describe the **emitted half** of a generated parser
+(see *A generated parser has two halves*). The other half is
+`vendor/byte-machine/src/byte-machine/runtime.sls`, and nothing here
+fingerprints it. So at a bump, read the upstream range's `src/` diff for
+`runtime.sls` as well as regenerating. If it moved, the parser's behaviour can
+have moved with byte-identical sources. Then write the test that would see it
+**before** moving the pin, and watch it fail at the old one: the near-miss
+allocation case in `allocation-tests.sps` read +2,944 bytes at k = 16 on
+`v0.6.0` and 0 on `v0.6.1`. That red run is the only evidence the case
+measures the fix and not something else.
+
+A corollary from the same bump: **a figure computed as a difference can move
+the wrong way on a pure improvement.** The per-feed allocation of the 50-byte
+message rose from 404 to 444 bytes, while both parses it is derived from got
+cheaper. The whole-buffer parse lost more than the byte-at-a-time one, whose
+split keywords are still rebuilt per feed. Before calling a derived number a
+regression, read the two numbers it is made of.
