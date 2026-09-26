@@ -6,6 +6,17 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-26
+
+**A pin bump, and the parser's allocation no longer depends on a client's
+header names.** byte-machine `v0.6.1` fixes a keyword walk that copied its
+matched prefix on every byte, which let a header name that nearly matches
+`Transfer-Encoding` cost about k²/2 pairs. The generated parser is
+byte-identical to v0.4.2, since upstream changed its runtime and not its
+emitter. Conformance holds at **274 of 274**. The generated-runtime ABI is
+still 9. A small POST allocates less than half what it did, and a whole-buffer
+parse is 35–80% faster.
+
 ### Changed
 
 - **The pin moves to byte-machine `v0.6.1`, and a header name costs the same
