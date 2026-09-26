@@ -6,6 +6,16 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-26
+
+**Documentation and a test, no parser change.** `docs/api.org` told embedders
+to answer 501 to one Transfer-Encoding failure; every request failure under
+`invalid-transfer-encoding` is a 400, and the section now says so and lists all
+four with their nodes. The node names it lists are now held to the corpus and
+to the parser's own error table by a new lane. The generated parser is
+byte-identical to v0.4.1, conformance holds at **274 of 274**, and the
+generated-runtime ABI is still 9.
+
 ### Fixed
 
 - **A request's `invalid-transfer-encoding` is a 400, not a 501**
