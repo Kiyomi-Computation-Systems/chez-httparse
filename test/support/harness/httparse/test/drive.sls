@@ -17,7 +17,7 @@
 ;;; as a value.
 (library (httparse test drive)
   (export drive-trace drive-init drive-refusal? drive-refusal-detail
-          drive-chunk-ladder drive-feed! drive-requested-pause?)
+          drive-chunk-ladder drive-feed! drive-requested-pause? drive-result)
   (import (rnrs)
           (httparse test adapter)
           (httparse test trace-format)
@@ -121,20 +121,36 @@
               (k (make-drive-refusal (adapter-error-detail e)))
               (raise e)))
         (lambda ()
-          (let* ((r (make-trace-recorder))
-                 (p (drive-parser machine init r)))
-            (let loop ((bounds (corpus-chunk-bounds (bytevector-length bv) size))
-                       (result #f))
-              (cond
-               ((null? bounds)
-                (when (and result (eq? (parser-result-status result) 'error))
-                  (trace-recorder-note-error! r (parser-result-error result)))
-                (when (and result (eq? (parser-result-status result) 'paused))
-                  (trace-recorder-note-paused! r (parser-result-pause result)))
-                (trace-format (trace-recorder-events r)))
-               (else
-                (let ((res (drive-feed! r p bv (caar bounds) (cdar bounds))))
-                  (if (eq? (parser-result-status res) 'need-input)
-                      (loop (cdr bounds) res)
-                      (loop '() res))))))))))))
+          (let-values (((r result) (drive-run machine init bv size)))
+            (when (and result (eq? (parser-result-status result) 'error))
+              (trace-recorder-note-error! r (parser-result-error result)))
+            (when (and result (eq? (parser-result-status result) 'paused))
+              (trace-recorder-note-paused! r (parser-result-pause result)))
+            (trace-format (trace-recorder-events r))))))))
+
+  ;; drive-result : Machine Init Bytevector Nat -> (Option ParserResult)
+  ;; The outcome `drive-trace` renders, before it is rendered: the last result
+  ;; of feeding `bv` in `size`-byte chunks under `init`. A lane asking about
+  ;; something no trace line prints -- an error's node name, say -- reads it
+  ;; here and gets the same feeding, pauses and all. #f for an empty input,
+  ;; which runs no chunks.
+  (define (drive-result machine init bv size)
+    (let-values (((r result) (drive-run machine init bv size)))
+      result))
+
+  ;; drive-run : Machine Init Bytevector Nat -> (Values Recorder (Option ParserResult))
+  ;; Feed `bv` in `size`-byte chunks until it is taken or the parse stops, and
+  ;; answer the recorder with the last result. The one loop both of the above
+  ;; share, so they cannot disagree about where a parse ended.
+  (define (drive-run machine init bv size)
+    (let* ((r (make-trace-recorder))
+           (p (drive-parser machine init r)))
+      (let loop ((bounds (corpus-chunk-bounds (bytevector-length bv) size))
+                 (result #f))
+        (if (null? bounds)
+            (values r result)
+            (let ((res (drive-feed! r p bv (caar bounds) (cdar bounds))))
+              (if (eq? (parser-result-status res) 'need-input)
+                  (loop (cdr bounds) res)
+                  (values r res)))))))
 )
