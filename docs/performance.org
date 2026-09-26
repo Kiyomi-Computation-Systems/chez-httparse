@@ -19,13 +19,16 @@ bytevector. Nothing is copied, so a large body costs what a small one does.
 
 | message                         | allocated per whole-buffer parse |
 |---------------------------------+----------------------------------|
-| =POST= with a 10-byte body      | 6,112 B                          |
-| =POST= with a 10,000-byte body  | 6,160 B                          |
+| =POST= with a 10-byte body      | 2,912 B                          |
+| =POST= with a 10,000-byte body  | 2,960 B                          |
 
-A thousandfold more body, 0.8% more allocation. A parser that copied spans
+A thousandfold more body, 1.6% more allocation. A parser that copied spans
 would show a thousandfold difference.
 
-These were 6,592 and 6,640 at the previous pin. The 480 bytes that went away
+These were 6,112 and 6,160 at byte-machine =v0.6.0=. The 3,200 bytes that went
+away were the generator's keyword walk copying the prefix it had matched on
+every byte — =POST=, =HTTP/1.1= and =Content-Length= are each read by a keyword
+table — which is the next section's subject. Before that they were 6,592 and 6,640. The 480 bytes that went away
 are fifteen consed callback outcomes: the generator's callback seam used to
 answer =(goto TARGET)= rather than the target, and its own allocation audit
 could not see the cost because its slope varies a header *value's* length and
@@ -41,10 +44,40 @@ or re-copying consumed input.
 
 | message fed one byte at a time | allocated per feed |
 |--------------------------------+--------------------|
-| 50 bytes                       | 404 B              |
+| 50 bytes                       | 444 B              |
 | 10,043 bytes                   | 384 B              |
 
 Flat, across a message two hundred times longer.
+
+The short message's figure *rose* at byte-machine =v0.6.1=, from 404, and
+nothing got worse. The figure is the difference between a byte-at-a-time parse
+and a whole-buffer one, divided by the length. The whole-buffer parse lost the
+keyword walk's per-byte copying. The byte-at-a-time parse keeps part of it: a
+keyword split across feeds is parked between them as a list, rebuilt at each
+feed — the one cost upstream's decision 0054 names and leaves. So the
+difference grew while both parses got cheaper.
+
+** A header name costs the same however much of a keyword it matches
+
+The header-name keyword table decides which of five names llhttp reads by
+name — =connection=, =content-length=, =proxy-connection=,
+=transfer-encoding=, =upgrade= — a header is. Until byte-machine =v0.6.1= its
+walk copied the prefix it had matched on every byte it consumed, so a name
+matching k bytes of a keyword cost about k²/2 pairs, and a client choosing its
+header names chose the parser's allocation: upstream measured 97
+=Transfer-Encodinx= fields at 138 times the request's own size. The lane now
+asserts the shape, on a request whose 17-byte field name begins with the
+first k bytes of =Transfer-Encoding= (compiled lane shown):
+
+| k matched                    |   0 |   1 |   4 |    8 |    16 |
+|------------------------------+-----+-----+-----+------+-------|
+| extra per parse, at =v0.6.0= | 0 B | 64 B | 356 B | 960 B | 2,944 B |
+| extra per parse, at =v0.6.1= | 0 B | 0 B |  0 B |  0 B |   0 B |
+
+The whole parse is 2,928 bytes at every k at =v0.6.1=. At =v0.6.0= it was 3,712
+at k = 0 and 6,656 at k = 16. The assertion allows 32 bytes of drift, half of
+what one matched byte cost, because the average read 4 bytes apart between the
+source and compiled lanes at the old pin.
 
 ** The instrument
 
@@ -65,13 +98,19 @@ asserts only a floor loose enough that only a change of *kind* crosses it —
 an accidental quadratic, a per-byte allocation, a rescan.
 
 On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, over three runs
-of each mode on 2026-09-18:
+of each mode on 2026-09-26, at byte-machine =v0.6.1=:
 
 | what                                         |           msg/s |    MB/s |
 |----------------------------------------------+-----------------+---------|
-| 308-byte request, 8 headers, whole buffer    | 170,666–180,281 |   50–52 |
-| 1,166-byte response, 1 KB body, whole buffer |         196,923 |     218 |
-| the same request, fed one byte at a time     |   43,835–45,714 |   12–13 |
+| 308-byte request, 8 headers, whole buffer    | 246,153–278,260 |   72–81 |
+| 1,166-byte response, 1 KB body, whole buffer | 350,684–355,555 | 389–395 |
+| the same request, fed one byte at a time     |   42,666–45,070 |   12–13 |
+
+At =v0.6.0= (2026-09-18) these read 170,666–180,281, 196,923 and
+43,835–45,714. The two whole-buffer rows are the keyword walk's fix: it now
+compares each keyword once instead of re-comparing the whole prefix at every
+byte. The byte-at-a-time row stands still because a keyword split across
+feeds is walked a byte per feed either way.
 
 The ranges are the full spread across all six runs, source and compiled
 together. Read them as an order of magnitude, not a specification. They are
@@ -170,8 +209,11 @@ letting a short input shrink it.
 
 ** The figures
 
-Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-17. Upstream's
-own three bench inputs, their binary and ours on the same bytes:
+Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-17, at
+byte-machine =v0.6.0=. Upstream's own three bench inputs, their binary and
+ours on the same bytes. *Not re-taken at =v0.6.1=*, which made this project's
+own whole-buffer rows 35–80% faster. The ratios below are therefore an upper
+bound until they are measured again against a built llhttp checkout:
 
 | input                                |     llhttp | chez-httparse | ratio |
 |--------------------------------------+------------+---------------+-------|

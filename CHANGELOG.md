@@ -6,6 +6,42 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The pin moves to byte-machine `v0.6.1`, and a header name costs the same
+  however much of a keyword it matches**
+  ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  item 3). Upstream range `0245db3..5c1cb7e`, three commits: PR #140 (the fix),
+  #141 (its reflection) and #142 (the release). This bump delivers upstream
+  [issue #139](https://github.com/Kiyomi-Computation-Systems/byte-machine/issues/139),
+  which chez-http-server filed from its M3 exit record. That project holds its
+  exit until a release of this one carries the fix. The generator's keyword
+  walk copied the prefix it had matched on every byte, so a header name
+  matching k bytes of `transfer-encoding` cost about k²/2 pairs. The walk now
+  compares each keyword once and allocates only its answer (upstream decision
+  0054).
+
+  **The generated ABI is re-read at the pin and is still 9** (0005 item 5).
+  The regenerated parsers are **byte-identical**, because upstream changed the
+  runtime and not the emitter. Both IR fingerprints are unchanged for the fifth
+  pin running: `httparse-url-machine` `3216037711265608570` and
+  `httparse-message-machine` `318434098601601619`.
+
+  | | at `v0.6.0` | at `v0.6.1` |
+  |---|---:|---:|
+  | `POST`, 10-byte body, allocated per parse | 6,112 B | **2,912 B** |
+  | a 17-byte near-miss of `Transfer-Encoding` (k = 16), per parse | 6,656 B | **2,928 B** |
+  | 308 B request, whole buffer | 170,666–180,281 msg/s | **246,153–278,260** |
+  | 1,166 B response, whole buffer | 196,923 msg/s | **350,684–355,555** |
+  | the request, one byte at a time | 43,835–45,714 msg/s | 42,666–45,070 |
+
+  `httparse.property.allocation` gains a case asserting the shape: a request
+  whose 17-byte field name matches k bytes of `Transfer-Encoding` costs what
+  k = 0 costs, for k from 0 to 16, within 32 bytes. It was watched failing at
+  the `v0.6.0` pin, where it cost 2,944 bytes more at k = 16, before the pin
+  moved. `docs/performance.org` carries the re-measured figures. Its llhttp
+  ratios are marked as taken at `v0.6.0` and not re-taken.
+
 ## [0.4.2] - 2026-09-26
 
 **Documentation and a test, no parser change.** `docs/api.org` told embedders
