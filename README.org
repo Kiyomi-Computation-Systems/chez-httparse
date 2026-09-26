@@ -11,13 +11,19 @@ byte, at every chunk size.
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
-*Status: v0.4.1.* Request and response parsing, strict and lenient: *all 274*
+*Status: v0.4.2.* Request and response parsing, strict and lenient: *all 274*
 fixtures in llhttp's conformance corpus — every HTTP fixture and every URL
 fixture it ships — at every chunk size from 1 to the input length, with an
 empty deferral list. The URL fixtures are a second generated parser, for the
 five spans llhttp's own url binary reports. A live differential against a built
 llhttp agrees on 9,557 generated inputs besides. See
 [[file:docs/conformance.org][docs/conformance.org]].
+
+v0.4.2 corrects how =docs/api.org= maps a Transfer-Encoding error to a response
+status. Every request failure under =invalid-transfer-encoding= is a =400=
+(RFC 9112 §6.3), not the =501= the note gave for one of them. The four node
+names that tell those failures apart are now pinned by a lane. The shipped
+parser is byte-identical to v0.4.1.
 
 v0.4.1 documents the =upgrade= field as llhttp's =llhttp_get_upgrade=, with
 when it is valid, and pins it with a lane over the corpus. The shipped parser
