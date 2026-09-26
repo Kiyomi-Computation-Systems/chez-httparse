@@ -150,6 +150,44 @@
                  (and (<= (* 2 l-per) (* 3 s-per))
                       (>= (* 2 l-per) s-per))))))))
 
+;; A request carrying one 17-byte field name whose first k bytes are
+;; `Transfer-Encoding` and whose rest is `x`. Below 17 it is an ordinary field,
+;; so every k parses the same way; only how far the header-name keyword table
+;; walks before it misses changes.
+(define (request-with-near-miss k)
+  (string->utf8
+   (string-append "GET / HTTP/1.1\r\nHost: a\r\n"
+                  (substring "Transfer-Encoding" 0 k) (make-string (- 17 k) #\x)
+                  ": v\r\n\r\n")))
+
+(harness-group "a header name costs the same however much of a keyword it matches"
+  (lambda ()
+    (harness-case "a near-miss of transfer-encoding allocates what an ordinary name does"
+      (lambda ()
+        ;; The generator's keyword walk once copied the prefix it had matched on
+        ;; every byte (upstream issue #139), so this parse cost 16 bytes more
+        ;; for each matched byte than the one before: about 2,900 more at k=16
+        ;; than at k=0, and a client repeating the field multiplied it. The
+        ;; claim is the shape: the per-parse figure does not depend on k. Within
+        ;; 32 bytes rather than exactly: at the old pin this average read 4 bytes
+        ;; apart between the source and AOT lanes for the same k, and 32 is half
+        ;; of what ONE matched byte cost under the defect, so k=1 still fails it.
+        (let* ((ks '(0 1 2 4 8 12 16))
+               (costs (map (lambda (k)
+                             (let ((bv (request-with-near-miss k)))
+                               (cons k (allocated-per-parse bv (bytevector-length bv) 200))))
+                           ks))
+               (base (cdr (car costs)))
+               (grew (filter (lambda (c) (> (abs (- (cdr c) base)) 32)) costs)))
+          (display (string-append "httparse-allocation: near-miss k=0 "
+                                  (number->string base) "B k=16 "
+                                  (number->string (cdr (assv 16 costs))) "B\n"))
+          (adapter-flush-output)
+          (check-equal "every k was measured" (length costs) (length ks))
+          (check-equal "no k cost more than 32 bytes beyond k=0 (k . bytes per parse)"
+                       (map (lambda (c) (cons (car c) (- (cdr c) base))) grew)
+                       '()))))))
+
 (harness-group "the reading is a difference, not a total"
   (lambda ()
     (harness-case "the counter moves when something allocates"
