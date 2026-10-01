@@ -645,6 +645,12 @@ None is obvious from reading the code.
   that named it in `SOURCES`, so both silently dropped that dependency. A
   lane's `SOURCES` list is the one place this hides well, because the lane
   still runs and still passes.
+* A script run with `cmake -P` inherits **none** of the project's policies:
+  the top-level `cmake_minimum_required` never reaches it. CMake 3 leaves an
+  unasked-for policy unset, so `if(x IN_LIST y)` is a syntax error there;
+  CMake 4 has no old behaviour left for it to fall back on, so the same
+  script passes. Every `-P` script opens with the floor, and
+  `harness.script-policy-floor` checks that as text.
 * Chez's `bytes-allocated` reports what is allocated **right now**, not what
   has been allocated in total, so a collection inside a measured region makes
   the difference NEGATIVE. M8's allocation lane reported a region as
@@ -921,3 +927,40 @@ message rose from 404 to 444 bytes, while both parses it is derived from got
 cheaper. The whole-buffer parse lost more than the byte-at-a-time one, whose
 split keywords are still rebuilt per feed. Before calling a derived number a
 regression, read the two numbers it is made of.
+
+## A gate that has not run has not passed
+
+The Actions minutes had run out by 2026-09-07 and came back on 2026-10-01.
+In between, all 107 CI runs since the byte-machine submodule arrived were
+refused before a single step. Each was correctly read as billing, and the
+PRs were correctly merged over it. The first run that got a step in found two
+defects, and neither was new.
+
+The workflow had never been able to fetch the submodule. Decisions 0002 and
+0005 both say CI needs an org-scoped read token for it. The workflow never
+had one, because from the day the submodule landed nothing could fail
+without it. And a test script that every laptop passed was a syntax error on
+the runner. `CorpusProvenanceSpec` used `IN_LIST` without declaring a policy
+floor; a `cmake -P` script inherits none of the project's; and the runner's
+CMake 3.31 leaves CMP0057 unset, where CMake 4 has no old behaviour left at
+all.
+
+Three habits follow.
+
+**When a gate comes back, its first run is a discovery, not a formality.**
+Weeks of refusals train the reflex to call red "billing". Read every failure
+the returning gate reports as a real one, and expect a backlog: whatever
+only that gate could see has been accumulating the whole time it was dark.
+
+**A requirement a decision records is unimplemented until something fails
+without it.** Writing "CI needs a read token" into two records did not put
+one in the workflow. While the check that would enforce a decision cannot
+run, the decision is a note, and the record should say so.
+
+**A toolchain newer than the floor cannot see the floor.** CMake 4 removed
+the old side of every policy older than 3.5, so no local run of that script
+could fail the way the runner's did. The fix checks the declaration rather
+than the behaviour: `harness.script-policy-floor` requires every `-P` script
+to open with the floor, as text. And CI now prints its own `cmake --version`
+beside Chez's, so the difference between the two machines is on screen
+rather than inferred.
