@@ -223,6 +223,53 @@ not retained: copy what you need before returning.
 An outcome is =callback-continue=, =callback-pause=, or a
 =make-callback-failure=.
 
+** Where a callback is in the stream
+
+: parser-stream-offset : Parser -> Nat
+
+=from= and =to= place a span's bytes in the buffer you fed and say nothing
+about the stream, and an event is handed no position at all. For the stream,
+read =parser-stream-offset=: the bytes the parser has taken since it was
+made or last reset, counted across feeds and across every message parsed on
+it. Between feeds it is the number =parser-result-stream-offset= reported.
+Inside a callback it says where that callback is, and the two kinds of
+callback answer differently:
+
+- *An event callback* reads the bytes taken before it. That is the position
+  llhttp's traces print as ~off=~ for the event, and it is the same however
+  the input was split across feeds.
+- *A span callback* reads the position of its fragment's *end*, so the
+  fragment starts at =(- (parser-stream-offset p) (- to from))=. That holds
+  whichever feed delivered the fragment, including one cut off because a feed
+  ended with the span still open, and an empty one, which starts where it
+  ends.
+
+The corpus's first request, =request/sample.md#1=, shows both, fed in one
+piece (=\t= is a tab):
+
+#+begin_example
+OPTIONS /url HTTP/1.1
+  on-method-data            "OPTIONS"  reads  7   it starts at 7 - 7 = 0
+  on-method-complete                   reads  7   the space after OPTIONS is not yet taken
+  on-url-data               "/url"     reads 12   it starts at 12 - 4 = 8
+  on-url-complete                      reads 13   the space after /url is already taken
+...
+Header2:\t Value2
+  on-header-field-complete             reads 48   the colon is taken
+  on-header-value-data      "Value2"   reads 56   it starts at 56 - 6 = 50
+#+end_example
+
+So an event does not always sit where the span before it ended. Which side
+of a delimiter it lands on is llhttp's choice, made event by event, and the
+corpus's logs record every one. A run of bytes no callback covers lies
+between one callback's position and the next one's, so its length is the
+difference: the tab and the space before =Value2= are 50 - 48 = 2 bytes.
+Blank lines before the first request line are the bytes taken before
+=on-message-begin=. Between two messages they lie between
+=on-message-complete= and the =on-reset= that follows it.
+=unit.stream-offset= holds the parser to all of this over every fixture in
+the corpus, feeding each chunk from a buffer of its own.
+
 ** The one callback that answers
 
 =on-headers-complete= is a *decision*: it returns ='skip-body= or nothing.

@@ -6,6 +6,33 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **What `parser-stream-offset` answers inside a callback is documented**
+  ([#55](https://github.com/Kiyomi-Computation-Systems/chez-httparse/issues/55)).
+  `docs/api.org` gains a section under *Callbacks*. An event callback reads
+  the bytes taken before it, which is llhttp's `off=` for that event. A span
+  callback reads the end of its fragment, so the fragment starts at the
+  offset less `(- to from)`, whichever feed delivered it. The section works
+  both through `request/sample.md#1`, which also shows that an event does not
+  always sit where the span before it ended: `url complete` comes after the
+  space that ends the target, while `method complete` comes before the space
+  after the method. chez-http-server measures the bytes no span covers this
+  way, and until now it relied on byte-machine's runtime comments rather than
+  on this project's documented API.
+
+- **`unit.stream-offset` holds both answers to the corpus.** It drives the
+  committed parser over all 274 fixtures at chunk sizes 1, 2, 3, 7 and the
+  whole input, feeding each chunk from a buffer of its own. Every event is
+  held to its log's `off=`, and every span fragment to the driver's own
+  arithmetic. It also covers a second message on one parser, `parser-reset!`,
+  the count between feeds, and a callback that `parser-finish!` runs. A
+  runtime that handed a span callback `to` in place of the stream offset
+  passed every other lane in the pull-request selection, the conformance lane
+  included, because every lane that reads the offset there feeds one buffer
+  from index 0, where the two coincide. It fails this one. No parser change;
+  the generated artifact is byte-identical.
+
 ### Fixed
 
 - **CI clones the private byte-machine submodule with a read token.** CI's
