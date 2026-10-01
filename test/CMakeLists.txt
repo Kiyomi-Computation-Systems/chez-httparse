@@ -123,6 +123,19 @@ httparse_add_test(
   TIMEOUT 120
   LABELS unit)
 
+# A script run with `cmake -P` inherits none of this project's policies, so
+# each one declares the floor itself. CorpusProvenanceSpec did not, and CMake 3
+# read its IN_LIST as a syntax error the first time CI ran it -- while every
+# CMake 4 machine passed it, because CMake 4 no longer has the old behaviour.
+# Running the scripts cannot see this on CMake 4, so this checks it as text.
+# It needs no Scheme runtime, so it also holds under the no-scheme preset.
+httparse_add_test(
+  NAME httparse.harness.script-policy-floor.cmake.direct
+  COMMAND "${CMAKE_COMMAND}" -P
+          "${CMAKE_CURRENT_LIST_DIR}/support/cmake/ScriptPolicyFloorSpec.cmake"
+  TIMEOUT 120
+  LABELS unit)
+
 # --- Harness paths ---------------------------------------------------------
 
 # The generator arrives as a submodule pinned by gitlink (decisions 0002, 0005).

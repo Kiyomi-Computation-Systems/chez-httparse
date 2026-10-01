@@ -24,6 +24,22 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   so no file holds the token and no later step sees it. Until the secret is
   added, every run fails at the first step, naming it.
 
+- **Every script `cmake -P` runs declares the CMake 3.26 policy floor, and a
+  lane holds them to it.** With the submodule cloned, CI's first test run
+  failed one lane, `corpus-provenance`. Its `if(NOT ... IN_LIST ...)` needs
+  policy CMP0057, and a script run with `-P` inherits none of the project's
+  policies, so the runner's CMake 3 left it unset and read the line as a
+  syntax error. CMake 4 removed the old behaviour, so the lane passed on every
+  CMake 4 machine that ran it. Two more scripts ran without the floor: the
+  rename audit, which uses nothing that depends on it yet, and
+  `HttparseExpectExit.cmake`, whose `IN_LIST` sits on the path a lane takes
+  only when its exit status is wrong, so on CMake 3 a failing expected-exit
+  lane would have reported a CMake error instead of its diagnosis. All three
+  now declare it. `harness.script-policy-floor` checks, as text, that every
+  script the build runs with `-P` opens with the floor the top-level
+  `CMakeLists.txt` declares; running the scripts cannot see the difference on
+  CMake 4. CI now records CMake's version beside Chez's.
+
 ## [0.4.3] - 2026-09-26
 
 **A pin bump, and the parser's allocation no longer depends on a client's

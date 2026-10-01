@@ -23,6 +23,8 @@
 #
 # PROVENANCE itself is excluded from (2) -- it cannot record its own hash.
 
+cmake_minimum_required(VERSION 3.26)
+
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/SpecSupport.cmake")
 

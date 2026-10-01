@@ -22,6 +22,8 @@
 # cache variable, module CamelCase, hyphenated prose -- reduces to the two
 # stems below.
 
+cmake_minimum_required(VERSION 3.26)
+
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/SpecSupport.cmake")
 

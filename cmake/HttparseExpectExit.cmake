@@ -24,6 +24,11 @@
 
 include_guard(GLOBAL)
 
+# Run under -P, this file inherits no project policies, and the functions
+# below record theirs where they are defined -- so the floor comes before
+# them. Included, it sets the version the project already declared.
+cmake_policy(VERSION 3.26)
+
 # Every status the harness is allowed to produce. 3 is reserved for lane
 # provenance and is not produced until slice 5; it is declared here so the
 # number is not claimed by something else in the meantime. 77 is deliberately

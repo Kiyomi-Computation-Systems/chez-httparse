@@ -94,11 +94,14 @@ jobs:
 
       # Runs on both paths: on a cache hit this is what proves the restored
       # prefix is a working runtime before anything downstream depends on it,
-      # and on a miss it is the gate the save below waits for.
+      # and on a miss it is the gate the save below waits for. CMake's version
+      # is recorded beside it: a script run with `cmake -P` behaves by that
+      # version's policy defaults, and the image chooses it, not this file.
       - name: Record the runtime identity
         run: |
           scheme --version
           echo '(display (machine-type))(newline)' | scheme -q
+          cmake --version | head -1
 
       # Saved here rather than by the cache action's own post-step, which would
       # also run after a failed build and could publish a half-installed prefix
