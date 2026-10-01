@@ -1497,6 +1497,35 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
+# --- What parser-stream-offset answers inside a callback ---------------------
+#
+# docs/api.org says what a callback reads there: the bytes taken before an
+# event, and the end of a span's fragment. Every other lane that reads the
+# offset inside a span callback feeds one buffer from index 0, where the
+# fragment's end and `to` are the same number, so a runtime that handed the
+# callback `to` instead passed all of them. This lane feeds each chunk from a
+# buffer of its own, drives the COMMITTED parser over every fixture in the
+# corpus, and holds each event to its log's `off=` and each fragment to the
+# driver's own arithmetic.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.unit.stream-offset.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/stream-offset-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_CORPUS_DECODE}
+            ${HTTPARSE_CORPUS_LOAD}
+            ${HTTPARSE_MODES}
+            ${HTTPARSE_TRACE_FORMAT}
+            ${HTTPARSE_ADAPTER}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GENERATED_PARSER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/stream-offset-tests.sps"
+    ENVIRONMENT "HTTPARSE_CORPUS_DIR=${HTTPARSE_CORPUS_DIR}"
+    TIMEOUT 180
+    LABELS unit)
+endforeach()
+
 # --- What parsing costs -----------------------------------------------------
 #
 # The allocation audit asserts a SHAPE and runs on every pull request; the
