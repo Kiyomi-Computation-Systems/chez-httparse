@@ -6,6 +6,19 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-01
+
+**What a callback's stream offset means is documented, and a finish no
+longer delivers an empty body.** `docs/api.org` now says what
+`parser-stream-offset` answers inside a callback: llhttp's `off=` for an
+event, and the end of the fragment for a span. chez-http-server measures the
+bytes no span covers that way, and `unit.stream-offset` holds both answers
+over the corpus. `parser-finish!` on a close-delimited body that received no
+bytes no longer runs an empty `on-body-data`, matching llhttp. The generated
+parser gains one state, so it is not byte-identical to v0.4.3. Conformance
+holds at **274 of 274**, and the generated-runtime ABI is still 9. CI runs
+on Linux again, green for the first time since September.
+
 ### Added
 
 - **What `parser-stream-offset` answers inside a callback is documented**
