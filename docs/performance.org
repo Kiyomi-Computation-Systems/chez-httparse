@@ -35,6 +35,11 @@ could not see the cost because its slope varies a header *value's* length and
 so holds the header *count* fixed. This lane could not see it either, and for
 the same reason — both messages above carry the same headers.
 
+Byte-machine =v0.7.0= left every allocation figure the lane prints where
+=v0.6.1= put it, in the compiled lane, on all 40 runs taken at each pin. In the
+source lane the two =POST= figures read a few bytes high; that is the last
+paragraph of /Source and compiled cost the same/.
+
 ** A feed costs the same whatever came before it
 
 Each =parser-feed!= returns a result record, so a parse fed in pieces
@@ -97,26 +102,40 @@ reasons which are not about this code. The lane prints its figures and
 asserts only a floor loose enough that only a change of *kind* crosses it —
 an accidental quadratic, a per-byte allocation, a rescan.
 
-On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, over three runs
-of each mode on 2026-09-26, at byte-machine =v0.6.1=:
+On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, on 2026-10-01,
+at byte-machine =v0.7.0=:
 
 | what                                         |           msg/s |    MB/s |
 |----------------------------------------------+-----------------+---------|
-| 308-byte request, 8 headers, whole buffer    | 246,153–278,260 |   72–81 |
-| 1,166-byte response, 1 KB body, whole buffer | 350,684–355,555 | 389–395 |
-| the same request, fed one byte at a time     |   42,666–45,070 |   12–13 |
+| 308-byte request, 8 headers, whole buffer    | 272,340–278,260 |   80–82 |
+| 1,166-byte response, 1 KB body, whole buffer | 350,684–360,563 | 390–401 |
+| the same request, fed one byte at a time     |   43,835–44,444 |      13 |
 
-At =v0.6.0= (2026-09-18) these read 170,666–180,281, 196,923 and
-43,835–45,714. The two whole-buffer rows are the keyword walk's fix: it now
-compares each keyword once instead of re-comparing the whole prefix at every
-byte. The byte-at-a-time row stands still because a keyword split across
-feeds is walked a byte per feed either way.
+At =v0.6.1=, built beside it and run alternately in the same sitting, they
+read 275,268–278,260, 350,684–360,563 and 45,070. The whole-buffer rows did not
+move by more than a tick of the millisecond clock. The byte-at-a-time row is
+2.7% lower, in the source lane and the compiled lane alike: =v0.7.0= makes one
+more call on every =parser-feed!=, which writes nothing unless the parse ended
+in an error with a span open, and this row makes 308 of them per message, about
+2 ns each. In scratch copies of the runtime, taking that call out restores the
+old rate and taking out the mark write each span delivery now makes does not.
+Upstream recorded the per-call cost as reasoned and not benchmarked, and named
+feeding one byte per call as the case that would show it. This is that case.
 
-The ranges are the full spread across all six runs, source and compiled
-together. Read them as an order of magnitude, not a specification. They are
-here so that a later change can be compared against something, and so the
-cost of the worst case a resumable parser can be asked for — a byte at a
-time — is on the record rather than guessed at.
+At =v0.6.0= (2026-09-18) the three rows read 170,666–180,281, 196,923 and
+43,835–45,714. The two whole-buffer rows are the keyword walk's fix, made at
+=v0.6.1=: it compares each keyword once instead of re-comparing the whole prefix
+at every byte. The byte-at-a-time row stood still then because a keyword split
+across feeds is walked a byte per feed either way.
+
+The ranges are the interquartile range over 80 runs, 40 of each mode, taken
+alternately with the previous pin so that a slow drift in the machine lands on
+both. The full spread is wider, because single runs stall: the slowest read
+17,021 msg/s on the one-byte row, and a range over a handful of runs would have
+reported that as the figure. Read them as an order of magnitude, not a
+specification. They are here so that a later change can be compared against
+something, and so the cost of the worst case a resumable parser can be asked
+for — a byte at a time — is on the record rather than guessed at.
 
 These are twelve times what this page carried three days earlier — 14,925
 msg/s, 28,169 and 8,695 — and the byte-at-a-time row is **five times** what it
@@ -181,6 +200,20 @@ that they agree, because no cross-lane comparison exists in this tree and the
 failure it would catch — a parser whose cost depends on when it was compiled
 — is not worth inventing one for.
 
+They agreed on every figure at byte-machine =v0.6.1=, to the byte, on 40 runs
+taken on 2026-10-01. At =v0.7.0= they agree on four of the six and differ on the
+two =POST= figures. The source lane's 10-byte =POST= read 2,917 or 2,918 B on 26
+of 40 runs, where the compiled lane read 2,912 on all 40, and its 10,000-byte
+one read 2,965 once against 2,960. The runtime's new =abandon-span!= is
+involved: with its body emptied, or cut to either of its two reads, the source
+lane reads 2,912 again. A collection forced just before the measured region
+removes the difference, and so does reading each of the 200 parses separately,
+which finds both pins allocating the same, parse by parse. Padding the heap
+before the region, or deepening the stack under it, neither removes the
+difference nor brings it to the old pin. The cause is not known. It is 0.2%,
+nothing the lane asserts is near it, and the compiled lane, which is what
+ships, does not show it.
+
 * Against llhttp, on llhttp's own benchmark
 
 The absolute rates above move with the machine. A *ratio* taken on one
@@ -211,8 +244,9 @@ letting a short input shrink it.
 
 Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-17, at
 byte-machine =v0.6.0=. Upstream's own three bench inputs, their binary and
-ours on the same bytes. *Not re-taken at =v0.6.1=*, which made this project's
-own whole-buffer rows 35–80% faster. The ratios below are therefore an upper
+ours on the same bytes. *Not re-taken at =v0.6.1= or =v0.7.0=*. The first made
+this project's own whole-buffer rows 35–80% faster, and the second left them
+where they were to within a clock tick. The ratios below are therefore an upper
 bound until they are measured again against a built llhttp checkout:
 
 | input                                |     llhttp | chez-httparse | ratio |
