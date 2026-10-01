@@ -1053,3 +1053,33 @@ So treat a rebase like an edit. Re-take every count, and re-run every "only
 X catches it" claim the message carries, on the rebased tree before the
 push. A squash merge then records what was measured, not what was true
 yesterday.
+
+## When no API can see a runtime change, build the old pin beside the new one
+
+The byte-machine `v0.7.0` bump (#60) moved the runtime and nothing a test here
+can read: each `parser-feed!` makes one more call, each span delivery writes a
+slot, an error record grew by two, and this repository calls none of the new
+accessors. *Write the test that would see it before moving the pin* had
+nothing to aim at. A baseline took its place: the working tree copied to the
+scratchpad while the submodule still sat at the old pin, built there, and its
+lanes run alternately with the new tree's for 40 rounds.
+
+The figures on file were not that baseline, since they predate v0.4.4 and
+would have charged the pin with everything that changed since. One run is not
+a comparison either. The first run at the new pin read the one-byte row at
+23,529 msg/s against 45,070, which was one slow run; forty alternating rounds
+read −2.7%, in the source and compiled lanes alike, about 2 ns for each of
+308 feeds. Only that row could show it. A whole-buffer parse makes one call
+per message and sat within a tick of the clock.
+
+**A removal finds a cause that a theory cannot.** The source lane's 10-byte
+`POST` read 2,912 B at the old pin on 40 of 40 runs and up to 2,918 at the new
+one. Heap padding and stack depth were ruled out by an experiment each, and a
+forced collection removed it, which is a clue and not a cause. What found it
+was taking pieces out of scratch copies of the runtime: without the new mark
+write it stayed, without the two `abandon-span!` calls it was gone, and with
+that function's body emptied, or cut to either of its two reads, it was gone.
+A cause named by removal is a finding even when nobody can say how it
+allocates. The record says *not known* and lists what was ruled out, and
+"unchanged" is claimed from the compiled lane, which ships and read 2,912 on
+all 40.
