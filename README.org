@@ -11,13 +11,20 @@ byte, at every chunk size.
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
-*Status: v0.4.3.* Request and response parsing, strict and lenient: *all 274*
+*Status: v0.4.4.* Request and response parsing, strict and lenient: *all 274*
 fixtures in llhttp's conformance corpus — every HTTP fixture and every URL
 fixture it ships — at every chunk size from 1 to the input length, with an
 empty deferral list. The URL fixtures are a second generated parser, for the
 five spans llhttp's own url binary reports. A live differential against a built
 llhttp agrees on 9,557 generated inputs besides. See
 [[file:docs/conformance.org][docs/conformance.org]].
+
+v0.4.4 documents what =parser-stream-offset= answers inside a callback: the
+bytes taken before an event, which is llhttp's ~off=~, and the end of a span's
+fragment. An embedder can measure the bytes no span covers from those. And
+=parser-finish!= no longer runs an empty =on-body-data= for a close-delimited
+body that got no bytes, which llhttp never does. The shipped parser gains one
+state; every recorded trace is unchanged. See [[file:docs/api.org][docs/api.org]].
 
 v0.4.3 moves the byte-machine pin to =v0.6.1=, whose keyword walk no longer
 copies the prefix it has matched on every byte. A header name's cost no longer
