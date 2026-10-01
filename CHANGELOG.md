@@ -35,6 +35,33 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A body the connection ends no longer gets an empty `on-body-data` at
+  `parser-finish!`.** A close-delimited body that received no bytes got an
+  `on-body-data` of zero bytes at the finish, before `on-message-complete`.
+  That covers a response with no framing header, a response whose
+  `Transfer-Encoding` does not end in `chunked`, and such a request under the
+  `transfer-encoding` or `chunked-length` lenient flag. llhttp delivers
+  nothing there. Measured through its public API, built from the checkout the
+  corpus came from, `llhttp_finish` runs `on_message_complete` alone and
+  `on_body` never fires for such a body. The two parsers differ in what a span
+  start does at the end of input. llparse's waits for a byte, so llhttp opens
+  this span only once one arrives. byte-machine's opens at once, so the
+  end-of-input route found an open, empty span and closed it, and a span that
+  closes having delivered nothing delivers once, empty. The body span now
+  opens on the first body byte. A body with bytes is unchanged: they arrive
+  with the feeds that carried them, as llhttp delivers them. `unit.finish`
+  gains the cases, every expectation measured against llhttp, and
+  `docs/api.org` now says the completion is the only callback a finish runs.
+  Conformance holds at **274 of 274**, since the corpus never finishes. The
+  generated parser gains one node, `body-eof-first`, so it is no longer
+  byte-identical, and its IR fingerprint moves from `17792280358284555530` to
+  `16987738020274418058`. The generated-runtime ABI is still 9.
+
+- **The v0.4.3 entry quoted a stale fingerprint.** It gave
+  `httparse-message-machine` as `318434098601601619`, which is the v0.3.0
+  machine's. The machine had been `17792280358284555530` since v0.4.0's two
+  finish fixes. The entry now says so.
+
 - **CI clones the private byte-machine submodule with a read token.** CI's
   first run since the Actions minutes came back, on #56, failed at
   `Configure and build`: `vendor/byte-machine/src does not exist`. The
@@ -97,7 +124,7 @@ parse is 35–80% faster.
   The regenerated parsers are **byte-identical**, because upstream changed the
   runtime and not the emitter. Both IR fingerprints are unchanged for the fifth
   pin running: `httparse-url-machine` `3216037711265608570` and
-  `httparse-message-machine` `318434098601601619`.
+  `httparse-message-machine` `17792280358284555530`.
 
   | | at `v0.6.0` | at `v0.6.1` |
   |---|---:|---:|

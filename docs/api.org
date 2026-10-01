@@ -556,11 +556,20 @@ close-delimited body completes (below). A PAUSE FROM A FEED IS DIFFERENT: 24
 fixtures record one, and this parser matches all of them at every chunk size.
 See [[file:conformance.org][conformance.org]].
 
-A body the *connection* delimits — a response with neither =Content-Length=
-nor =Transfer-Encoding=, the =message-needs-eof?= case above — is the one
-message that completes at =parser-finish!= and nowhere else: its body runs to
-the close, so no feed can end it. =on-message-complete= fires on that finish,
-after the body's final bytes, mirroring llhttp's =llhttp_finish= for a
-=SAFE_WITH_CB= body; a pause or failure that callback returns is what the
-finish result carries. This is the single =on-message-complete= the corpus
-cannot reach — it never finishes — so [[file:../test/common/finish-tests.sps][test/common/finish-tests.sps]] is its test.
+A body the *connection* delimits is the one message that completes at
+=parser-finish!= and nowhere else: its body runs to the close, so no feed can
+end it. That is a response with neither =Content-Length= nor
+=Transfer-Encoding= (the =message-needs-eof?= case above), a response whose
+=Transfer-Encoding= does not end in =chunked=, and such a request under the
+=transfer-encoding= or =chunked-length= lenient flag. =on-message-complete=
+fires on that finish, mirroring llhttp's =llhttp_finish= for a =SAFE_WITH_CB=
+body, and a pause or failure that callback returns is what the finish result
+carries.
+
+It is the only callback the finish runs. The body's bytes arrive with the
+feeds that carried them, which is where llhttp delivers them too, so by the
+finish every one has been through =on-body-data=. A body that got no bytes
+gets no =on-body-data= at all, not an empty one at the finish; llhttp's
+=on_body= does not fire for it either. This is the single
+=on-message-complete= the corpus cannot reach — it never finishes — so
+[[file:../test/common/finish-tests.sps][test/common/finish-tests.sps]] is its test.
