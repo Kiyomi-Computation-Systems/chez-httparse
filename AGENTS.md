@@ -964,3 +964,32 @@ than the behaviour: `harness.script-policy-floor` requires every `-P` script
 to open with the floor, as text. And CI now prints its own `cmake --version`
 beside Chez's, so the difference between the two machines is on screen
 rather than inferred.
+
+## A setup that makes two answers equal cannot tell them apart
+
+`parser-stream-offset` inside a span callback is the fragment's END in the
+stream. `to` is the fragment's end in the BUFFER the embedder fed. Every lane
+that read the offset there fed one buffer from index 0: the conformance
+driver, the generated-input lanes, the request-line cases. In that setup the
+two numbers are the same number, and a runtime that handed the callback `to`
+passed all 96 other lanes in the pr selection, measured.
+
+It would not have passed chez-http-server, which reads each request into a
+fresh buffer from a socket and is the embedder the contract was documented
+for. Its evidence for the issue checked every one of 3,101,130 span
+callbacks against the fragment's real position. That check discriminated
+where ours could not, because its buffers do not start where the stream
+does.
+
+`unit.stream-offset` now feeds each chunk from a buffer of its own, at a
+nonzero index, with filler either side. So `from` and `to` are never stream
+positions, and a fragment that strayed outside its chunk would carry bytes
+the input does not have. The mutation that hands the callback `to` fails it,
+and that is the mutation worth writing for any contract stated in two
+coordinate systems.
+
+So when a test computes an expected value, ask what other quantity the
+setup makes equal to it, and break the coincidence. A buffer index and a
+stream position, an offset and a length when the start is 0, a call count
+and a byte count at chunk size 1: each pair is two answers that one fixture
+cannot tell apart.
