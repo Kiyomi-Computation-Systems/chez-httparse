@@ -18,7 +18,35 @@ jobs:
       HTTPARSE_EXPECT_ARCH: amd64
       CHEZ_VERSION: "10.4.1"
     steps:
+      # The generator pinned at vendor/byte-machine is a private repository,
+      # and the job's own token reads only this one. The submodule is cloned
+      # below with this secret, which the owner adds; without it, every run
+      # stops here, by name.
+      - name: Require the submodule read token
+        env:
+          SUBMODULES_READ_TOKEN: ${{ secrets.SUBMODULES_READ_TOKEN }}
+        run: |
+          if [ -z "${SUBMODULES_READ_TOKEN}" ]; then
+            echo "::error::The Actions secret SUBMODULES_READ_TOKEN is not set: a token with Contents read-only on the repository .gitmodules names for vendor/byte-machine."
+            exit 1
+          fi
+
+      # This repository alone, with the job's own token; the next step clones
+      # the submodule.
       - uses: actions/checkout@v4
+
+      # vendor/byte-machine at the commit the gitlink pins. The rewrite sends
+      # only the org's URLs through the read token, and it lives in this step's
+      # environment, not a config file: git hands GIT_CONFIG_* to the
+      # submodule's clone, no file holds the token, and no later step sees it.
+      # Cloned before Chez is built, so a token that cannot read the submodule
+      # fails in seconds rather than after minutes.
+      - name: Init submodules
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: "url.https://x-access-token:${{ secrets.SUBMODULES_READ_TOKEN }}@github.com/Kiyomi-Computation-Systems/.insteadOf"
+          GIT_CONFIG_VALUE_0: "https://github.com/Kiyomi-Computation-Systems/"
+        run: git submodule update --init
 
       # Building Chez from source is minutes; every other step in this job is
       # seconds. The install prefix is under $HOME rather than /usr/local so the
@@ -66,11 +94,14 @@ jobs:
 
       # Runs on both paths: on a cache hit this is what proves the restored
       # prefix is a working runtime before anything downstream depends on it,
-      # and on a miss it is the gate the save below waits for.
+      # and on a miss it is the gate the save below waits for. CMake's version
+      # is recorded beside it: a script run with `cmake -P` behaves by that
+      # version's policy defaults, and the image chooses it, not this file.
       - name: Record the runtime identity
         run: |
           scheme --version
           echo '(display (machine-type))(newline)' | scheme -q
+          cmake --version | head -1
 
       # Saved here rather than by the cache action's own post-step, which would
       # also run after a failed build and could publish a half-installed prefix
