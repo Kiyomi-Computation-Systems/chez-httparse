@@ -1026,3 +1026,30 @@ the input runs out (wait, act or refuse), because no trace that keeps
 feeding will tell you. And where the oracle's harness never calls an entry
 point, its behaviour there is unrecorded, not agreed: build the probe before
 believing the comment.
+
+## A rebase is a change, and the numbers ride along unmeasured
+
+Three PRs went in over one afternoon, #58, then #56, then #57, each rebased
+onto what had merged before it. Every rebase moved something a commit
+message or PR description stated as measured.
+- The pull-request selection grew from 95 lanes to 96 to 98, so "make test
+  97/97, release 100/100" described a tree that no longer existed.
+- "A runtime that handed the callback `to` passed all 95 other lanes" became
+  a claim about 96 lanes it had never been run against.
+- "The old behaviour fails unit.finish alone" had been measured against two
+  lanes, not all of them.
+
+Each was re-run on the rebased tree before the force-push, and the messages
+were amended to say what the re-run found. The mutant still passed all 96,
+and only unit.finish still caught the old behaviour; both were now measured.
+
+None of them turned out wrong, and that is the trap. A rebase that changes no
+line of yours looks as if it cannot change your evidence, but it changes the
+tree the evidence is about. The same afternoon found the older form of this
+already in the record: the v0.4.3 changelog quoted a fingerprint from two
+grammar changes earlier, carried forward from the entries before it.
+
+So treat a rebase like an edit. Re-take every count, and re-run every "only
+X catches it" claim the message carries, on the rebased tree before the
+push. A squash merge then records what was measured, not what was true
+yesterday.
