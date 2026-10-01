@@ -6,6 +6,19 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-10-01
+
+**A pin bump, so a parse error can name the span it abandoned.** byte-machine
+`v0.7.0` records, on a parse error, the span the error abandoned and the stream
+offset where that span's withheld bytes begin. chez-http-server asked for it, to
+hold a request target and a field name to size limits however the network
+splits the input. It vendors both this project and uriparse, so both needed the
+same byte-machine. This project calls neither accessor and adds no API. The
+generated parsers are byte-identical to v0.4.4, conformance holds at **274 of
+274**, and the generated-runtime ABI is still 9. A parse that ends in an error
+allocates 16 bytes more, and feeding a message a byte at a time is 2.7% slower.
+A whole-buffer parse is unchanged to within a tick of the millisecond clock.
+
 ### Changed
 
 - **The pin moves to byte-machine `v0.7.0`, whose parse errors name the span
