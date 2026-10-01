@@ -6,6 +6,110 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The pin moves to byte-machine `v0.7.0`, whose parse errors name the span
+  they abandoned**
+  ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  item 3). Upstream range `5c1cb7e..c338a57`, seven commits: PRs #143, #144 and
+  #146 to #150. This bump carries upstream
+  [issue #145](https://github.com/Kiyomi-Computation-Systems/byte-machine/issues/145),
+  which chez-http-server filed. That project holds a request target and a field
+  name to size limits and counts their bytes as the parser hands them over. A
+  parse error with a span open withholds the bytes the span took in the failing
+  feed, so one malformed request could be answered differently depending on how
+  it arrived. The issue measured 980 of 40,000 random malformed requests
+  answered differently at different delivery sizes; that is the issue's figure,
+  not re-taken here. The runtime now records on the error which span it
+  abandoned (`parser-error-span`) and the stream offset where that span's
+  withheld bytes begin (`parser-error-span-offset`), both `#f` when no span was
+  open (upstream decision 0056). chez-http-server vendors both this project and
+  uriparse, so both need the same byte-machine before it can read them.
+
+  **This project adds no API.** No code under `src/` calls a `parser-error-*`
+  accessor; the tree calls `parser-error-node-name` once, in
+  `unit.te-error-nodes`, and its tests and harness also read
+  `parser-error-code`, `-reason` and `-offset`. Nothing is spelled like either
+  new name. This project's output bindings, the names its two generated
+  libraries export, are `httparse-message-machine` and `httparse-url-machine`.
+  That matters because a generated library imports the runtime whole, and the
+  emitter now refuses an output binding spelled `parser-error-span` or
+  `parser-error-span-offset`; asked directly, the emitter at `v0.6.1` accepts
+  both and at `v0.7.0` refuses both, and refuses an existing runtime export at
+  either. chez-http-server imports the runtime itself and reads
+  `parser-result-error` directly.
+
+  **The generated ABI is re-read at the pin and is still 9** (0005 item 5): the
+  runtime's `current-abi-version`, both regenerated parsers, and
+  `unit.generator-abi`. `make parser-refresh` leaves `src/generated/`
+  **byte-identical**, compared with `cmp` against copies taken beforehand, so
+  both IR fingerprints are the ones v0.4.4 recorded:
+  `httparse-url-machine` `3216037711265608570` and `httparse-message-machine`
+  `16987738020274418058`. Upstream changed the runtime and not the emitter, and
+  a byte-identical parser is not an unchanged one, so what moved is below.
+
+  **What moved in the runtime.** The error record is eleven slots where it was
+  nine. A new `abandon-span!` runs once per `parser-feed!` and `parser-finish!`
+  call and writes only when the result is an error with a span open. Every span
+  delivery now writes the span's mark, one slot, before its callback runs.
+  Upstream's account is that nothing but the new accessor can see the mark
+  write, and only after a data callback fails. No lane here fails a callback,
+  so that path is not exercised in this tree, and no lane here reads the new
+  accessors; upstream's `differential.abandoned-span` lane covers both.
+
+  Measured against the previous pin in the same sitting, both trees built side
+  by side and run alternately, 40 rounds each:
+
+  - **Success paths allocate the same in the compiled lane, and within 0.2% in
+    the source lane.** In the compiled lane all six figures of
+    `httparse.property.allocation` were identical at both pins in 40 of 40
+    rounds: 2,912 B for the 10-byte `POST`, 2,960 B for the 10,000-byte one,
+    444 B and 384 B per feed, and 2,928 B for the near-miss request at k = 0
+    and k = 16. The source lane agrees on four of the six. Its two `POST`
+    figures read a few bytes high at the new pin: the 10-byte one 2,912 B in 14
+    rounds and 2,917 or 2,918 B in 26, where it read 2,912 B in 40 of 40 at the
+    old pin, and the large one 2,965 B once in 40. That needs the full body of
+    `abandon-span!` (an empty body, or either of its two reads alone, gives
+    2,912), and a collection forced before the region removes it. A probe
+    reading each of 200 parses on its own finds both pins identical, with no
+    parse above the minimum. The cause is not known. The lane's tolerances
+    are 32 B and a factor of four, so nothing asserted is near it.
+  - **An erroring parse allocates exactly 16 B more**, which is the record
+    growing from 80 B to 96 B. That held for all eight malformed requests and
+    responses tried, in the compiled lane over three identical runs, whether
+    or not a span was open (`GET /a b HTTP/1.1` 3,056 → 3,072 B, a control byte
+    in the target 2,992 → 3,008 B). A valid message is unchanged. No lane here
+    feeds an erroring input, so this is not an assertion; the figures come from
+    a scratch program using the allocation lane's instrument.
+  - **Throughput is unchanged where a message is fed whole, and the
+    byte-at-a-time row is 2.7% lower.**
+
+    | | at `v0.6.1` | at `v0.7.0` |
+    |---|---:|---:|
+    | 308 B request, whole buffer, msg/s | 275,268–278,260 | 272,340–278,260 |
+    | 1,166 B response, whole buffer, msg/s | 350,684–360,563 | 350,684–360,563 |
+    | the request, one byte at a time, msg/s | 45,070 | 43,835–44,444 |
+
+    These are the interquartile ranges over 80 runs per pin, 40 of each mode.
+    The one-byte row's medians are 45,070 and 43,835. The median is 2.7%
+    lower in the source lane and in the compiled lane taken separately, and
+    the best run is 2.8% lower in both. That is about 2 ns for each of the 308
+    `parser-feed!` calls in the message. In scratch copies of the runtime,
+    taking out the `abandon-span!` calls restores the old median and taking
+    out the mark write alone does not. Upstream's decision 0056 calls its
+    per-call cost reasoned and not benchmarked, and names feeding one byte per
+    call as the case that would show it. The whole-buffer rows make one
+    `parser-feed!` call per message and did not move by more than a tick of
+    the millisecond clock.
+    `docs/performance.org` carries the figures.
+
+  **Conformance holds at 274 of 274** (the ratchet's 274 `passing` rows and
+  nothing else, at every chunk size), and `make test-all` is **101/101** at
+  both pins. The live llhttp differential is not registered in the default
+  build. Run from scratch copies of both trees against the local llhttp
+  checkout, it reports the same tally at both pins: `agreed=9557
+  late-complete=4 early-complete=0 unclassified=0`.
+
 ## [0.4.4] - 2026-10-01
 
 **What a callback's stream offset means is documented, and a finish no
