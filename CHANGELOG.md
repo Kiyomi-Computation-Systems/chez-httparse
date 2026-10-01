@@ -6,6 +6,24 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI clones the private byte-machine submodule with a read token.** CI's
+  first run since the Actions minutes came back, on #56, failed at
+  `Configure and build`: `vendor/byte-machine/src does not exist`. The
+  workflow's checkout never fetched the submodule, and the job's own token
+  cannot read the private repository it pins anyway. Decisions 0002 and 0005
+  record that CI needs a read token, and the workflow never had one. Every
+  earlier run since the submodule arrived was refused for billing before any
+  step ran, so nothing showed it. The fix is the one chez-http-server's CI
+  uses. A first step fails by name while the `SUBMODULES_READ_TOKEN` Actions
+  secret is missing. Checkout fetches this repository alone, with the job's
+  own token. A new `Init submodules` step then clones the submodule, before
+  Chez is built, through a URL rewrite that carries the secret. The rewrite
+  covers only the organization's URLs and lives in that step's environment,
+  so no file holds the token and no later step sees it. Until the secret is
+  added, every run fails at the first step, naming it.
+
 ## [0.4.3] - 2026-09-26
 
 **A pin bump, and the parser's allocation no longer depends on a client's
