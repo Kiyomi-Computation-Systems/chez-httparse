@@ -993,3 +993,36 @@ setup makes equal to it, and break the coincidence. A buffer index and a
 stream position, an offset and a length when the start is 0, a call count
 and a byte count at chunk size 1: each pair is two answers that one fixture
 cannot tell apart.
+
+## Two generators can agree on every trace and still differ when input runs out
+
+llparse's span start waits for a byte. In llhttp's generated
+`span_start_llhttp__on_body_2`, `if (p == endp) return` comes before
+`_span_pos0 = p`. byte-machine's span start is zero-width and opens at once.
+While the input keeps coming, nobody can tell. A span byte-machine opens at
+the end of one feed delivers nothing there, because an empty flush is
+suppressed, and llparse opens the same span on the next feed's first byte.
+Either way the first fragment starts at that byte, so 274 fixtures at every
+chunk size agree.
+
+They part only when the input ENDS. A close-delimited body that got no bytes
+never opens its span in llhttp, so `llhttp_finish` runs
+`on_message_complete` alone. Here the end-of-input route found the span
+open, and the verifier requires it closed. A span that closes having
+delivered nothing delivers once, empty: an `on-body-data` of no bytes that
+llhttp never produces. The corpus could not see it, because its harness
+never calls `llhttp_finish`. A probe of llhttp's public API could, in one
+compile against the corpus's own checkout: `build/c/llhttp.c` with
+`src/native/api.c` and `src/native/http.c`.
+
+The comments beside the old route said llhttp "flushes the identity-eof
+body at EOF". It does not. It delivers body bytes at the end of each
+execute, and its finish runs nothing but the completion. That sentence was
+inferred and never run, and it shipped beside the code it misdescribed in
+four releases.
+
+So when a grammar crosses generators, ask what each primitive does when
+the input runs out (wait, act or refuse), because no trace that keeps
+feeding will tell you. And where the oracle's harness never calls an entry
+point, its behaviour there is unrecorded, not agreed: build the probe before
+believing the comment.
