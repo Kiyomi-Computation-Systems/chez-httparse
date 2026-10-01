@@ -1,9 +1,10 @@
 ;;; parser-finish! and the completion the corpus cannot see.
 ;;;
 ;;; A response with neither Content-Length nor Transfer-Encoding (and not
-;;; 1xx/204/304) is delimited by the connection closing. llhttp's parser opens
-;;; the body span, consumes for ever, and raises `finish` to SAFE_WITH_CB -- a
-;;; state that means "complete, but only once someone says the input stopped".
+;;; 1xx/204/304) is delimited by the connection closing. llhttp's parser raises
+;;; `finish` to SAFE_WITH_CB -- a state that means "complete, but only once
+;;; someone says the input stopped" -- then opens the body span once a byte
+;;; arrives and consumes for ever.
 ;;; The someone is `llhttp_finish`, and `src/native/api.c:143-150` (v9.4.3) runs
 ;;; `on_message_complete` for SAFE_WITH_CB, propagates a non-OK return from it,
 ;;; and only then answers OK.
@@ -21,15 +22,18 @@
         (httparse modes)
         (byte-machine runtime))
 
-;; make-response-parser : CallbackOutcome -> (values Parser (-> String) (-> Nat) (-> (Option String)))
-;; A response parser with every declared callback bound (a hole is refused at
-;; `make-parser`, not ignored). `on-body-data` accumulates the body; the
-;; completion callback counts its firings, snapshots the body as it stood when
-;; it fired, and returns `complete-outcome` -- `callback-continue` for the
-;; ordinary case, `callback-pause` to check that a non-OK answer comes back out
-;; of `parser-finish!`. The three readers close over the mutable state.
-(define (make-parser-of-type type complete-outcome)
-  (let ((body "") (complete-count 0) (body-at-complete #f))
+;; make-recording-parser : Symbol (Listof Symbol) CallbackOutcome
+;;                         -> (values Parser (-> String) (-> Nat) (-> (Option String))
+;;                                    (-> (Listof Nat)))
+;; A parser of `type` under the lenient `flags`, with every declared callback
+;; bound (a hole is refused at `make-parser`, not ignored). `on-body-data`
+;; accumulates the body and records each fragment's length; the completion
+;; callback counts its firings, snapshots the body as it stood when it fired,
+;; and returns `complete-outcome` -- `callback-continue` for the ordinary case,
+;; `callback-pause` to check that a non-OK answer comes back out of
+;; `parser-finish!`. The four readers close over the mutable state.
+(define (make-recording-parser type flags complete-outcome)
+  (let ((body "") (body-calls '()) (complete-count 0) (body-at-complete #f))
     (define (ignore-event p ctx) callback-continue)
     (define (ignore-span p ctx bv from to) callback-continue)
     (define (text bv from to)
@@ -62,6 +66,7 @@
              (list 'on-body-data
                    (lambda (p ctx bv from to)
                      (set! body (string-append body (text bv from to)))
+                     (set! body-calls (cons (- to from) body-calls))
                      callback-continue))
              (list 'on-chunk-header ignore-event)
              (list 'on-chunk-extension-name-data ignore-span)
@@ -77,11 +82,33 @@
             #f
             ;; The kind is the caller's: a response for a close-delimited body,
             ;; a request for the unsafe-finish cases below.
-            (list (cons 'type (httparse-message-type-value type))))))
+            (list (cons 'type (httparse-message-type-value type))
+                  (cons 'lenient-flags (httparse-lenient-flags-value flags))))))
       (values parser
               (lambda () body)
               (lambda () complete-count)
-              (lambda () body-at-complete)))))
+              (lambda () body-at-complete)
+              (lambda () (reverse body-calls))))))
+
+;; make-parser-of-type : Symbol CallbackOutcome -> (values Parser (-> String) (-> Nat) (-> (Option String)))
+;; The strict parser the cases below were written against, without the
+;; fragment log.
+(define (make-parser-of-type type complete-outcome)
+  (let-values (((p get-body get-count get-at get-calls)
+                (make-recording-parser type '() complete-outcome)))
+    (values p get-body get-count get-at)))
+
+;; feed-all! : Parser Bytevector Nat -> ParserResult
+;; `size` bytes at a time, 0 for the whole buffer, until the input is taken or
+;; the parse stops.
+(define (feed-all! p bv size)
+  (let ((n (bytevector-length bv)))
+    (let loop ((at 0))
+      (let* ((end (if (zero? size) n (min n (+ at size))))
+             (r (parser-feed! p bv at end)))
+        (if (and (eq? (parser-result-status r) 'need-input) (< end n))
+            (loop end)
+            r)))))
 
 (define (utf8 s) (string->utf8 s))
 
@@ -115,8 +142,10 @@
             (check-equal "the finish is finished" (parser-result-status fin) 'finished)
             (check-equal "on-message-complete fired exactly once" (get-count) 1)
             (check-equal "the whole body was delivered" (get-body) "hello world")
-            ;; ORDER: the body callback runs before the completion, as llhttp
-            ;; flushes the identity-eof body at EOF and then finishes.
+            ;; ORDER: the body callback runs before the completion. Its bytes
+            ;; arrive with the feed that carried them -- llhttp delivers them
+            ;; at the end of each execute, not at the finish -- and the
+            ;; completion fires only once the finish says the input stopped.
             (check-equal "and it was whole by the time completion fired"
                          (get-at) "hello world")))))
     (harness-case "an empty close-delimited body still completes once"
@@ -148,7 +177,86 @@
                  (fed (parser-feed! p bv 0 (bytevector-length bv)))
                  (fin (parser-finish! p)))
             (check-equal "the finish surfaces the pause" (parser-result-status fin) 'paused)
-            (check-equal "on-message-complete still fired once" (get-count) 1)))))))
+            (check-equal "on-message-complete still fired once" (get-count) 1)))))
+
+    ;; The same answer when the body had no bytes, which reaches the
+    ;; completion by another edge: llhttp answers HPE_PAUSED here too, having
+    ;; fired `on_message_complete` once and `on_body` never.
+    (harness-case "a pause surfaces the same way when the body had no bytes"
+      (lambda ()
+        (let-values (((p get-body get-count get-at get-calls)
+                      (make-recording-parser 'response '() callback-pause)))
+          (let* ((bv (utf8 "HTTP/1.1 200 OK\r\n\r\n"))
+                 (fed (parser-feed! p bv 0 (bytevector-length bv)))
+                 (fin (parser-finish! p)))
+            (check-equal "the finish surfaces the pause" (parser-result-status fin) 'paused)
+            (check-equal "on-message-complete still fired once" (get-count) 1)
+            (check-equal "no body callback" (get-calls) '())))))))
+
+;;; WHICH BODY CALLBACKS A BODY THE CONNECTION ENDS GETS, AND WHEN. llhttp's
+;;; public API, built from the checkout the corpus came from
+;;; (`v9.4.3-1-gee51043`), answers every row: `on_body` fires during the
+;;; feeds, once for each run of bytes a feed carried, and never at
+;;; `llhttp_finish`, which runs `on_message_complete` alone. With no body bytes
+;;; `on_body` never fires at all. llparse's span start waits for a byte -- its
+;;; `if (p == endp) return` precedes `_span_pos0 = p` -- so a body span that
+;;; gets none never opens, and there is nothing for a feed's end to flush or
+;;; for the finish to close.
+;;;
+;;; THREE FRAMINGS LEAD HERE: no framing header on a response, a coding that
+;;; does not end in `chunked` on a response, and the same coding on a request
+;;; under either lenient flag that permits it, `transfer-encoding` or
+;;; `chunked-length` (strict, llhttp refuses that request,
+;;; HPE_INVALID_TRANSFER_ENCODING). They meet at one node; the rows hold each
+;;; route, so splitting it cannot drop one.
+;;;
+;;; Each row: label, kind, lenient flags, input, then the body fragments'
+;;; lengths fed whole and fed a byte at a time.
+(define close-delimited-rows
+  (list
+   (list "no framing header, no body bytes"
+         'response '() "HTTP/1.1 200 OK\r\n\r\n" '() '())
+   (list "a response coding that is not chunked, no body bytes"
+         'response '() "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\n" '() '())
+   (list "that coding on a request, lenient transfer-encoding, no body bytes"
+         'request '(transfer-encoding) "POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n"
+         '() '())
+   (list "that coding on a request, lenient chunked-length, no body bytes"
+         'request '(chunked-length) "POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n"
+         '() '())
+   (list "no framing header, eleven body bytes"
+         'response '() "HTTP/1.1 200 OK\r\n\r\nhello world"
+         '(11) '(1 1 1 1 1 1 1 1 1 1 1))))
+
+(harness-group "a body the connection ends gets a callback only for its bytes"
+  (lambda ()
+    (for-each
+     (lambda (row)
+       (let ((label (list-ref row 0)) (type (list-ref row 1)) (flags (list-ref row 2))
+             (input (list-ref row 3)))
+         (harness-case label
+           (lambda ()
+             (for-each
+              (lambda (size expected)
+                (let-values (((p get-body get-count get-at get-calls)
+                              (make-recording-parser type flags callback-continue)))
+                  (let* ((how (if (zero? size) "whole" "a byte at a time"))
+                         (fed (feed-all! p (utf8 input) size))
+                         (at-feeds (get-calls))
+                         (fin (parser-finish! p)))
+                    (check-equal (string-append how ": the feeds want more")
+                                 (parser-result-status fed) 'need-input)
+                    (check-equal (string-append how ": body fragments during the feeds")
+                                 at-feeds expected)
+                    (check-equal (string-append how ": the finish is finished")
+                                 (parser-result-status fin) 'finished)
+                    (check-equal (string-append how ": none at the finish")
+                                 (get-calls) expected)
+                    (check-equal (string-append how ": on-message-complete fired once")
+                                 (get-count) 1))))
+              (list 0 1)
+              (list (list-ref row 4) (list-ref row 5)))))))
+     close-delimited-rows)))
 
 (harness-group "the completion fires only for the framing that promises it"
   (lambda ()

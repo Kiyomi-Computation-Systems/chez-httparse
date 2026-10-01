@@ -2113,7 +2113,20 @@
       ;; told what that would mean: SAFE_WITH_CB says "complete, but only
       ;; once someone says the input stopped".
       (make-field-action-node 'body-eof 'store (list 'finish FINISH-SAFE-WITH-CB)
-                              'body-eof-open #f #f)
+                              'body-eof-first #f #f)
+      ;; THE SPAN OPENS ON THE FIRST BYTE, NOT BEFORE IT. llparse's span start
+      ;; waits for input -- in llhttp's generated `span_start_llhttp__on_body_2`
+      ;; the `if (p == endp) return` comes before `_span_pos0 = p` -- so llhttp
+      ;; opens this span only once a body byte is there to read, and a body
+      ;; that never gets one never opens it at all. A span start here is
+      ;; zero-width and opens at once, and the end of input below must close
+      ;; what it finds open (a finish with a span still active is refused), so
+      ;; opening it eagerly closes it empty: an `on-body-data` of no bytes at
+      ;; the finish, for a body llhttp delivers nothing for. So a byte
+      ;; re-executes into the span start, and the end of input goes straight
+      ;; to the completion.
+      (make-byte-dispatch-node 'body-eof-first
+        '() (make-edge 'body-eof-open 'reexecute) 'body-eof-complete #f)
       (make-span-start-node 'body-eof-open 'body-span 'body-eof-consume #f)
       (make-byte-dispatch-node 'body-eof-consume
         '() (make-edge 'body-eof-consume 'advance) 'body-eof-end #f)
@@ -2125,13 +2138,14 @@
       ;;
       ;; llhttp's `llhttp_finish` fires `on_message_complete` for a SAFE_WITH_CB
       ;; finish (`api.c:143-150`) and propagates a non-OK return from it before
-      ;; answering OK. `finish` is SAFE_WITH_CB on exactly the path that reaches
-      ;; here -- `body-eof` set it above -- so the completion is unconditional
-      ;; rather than a read of the field: the graph already tells the arms
-      ;; apart. The span END comes first, flushing the identity-eof body llhttp
-      ;; delivers before it completes; then `on-message-complete`, whose `ev`
-      ;; pause arm carries a callback's non-OK answer back out of
-      ;; `parser-finish!`.
+      ;; answering OK. It runs no other callback: the body's bytes all went out
+      ;; at the ends of the feeds that carried them. `finish` is SAFE_WITH_CB on
+      ;; exactly the path that reaches here -- `body-eof` set it above -- so the
+      ;; completion is unconditional rather than a read of the field: the graph
+      ;; already tells the arms apart. The span END comes first and delivers
+      ;; nothing, since every byte it covered went out with its feed; then
+      ;; `on-message-complete`, whose `ev` pause arm carries a callback's non-OK
+      ;; answer back out of `parser-finish!`.
       (make-span-end-node 'body-eof-end 'body-span 'body-eof-complete #f)
       (ev 'body-eof-complete 'on-message-complete 'body-eof-stop)
       (make-finish-node 'body-eof-stop #f)
