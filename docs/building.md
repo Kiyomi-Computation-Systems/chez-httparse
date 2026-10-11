@@ -54,6 +54,8 @@ The rest of the targets:
 | `make prod`           | configure and build the release preset                            |
 | `make corpus-refresh` | re-vendor the llhttp corpus (needs `LLHTTP_ROOT=/path/to/llhttp`) |
 | `make parser-refresh` | re-emit the checked-in generated parsers                          |
+| `make site`           | render docs/ into build/site/ (needs `CMARK_GFM_ROOT`)            |
+| `make check-site`     | test the site generator, then check docs/ with it                 |
 
 Every target is a thin wrapper over checked-in CMake presets, so you can
 run `cmake` and `ctest` yourself instead — and on Windows, where `make` is
@@ -184,6 +186,34 @@ To remove it again, reconfigure with `-UHTTPARSE_LLHTTP_ROOT`.
 [conformance.md](conformance.md#running-it-yourself) has the full clone
 steps; [performance.md](performance.md#run-them-yourself) uses the same
 binaries to benchmark llhttp.
+
+## Optional: the docs site
+
+The pages in `docs/` also build into a static website, using
+[chez-cmark-gfm](https://github.com/Kiyomi-Computation-Systems/chez-cmark-gfm)
+to render the Markdown. It isn't a dependency of the library, so you point
+at a checkout of it, and you need the `cmark-gfm` shared library installed:
+
+```sh
+make check-site CMARK_GFM_ROOT=/path/to/chez-cmark-gfm
+make site CMARK_GFM_ROOT=/path/to/chez-cmark-gfm
+```
+
+- **`make site`** writes the site to `build/site/`. Open
+  `build/site/index.html`, or serve the directory if your browser won't load
+  the stylesheet from a local file.
+- **`make check-site`** runs the site generator's own tests, then builds
+  every page in memory and fails if the menu doesn't list exactly
+  `docs/*.md`, if a link or anchor between pages is broken, if a `.md` link
+  leaks into the HTML, or if code blocks get reflowed.
+
+Both run Chez directly rather than through CMake, so a distribution's Chez
+works too (`make site CHEZ=chezscheme ...`). `SITE_REF` (default `main`)
+sets the git ref that links from the site into the repository point at. The
+home page is `site/index.md`, and the menu order is in `site/pages.sls`.
+
+Pushing a release tag publishes the site to GitHub Pages
+(`.github/workflows/pages.yml`), after running both targets.
 
 ## Regenerating checked-in files
 

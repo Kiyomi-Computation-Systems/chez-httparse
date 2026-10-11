@@ -18,6 +18,10 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   and three ways to put them there.
 - **`docs/building.md`**: the make targets, presets, lane names and opt-in
   checks.
+- **A docs site**: `make site` renders `docs/` to HTML through chez-cmark-gfm,
+  and `make check-site` fails on a page missing from the nav, a dangling link
+  or anchor, a leaked `.md` link, or reflowed code. The generator is copied
+  from chez-cmark-gfm's. A release tag publishes the site to GitHub Pages.
 - **`NOTICE`**, crediting llhttp, from which the parser derives, with its MIT
   license text.
 
