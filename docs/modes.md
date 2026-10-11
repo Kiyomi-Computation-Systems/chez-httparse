@@ -1,16 +1,16 @@
 # Modes
 
-Two things about a parser are fixed before the first byte: whether it reads
-requests or responses, and which of llhttp's leniencies it allows. You choose
-both when you make the parser, as *field initials*, and they hold for the
-parser's whole life.
+Two settings are fixed before the parser reads its first byte:
 
-## Choosing the modes
+- **`type`**: does it read requests or responses?
+- **`lenient-flags`**: which of llhttp's rule-bending options are on?
 
-[`make-parser`](reference.md#make-parser-procedure)'s optional fourth
-argument is an alist of field initials. Two fields accept one, `type` and
-`lenient-flags`, and together they are everything the parser needs to be told
-up front:
+You set both when you make the parser, and they last for its whole life.
+
+## Setting them
+
+Pass them as [`make-parser`](reference.md#make-parser-procedure)'s fourth
+argument, a list of `(name . value)` pairs:
 
 ```scheme
 (import (generated httparse-message)
@@ -23,108 +23,108 @@ up front:
                          (httparse-lenient-flags-value '(headers version)))))
 ```
 
-Both values are llhttp's own integers, written the way llhttp's embedder
-writes them. `(httparse modes)` is pure and depends on nothing; you need it
-only to spell these integers, and a caller that already has llhttp's number
-may pass it directly.
+The values are llhttp's own numbers. `(httparse modes)` turns names into
+those numbers; if you already have llhttp's number, pass it directly.
 
-The alist is range-checked at construction. `make-parser` refuses it for:
-
-- an unknown field name,
-- a field that exists but is not settable,
-- a duplicate name,
-- a value outside the field's declared width.
-
-So a misspelled mode is an error, never a silent default. The same holds one
-level up: [`httparse-message-type-value`](reference.md#httparse-message-type-value-procedure)
+**Mistakes are refused, not guessed.** `make-parser` rejects an unknown
+setting, a setting that cannot be set, the same setting twice, and a value
+too large for the setting. The helpers
+[`httparse-message-type-value`](reference.md#httparse-message-type-value-procedure)
 and [`httparse-lenient-flags-value`](reference.md#httparse-lenient-flags-value-procedure)
-raise for a name they do not know rather than reading it as "off".
+raise an error for a name they don't know, rather than treating it as "off".
 
 ## `type`: request or response
 
-HTTP does not say which is coming. A request begins with a method and a
-response with `HTTP/`, and you always know which to expect from the side of
-the connection you are on.
+Nothing in the bytes says whether a request or a response is coming, but you
+always know: it depends on which end of the connection you are.
 
 ```scheme
 (httparse-message-type-value 'request)   ; => 1
 (httparse-message-type-value 'response)  ; => 2
 ```
 
-**This one has no safe default.** Omit it and the parser starts at llhttp's
-`HTTP_BOTH` (0), which this parser does not implement: llhttp's third arm
-sniffs the first bytes, and this one does not. Instead the first feed returns
-`'error` with code `unexpected-message-type` at offset 0. That is a refusal,
-not a fallback.
+**Always set it.** There is no safe default. If you leave it out, the parser
+starts in llhttp's "either" mode (`HTTP_BOTH`, 0), where llhttp would guess
+from the first bytes. This parser does not guess: the first feed fails with
+the code `unexpected-message-type` at offset 0.
 
-The refusal comes at the first feed rather than at `make-parser` because a
-field initial cannot be made mandatory, and a required callback kept only to
-fail earlier would be a second way to choose the mode.
+It fails at the first feed rather than inside `make-parser` because a
+setting cannot be made mandatory there, and adding a required callback just
+to fail sooner would give you two ways to choose the mode.
 
-## `lenient-flags`: llhttp's eleven leniencies
+## `lenient-flags`: bending the rules
 
-A bitset. Zero is strict, and zero is the default when you leave the row out.
+By default every flag is off and the parser is **strict**: it rejects what
+llhttp rejects with no lenient flag set. Each flag relaxes one rule, so you
+can talk to clients and servers that get HTTP slightly wrong.
 
 ```scheme
 (httparse-lenient-flags-value '(version optional-lf-after-cr))   ; => 80
 (httparse-lenient-flags-value '())                               ; => 0, strict
 ```
 
-The value is the bitwise OR of the flags you name, so order does not matter
-and naming one twice changes nothing.
+Leave the setting out and you get 0, strict. The value combines the flags
+you name, so their order doesn't matter and naming one twice changes
+nothing.
 
-| Flag                        |  Bit | llhttp setter                                  |
-|:----------------------------|-----:|:-----------------------------------------------|
-| `headers`                   |    1 | `llhttp_set_lenient_headers`                   |
-| `chunked-length`            |    2 | `llhttp_set_lenient_chunked_length`            |
-| `keep-alive`                |    4 | `llhttp_set_lenient_keep_alive`                |
-| `transfer-encoding`         |    8 | `llhttp_set_lenient_transfer_encoding`         |
-| `version`                   |   16 | `llhttp_set_lenient_version`                   |
-| `data-after-close`          |   32 | `llhttp_set_lenient_data_after_close`          |
-| `optional-lf-after-cr`      |   64 | `llhttp_set_lenient_optional_lf_after_cr`      |
-| `optional-crlf-after-chunk` |  128 | `llhttp_set_lenient_optional_crlf_after_chunk` |
-| `optional-cr-before-lf`     |  256 | `llhttp_set_lenient_optional_cr_before_lf`     |
-| `spaces-after-chunk-size`   |  512 | `llhttp_set_lenient_spaces_after_chunk_size`   |
-| `header-value-relaxed`      | 1024 | `llhttp_set_lenient_header_value_relaxed`      |
+> ⚠️ **Every flag except `header-value-relaxed` weakens a defence.** llhttp's
+> own documentation marks them "USE WITH CAUTION": most open the door to
+> request smuggling or cache poisoning. Turn on only what a peer you must
+> talk to actually needs.
+
+| Flag                        |  Bit | Allows                                                                             |
+|:----------------------------|-----:|:-----------------------------------------------------------------------------------|
+| `headers`                   |    1 | invalid header-value characters; whitespace before a colon or after the start line |
+| `chunked-length`            |    2 | `Transfer-Encoding` and `Content-Length` in the same message                       |
+| `keep-alive`                |    4 | another message after one marked `Connection: close`                               |
+| `transfer-encoding`         |    8 | a `Transfer-Encoding` with a value after `chunked`                                 |
+| `version`                   |   16 | an HTTP version other than 0.9, 1.0, 1.1 or 2.0                                    |
+| `data-after-close`          |   32 | extra bytes after a `Connection: close` message, which are discarded               |
+| `optional-lf-after-cr`      |   64 | a line ended by CR alone                                                           |
+| `optional-crlf-after-chunk` |  128 | a chunk that starts right after the previous one, with no CRLF between             |
+| `optional-cr-before-lf`     |  256 | a line ended by LF alone                                                           |
+| `spaces-after-chunk-size`   |  512 | spaces after a chunk size                                                          |
+| `header-value-relaxed`      | 1024 | control characters in header values other than NUL, CR and LF; nothing else        |
 
 The bits are llhttp's `enum llhttp_lenient_flags`, in its order. Each flag
-corresponds one-for-one to its llhttp setter and does what that function's
-documentation says. The table lives in
-[`../src/httparse/modes.sls`](../src/httparse/modes.sls) as
-`httparse-lenient-flag-bits`; `httparse-lenient-flag-names` lists the names.
+does exactly what llhttp's matching setter does — `headers` is
+`llhttp_set_lenient_headers`, `chunked-length` is
+`llhttp_set_lenient_chunked_length`, and so on — and that setter's
+documentation in llhttp's `api.h` is the full description. The table is
+`httparse-lenient-flag-bits` in
+[`src/httparse/modes.sls`](../src/httparse/modes.sls).
 
-### Set once, not once per message
+### The flags stay set
 
-The field is written at construction, and the restart between two pipelined
-messages does not touch it. That restart stores zero over `flags`, which is a
-different field for exactly this reason.
+The flags are set once, when the parser is made. Moving on to the next
+message on a connection does not clear them, and neither does
+[`parser-reset!`](reference.md#parser-reset-procedure): a reset restores the
+values **you** passed to `make-parser`. The same goes for `type`.
 
-It also survives [`parser-reset!`](reference.md#parser-reset-procedure),
-which restores the initials *you* gave rather than the ones the machine
-declares. The same is true of `type`.
+### Two flags that only work together
 
-### Two flags only useful together
-
-`optional-cr-before-lf` sends a bare LF to a node that then expects the LF it
-has just consumed, so you need `optional-lf-after-cr` as well. This happens
-at a chunk size, and at a request line:
+`optional-cr-before-lf` alone does not let a request line end in a bare LF.
+After the line, the parser still expects an LF it has already read, so you
+need `optional-lf-after-cr` as well. The same is true at a chunk size.
 
 ```text
 PUT / HTTP/1.1\nHost: x\n\n
+  strict
+    ->  error code 9 (invalid-version), "Expected CRLF after version", at offset 15
   with optional-cr-before-lf alone
-    ->  error code 2, "Expected CRLF after version", at offset 15
-  with both
+    ->  error code 2 (strict),          "Expected CRLF after version", at offset 15
+  with both flags
     ->  parses
 ```
 
-Note the *code*. Strict parsing gives the same reason at the same offset with
-code 9 (`invalid-version`); `optional-cr-before-lf` alone gives code 2
-(`strict`). The reason text alone cannot tell them apart. That is upstream's
-behaviour, reproduced.
+Look at the **code**: the reason and the offset are the same, so only the
+code tells you whether the flag was on. That is llhttp's behaviour, matched
+exactly.
 
-### One flag that stands alone
+### One place where it works alone
 
-A response status line with *no reason phrase* ending in a bare LF,
-`HTTP/1.1 200\n`, is completed by `optional-cr-before-lf` by itself. Upstream's
-arm there goes straight to the completion rather than to a node wanting the
-LF again. The two sites read alike and behave differently.
+A response status line with **no reason phrase**, ended by a bare LF —
+`HTTP/1.1 200\n` — is accepted with `optional-cr-before-lf` by itself.
+There, llhttp goes straight on to the next line instead of expecting the LF
+again. The two places look alike and behave differently, and this parser
+follows llhttp in both.
