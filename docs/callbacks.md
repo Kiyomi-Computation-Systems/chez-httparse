@@ -99,19 +99,20 @@ The two kinds of callback see it slightly differently:
   at `(- (parser-stream-offset p) (- to from))`. That holds for every piece,
   including one cut short because a feed ended mid-span, and an empty one.
 
-Here is the corpus's first request, `request/sample.md#1`, fed in one piece
-(`\t` is a tab):
+Here is the corpus's first request, `request/sample.md#1`, fed in one piece.
+The number is what `parser-stream-offset` returns inside each callback, and
+`\t` is a tab:
 
 ```text
 OPTIONS /url HTTP/1.1
-  on-method-data            "OPTIONS"  reads  7   starts at 7 - 7 = 0
-  on-method-complete                   reads  7   the space after OPTIONS is not read yet
-  on-url-data               "/url"     reads 12   starts at 12 - 4 = 8
-  on-url-complete                      reads 13   the space after /url is already read
+  on-method-data       "OPTIONS"  7   starts at 7 - 7 = 0
+  on-method-complete              7   the space is not read yet
+  on-url-data          "/url"    12   starts at 12 - 4 = 8
+  on-url-complete                13   the space is already read
 ...
 Header2:\t Value2
-  on-header-field-complete             reads 48   the colon is read
-  on-header-value-data      "Value2"   reads 56   starts at 56 - 6 = 50
+  on-header-field-complete       48   the colon is read
+  on-header-value-data "Value2"  56   starts at 56 - 6 = 50
 ```
 
 So an event does not always sit where the span before it ended: which side

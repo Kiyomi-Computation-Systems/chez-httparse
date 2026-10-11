@@ -59,8 +59,10 @@ llhttp rejects with no lenient flag set. Each flag relaxes one rule, so you
 can talk to clients and servers that get HTTP slightly wrong.
 
 ```scheme
-(httparse-lenient-flags-value '(version optional-lf-after-cr))   ; => 80
-(httparse-lenient-flags-value '())                               ; => 0, strict
+(httparse-lenient-flags-value '(version optional-lf-after-cr))
+;; => 80
+(httparse-lenient-flags-value '())
+;; => 0, strict
 ```
 
 Leave the setting out and you get 0, strict. The value combines the flags
@@ -109,16 +111,13 @@ need `optional-lf-after-cr` as well. The same is true at a chunk size.
 
 ```text
 PUT / HTTP/1.1\nHost: x\n\n
-  strict
-    ->  error code 9 (invalid-version), "Expected CRLF after version", at offset 15
-  with optional-cr-before-lf alone
-    ->  error code 2 (strict),          "Expected CRLF after version", at offset 15
-  with both flags
-    ->  parses
+  strict                          ->  code 9 (invalid-version), offset 15
+  with optional-cr-before-lf      ->  code 2 (strict), offset 15
+  with both flags                 ->  parses
 ```
 
-Look at the **code**: the reason and the offset are the same, so only the
-code tells you whether the flag was on. That is llhttp's behaviour, matched
+Both errors carry the same reason, "Expected CRLF after version", at the
+same offset, so only the **code** tells you whether the flag was on. That is llhttp's behaviour, matched
 exactly.
 
 ### One place where it works alone

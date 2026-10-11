@@ -55,7 +55,8 @@ chez --libdirs src:vendor/byte-machine/src --program app.sps
 **In the environment.** Chez reads `CHEZSCHEMELIBDIRS` when it starts:
 
 ```sh
-export CHEZSCHEMELIBDIRS=/path/to/chez-httparse/src:/path/to/chez-httparse/vendor/byte-machine/src
+HTTPARSE=/path/to/chez-httparse
+export CHEZSCHEMELIBDIRS=$HTTPARSE/src:$HTTPARSE/vendor/byte-machine/src
 chez --program app.sps
 ```
 
