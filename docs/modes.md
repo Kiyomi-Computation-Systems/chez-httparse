@@ -17,10 +17,11 @@ argument, a list of `(name . value)` pairs:
         (httparse modes)
         (byte-machine runtime))
 
-(make-parser httparse-message-machine bindings #f
-             (list (cons 'type (httparse-message-type-value 'request))
-                   (cons 'lenient-flags
-                         (httparse-lenient-flags-value '(headers version)))))
+(make-parser
+ httparse-message-machine bindings #f
+ (list (cons 'type (httparse-message-type-value 'request))
+       (cons 'lenient-flags
+             (httparse-lenient-flags-value '(headers version)))))
 ```
 
 The values are llhttp's own numbers. `(httparse modes)` turns names into

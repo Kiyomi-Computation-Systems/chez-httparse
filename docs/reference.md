@@ -1,16 +1,16 @@
 # API reference
 
-This page is the binding-by-binding reference for chez-httparse. You build a
-parser from one of the two generated machines with `make-parser`, feed it
-bytes with `parser-feed!`, and read what happened off the result it returns.
-The three `(httparse …)` libraries are pure tables and rules you use around
-that loop: spelling the modes, naming a method, and deciding keep-alive.
+Every binding you use, with its exact signature and the library it comes
+from. The loop is always the same: make a parser with `make-parser`, feed it
+with `parser-feed!`, and read the result. The three `(httparse …)` libraries
+are small helpers around that loop: naming the modes, naming a method, and
+deciding keep-alive.
 
-For examples and explanation, start with [Usage](usage.md),
-[Callbacks](callbacks.md), [Modes](modes.md), [Errors](errors.md),
-[Pausing](pausing.md), [Connections](connection.md) or
-[The URL parser](url.md). This page answers the smaller question: what is
-the exact binding, how is it called, and where is it exported?
+For explanation and examples, read the guide pages first:
+[Usage](usage.md), [Callbacks](callbacks.md), [Modes](modes.md),
+[Errors](errors.md), [Pausing](pausing.md), [Connections](connection.md) and
+[The URL parser](url.md). The [index](#alphabetical-index) at the bottom
+lists every name.
 
 ## Modules
 
@@ -24,10 +24,9 @@ the exact binding, how is it called, and where is it exported?
 | `(byte-machine runtime)`       | Parser construction, feeding, results, errors and callback outcomes.                  | the procedures an embedder calls |
 
 The two generated libraries depend on `(byte-machine runtime)` and nothing
-else. The three `(httparse …)` libraries are pure and depend on nothing at
-all, so you can import them without loading a parser. The runtime exports
-more than this page lists; the rest is the seam the generated code calls,
-and an embedder does not need it.
+else. The three `(httparse …)` libraries depend on nothing at all, so you can
+import them without loading a parser. The runtime exports more than this
+page lists; the rest is for the generated code, not for you.
 
 ```scheme
 (import (generated httparse-message)   ; httparse-message-machine
@@ -39,33 +38,31 @@ and an embedder does not need it.
 
 ## Conventions
 
-Signatures below use `->` to separate arguments from the result; it is
-notation, not Scheme syntax. A bare `name : Type` line describes a value
-rather than a procedure. Type names are the sources' own: `ExactInteger` is
-any exact integer, `Nat` an exact non-negative integer, `(Option T)` is `T`
-or `#f`, and `Void` means no useful result. `Parser`, `ParserResult`,
-`ParserError`, `CallbackOutcome` and `CallbackFailure` are opaque records
-read only through the accessors below. A `bytevector` argument is always
-yours: the parser keeps no buffer and copies no bytes.
+**Reading a signature.** `(parser-feed! parser bytevector start end) ->
+ParserResult` takes four arguments and returns a `ParserResult`; the `->` is
+notation, not Scheme. A line like `callback-continue : CallbackOutcome`
+describes a value, not a procedure.
 
-Malformed input never raises. It comes back as a result whose status is
-`error`, and [Errors](errors.md) explains how to read it. What raises is a
-programming error, in one of two families:
+**Types.** `ExactInteger` is any exact integer and `Nat` a non-negative one.
+`(Option T)` is a `T` or `#f`. `Void` means nothing useful is returned.
+`Parser`, `ParserResult`, `ParserError`, `CallbackOutcome` and
+`CallbackFailure` are records you read only through the accessors below. A
+`bytevector` is always your own: the parser never keeps or copies it.
 
-- **A contract condition**, from `(byte-machine runtime)`: a
-  `&byte-machine-contract` condition, a direct subtype of `&condition`
-  carrying a `who`, a `code` and a `detail`. An entry's **Raises** line names
-  the code, and the detail where it says which mistake was made. The runtime
-  does not re-export the condition's predicate or accessors; they live in
-  `(byte-machine private conditions)`.
-- **A refusal**, from the three `(httparse …)` libraries: each has its own
-  condition type, a subtype of `&error`, compounded with `&who` and
-  `&message`. An unknown name or number is refused, never defaulted. Each
-  library exports a predicate and a `detail` accessor for its type; the
-  types themselves are not exported.
+**Bad input does not raise.** A malformed message comes back as a result
+with status `error` ([Errors](errors.md)). Raising is for mistakes in the
+calling code, and comes in two kinds:
 
-R6RS can still raise ordinary assertion or arity conditions for programming
-errors outside these contracts.
+- **A contract violation**, from `(byte-machine runtime)`: you called it
+  wrongly — a bad range, feeding a paused parser, a missing callback. The
+  **Raises** line names the violation's code. The runtime does not export a
+  predicate for these conditions: treat one as a bug to fix, not an outcome
+  to handle.
+- **A refusal**, from the three `(httparse …)` libraries: you passed a name
+  or number they don't know. Each library exports a predicate and a
+  `detail` accessor for its refusals, so you can catch them if you want to.
+
+Ordinary R6RS assertion and arity errors can still happen too.
 
 ## Parser construction
 
@@ -90,10 +87,11 @@ lets you set `type` (8 bits) and `lenient-flags` (16 bits); the URL machine
 declares no fields.
 
 ```scheme
-(make-parser httparse-message-machine bindings #f
-             (list (cons 'type (httparse-message-type-value 'request))
-                   (cons 'lenient-flags
-                         (httparse-lenient-flags-value '(headers version)))))
+(make-parser
+ httparse-message-machine bindings #f
+ (list (cons 'type (httparse-message-type-value 'request))
+       (cons 'lenient-flags
+             (httparse-lenient-flags-value '(headers version)))))
 ```
 
 **Available from:** `(byte-machine runtime)`\
@@ -507,14 +505,21 @@ Returns the bit for one lenient flag, such as 16 for `'version`.
 llhttp's eleven lenient flags and their bits, in llhttp's bit order. Each
 corresponds one-for-one to an `llhttp_set_lenient_*` function.
 
-| Name                | Bit | Name                        | Bit  |
-|:--------------------|----:|:----------------------------|:-----|
-| `headers`           |   1 | `optional-lf-after-cr`      | 64   |
-| `chunked-length`    |   2 | `optional-crlf-after-chunk` | 128  |
-| `keep-alive`        |   4 | `optional-cr-before-lf`     | 256  |
-| `transfer-encoding` |   8 | `spaces-after-chunk-size`   | 512  |
-| `version`           |  16 | `header-value-relaxed`      | 1024 |
-| `data-after-close`  |  32 |                             |      |
+| Name                        |  Bit |
+|:----------------------------|-----:|
+| `headers`                   |    1 |
+| `chunked-length`            |    2 |
+| `keep-alive`                |    4 |
+| `transfer-encoding`         |    8 |
+| `version`                   |   16 |
+| `data-after-close`          |   32 |
+| `optional-lf-after-cr`      |   64 |
+| `optional-crlf-after-chunk` |  128 |
+| `optional-cr-before-lf`     |  256 |
+| `spaces-after-chunk-size`   |  512 |
+| `header-value-relaxed`      | 1024 |
+
+What each one allows is in [Modes](modes.md#lenient-flags-bending-the-rules).
 
 **Available from:** `(httparse modes)`\
 **Details:** [Modes](modes.md)
@@ -652,12 +657,14 @@ Returns what the refusal says, such as "llhttp assigns no method the number
 
 `(should-keep-alive? http-major http-minor type status-code flags) -> Boolean`
 
-llhttp's `llhttp_should_keep_alive`: whether the connection stays open after
-this message. The version test is llhttp's literal `major > 0 && minor > 0`.
-Such a message stays alive unless it sent `Connection: close`; any other,
-including HTTP/1.0 and HTTP/2.0 (minor 0), must have sent
-`Connection: keep-alive`. The answer is also `#f` whenever
-`message-needs-eof?` is `#t`.
+llhttp's `llhttp_should_keep_alive`: can another message follow this one on
+the connection? It is `#t` only when both hold:
+
+- the version and `Connection` header allow it. llhttp's version test is
+  literally `major > 0 && minor > 0`: such a message stays open unless it
+  sent `Connection: close`, and any other — HTTP/1.0, and HTTP/2.0 too —
+  must have sent `Connection: keep-alive`;
+- `message-needs-eof?` is `#f`.
 
 Read the fields with `parser-field-ref` in `on-headers-complete` or
 `on-message-complete`, and pass the `type` you gave `make-parser` as a
@@ -835,11 +842,13 @@ The events with no span are `on-message-begin`, `on-headers-complete`,
 
 `httparse-url-machine : CompiledMachine`
 
-llhttp's URL parser, a separate parser that splits a request target into
-parts; the message parser does not use it. It declares five span callbacks,
-all required, and no events: `on-url-schema-data`, `on-url-host-data`,
-`on-url-path-data`, `on-url-query-data` and `on-url-fragment-data`. It
-declares no fields, so `make-parser` takes three arguments for it.
+llhttp's URL parser, which splits a request target into its parts. (The
+message parser checks every target against the same rules, but reports it
+as one span.) It declares five span callbacks, all required, and no events:
+`on-url-schema-data`, `on-url-host-data`, `on-url-path-data`,
+`on-url-query-data` and `on-url-fragment-data`. It declares no fields, so
+`make-parser` takes three arguments for it. A feed continues the URL the
+last feed was reading, so reset the parser before each new URL.
 
 **Available from:** `(generated httparse-url)`\
 **Details:** [The URL parser](url.md)
