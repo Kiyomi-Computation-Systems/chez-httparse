@@ -420,7 +420,7 @@
                        "off=62 header_field complete"
                        "off=62 error code=11 reason=\"Content-Length can't be present with Transfer-Encoding\""))))))
 
-(harness-group "the upgrade decision, and the pause it has no words for"
+(harness-group "the upgrade decision, and the pause that ends it"
   (lambda ()
     (harness-case "CONNECT does not read the body its own Content-Length declares"
       (lambda ()
@@ -428,7 +428,7 @@
         ;; CONNECT before the headers-complete callback, and its body decision
         ;; then answers 1 -- message complete and PAUSE -- so the ten bytes are
         ;; never read. Reading them is a behaviour bug the trace shows.
-        (check-equal "no body span, and a pause the adapter cannot spell"
+        (check-equal "no body span: message complete, then the pause"
                      (list-tail (trace (string-append
                                         "CONNECT foo.bar.com:443 HTTP/1.0\r\n"
                                         "User-agent: Mozilla/1.1N\r\n"

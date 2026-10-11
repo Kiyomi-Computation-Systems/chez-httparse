@@ -188,7 +188,7 @@
             (check-equal "at the first byte"
                          (parser-error-offset (parser-result-error res)) 0)))))))
 
-(harness-group "LENIENT_HEADERS, at the one site no fixture reaches"
+(harness-group "LENIENT_HEADERS, at the one site only lenient-all reaches"
   (lambda ()
     ;; FIVE OF THE SIX SITES ARE REACHED BY A SINGLE-FLAG FIXTURE, as
     ;; disabling each in turn shows. The sixth is reached only by

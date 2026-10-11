@@ -476,7 +476,7 @@
         (list (string-append "refused: " (drive-refusal-detail t)))
         (map utf8->string t))))
 
-(harness-group "the divergence that was, and is not"
+(harness-group "an authority-form OPTIONS target stops inside the url machine"
   (lambda ()
     ;; `OPTIONS a.com:443` is an authority-form target, which llhttp's URL
     ;; machine rejects for a method that is not CONNECT. A parser that read

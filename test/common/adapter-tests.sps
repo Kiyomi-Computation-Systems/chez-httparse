@@ -316,7 +316,7 @@
         (check-equal "order is not significant"
                      (adapter-parser-inits '(request version headers))
                      (adapter-parser-inits '(request headers version)))))
-    (harness-case "and the bindings no longer carry a lenient callback at all"
+    (harness-case "and no binding carries a lenient callback"
       (lambda ()
         ;; The flags are settable fields, not decision callbacks, so the
         ;; machine declares no callback for any of them. A stray binding would
