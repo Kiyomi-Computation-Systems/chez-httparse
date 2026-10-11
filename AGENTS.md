@@ -172,8 +172,9 @@ Two rows of the trace adapter said so out loud. `unexpected-eof` has **no error
 number**, because llhttp prints nothing when input runs out mid-token and
 giving it one would invent a line the oracle never wrote. `headers complete` was
 **unrenderable**, because its line carries `flags=` and `content_length=` and
-the parser did not yet track either. The tempting alternatives — omit the line, or emit it with
-zeros — both yield a fixture result shaped like a verdict.
+the parser did not yet track either. The tempting alternatives — omit the
+line, or emit it with zeros — both yield a fixture result shaped like a
+verdict.
 
 The second half is the one that is easy to miss: a refusal has to be an
 **outcome**, not a crash. The recorder still *binds* every callback, since
@@ -1066,9 +1067,8 @@ scratchpad while the submodule still sat at the old pin, built there, and its
 lanes run alternately with the new tree's for 40 rounds.
 
 The figures on file were not that baseline, since they predate the previous
-release and
-would have charged the pin with everything that changed since. One run is not
-a comparison either. The first run at the new pin read the one-byte row at
+release and would have charged the pin with everything that changed since.
+One run is not a comparison either. The first run at the new pin read the one-byte row at
 23,529 msg/s against 45,070, which was one slow run; forty alternating rounds
 read −2.7%, in the source and compiled lanes alike, about 2 ns for each of
 308 feeds. Only that row could show it. A whole-buffer parse makes one call
@@ -1085,3 +1085,60 @@ A cause named by removal is a finding even when nobody can say how it
 allocates. The record says *not known* and lists what was ruled out, and
 "unchanged" is claimed from the compiled lane, which ships and read 2,912 on
 all 40.
+
+## A comparison is only as fair as its loop, and the loop is the part nobody writes down
+
+The comparison against llhttp's own benchmark read 25.5× on a 703-byte
+request. Re-measured at a later pin it read 12.2×, and less than half of that
+drop was the pin. The Scheme side of the original had never been committed,
+so it had to be rebuilt; run at the OLD pin, the rebuilt program reproduced
+the recorded figures within a few per cent only when it built a new parser
+for every message — 98.8 MB/s against the recorded 102.2. Reusing one parser
+read 130.9.
+
+llhttp's bench loop reuses one parser for the whole run. So the original had
+charged this parser about 1.9 µs a message for setup llhttp never paid, and
+nothing on the page said which loop either side ran. The section describing
+how to take the figures named the inputs, the bindings and the byte budget.
+It did not name the one choice that decided the ratio.
+
+This is `a harness you decline to ship` from the other side. The list there
+has to name the work; for a comparison, the work includes everything each
+side does per iteration, and **what one side does by default is the thing
+the other side's author is least likely to think of**. Ask of every
+comparison: what state does each loop carry from one iteration to the next?
+llhttp's URL row turned out to carry plenty — its input ends inside a
+fragment and nothing resets the parser, so from the second iteration on both
+sides read fragment bytes. That is fine once both sides do it, and the page
+now says so.
+
+**Rebuild the old figure before trusting the new one.** Running the rebuilt
+program against the commit that recorded the old table is what showed the
+loop mismatch; the new figures alone would have looked like a large speedup.
+And check the bytes the harness actually received: `$(cat file)` strips
+trailing newlines, so llhttp would have been benchmarked on requests whose
+`\r\n\r\n` had lost its last `\n` and never completed. Asserting the three
+input lengths caught it before any rate was read.
+
+## A comment dated by its history reads as true; delete the date and it has to be
+
+Removing milestone labels, PR numbers and dates from every comment in the
+tree was meant to be a cosmetic pass. It found comments describing a parser
+that no longer existed: a grammar header saying pausing and lenient modes
+were "still to come", the url grammar saying the HTTP parser did not use it,
+a header-section intro calling itself strict throughout, a check named for
+a pause "the adapter cannot spell" whose expected trace ended in exactly that
+pause line.
+
+Each had been true when written, and the label beside it kept it looking
+true. A comment that says what the parser does "until the slice that reads
+them" is read as a statement about that moment, so nobody checks it against
+the present; it carries its own excuse. Strip the label and the same sentence
+becomes a claim about the code as it is now, and a reader acting on it can
+be misled.
+
+So `explain the behaviour in the code and the version in the changelog` is
+not only about tidiness. **History in a comment is how a stale comment
+survives review.** When writing one, describe the code in the present
+tense; when the code changes, the sentence is then wrong in a way that is
+visible, rather than right about the past.
