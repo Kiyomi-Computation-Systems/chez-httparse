@@ -1,5 +1,8 @@
 ;;; (httparse grammar): the HTTP/1 grammar, as a byte-machine source machine.
 ;;;
+;;; Derived from llhttp (https://github.com/nodejs/llhttp), MIT License,
+;;; Copyright (c) 2018 Fedor Indutny. See NOTICE at the repository root.
+;;;
 ;;; BUILD TIME ONLY. This library constructs the source IR; it is never loaded
 ;;; by a running parser. A generated parser depends on (byte-machine runtime)
 ;;; and nothing else.

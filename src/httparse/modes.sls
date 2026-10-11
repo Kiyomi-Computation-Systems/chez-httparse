@@ -1,6 +1,9 @@
 ;;; (httparse modes): the two integers an embedder chooses before the first
 ;;; byte, and llhttp's own numbering for both.
 ;;;
+;;; Derived from llhttp (https://github.com/nodejs/llhttp), MIT License,
+;;; Copyright (c) 2018 Fedor Indutny. See NOTICE at the repository root.
+;;;
 ;;; THIS LIBRARY IS PURE AND DEPENDS ON NOTHING. Not on byte-machine, not on
 ;;; the generated parser, not on the harness -- it is a table and the
 ;;; arithmetic over it. That is what lets the three consumers that must agree

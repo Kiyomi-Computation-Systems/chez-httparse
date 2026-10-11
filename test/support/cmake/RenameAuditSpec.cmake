@@ -9,11 +9,11 @@
 #
 # WHAT IS SCANNED. The build/test tree: the top-level build files, cmake/,
 # test/, and .github/. The documentation and attribution surfaces
-# (.plans/decisions/, README.org, docs/, CHANGELOG.md, AGENTS.md, LICENSE) name
-# the upstream project by design and are not walked. A scan root that does not
-# exist is skipped, not an error: under the mutation engine's staged tree only
-# cmake/ and test/support/cmake/ are present, and the audit must still judge
-# those.
+# (.plans/decisions/, README.org, docs/, CHANGELOG.md, AGENTS.md, LICENSE,
+# NOTICE) name the upstream project by design and are not walked. A scan root
+# that does not exist is skipped, not an error: under the mutation engine's
+# staged tree only cmake/ and test/support/cmake/ are present, and the audit
+# must still judge those.
 #
 # WHY THE PATTERNS ARE ASSEMBLED AT RUN TIME. This file must never contain
 # the forbidden text it hunts, or it would convict itself; string(CONCAT)

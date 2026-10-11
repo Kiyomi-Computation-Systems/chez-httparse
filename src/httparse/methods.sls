@@ -2,6 +2,9 @@
 ;;; request line and the number it prints for each -- as pure data any consumer
 ;;; can read at RUN time.
 ;;;
+;;; Derived from llhttp (https://github.com/nodejs/llhttp), MIT License,
+;;; Copyright (c) 2018 Fedor Indutny. See NOTICE at the repository root.
+;;;
 ;;; THIS LIBRARY IS PURE AND DEPENDS ON NOTHING. Not on byte-machine, not on the
 ;;; generated parser, not on the harness -- it is two tables and the arithmetic
 ;;; over them. That is what lets the consumers that must agree import ONE source
