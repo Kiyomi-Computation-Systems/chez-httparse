@@ -200,7 +200,7 @@ Reordering the arms of such a `case`, which changes nothing about what it
 does, shows the effect directly: in a scanning build, the request target's
 cost moves from 239.8 to 42.4 ns per byte, with the URL parser unmoved as a
 control.
-[The design record](../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md)
+[The design record](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md)
 has the measurements.
 
 ## Would wrapping llhttp be faster?
