@@ -1,114 +1,125 @@
 # Parser state and the connection
 
-After a message, you decide whether the connection stays open for another. You
-read what the parser learned with
-[`parser-field-ref`](reference.md#parser-field-ref-procedure), and pass it to
-llhttp's own two decisions in `(httparse decisions)`.
+After each message you make one decision: **keep the connection open** for
+another message, or **close it**. The parser has the facts; llhttp has the
+rules. This page shows how to read the first and apply the second.
 
-## Reading parser state
+## Reading what the parser knows
 
-`(parser-field-ref parser name)` returns a field's current value as an
-integer. The message parser exposes these:
+[`parser-field-ref`](reference.md#parser-field-ref-procedure) returns one of
+the parser's fields as an integer:
 
-| Field             | Value                                                   |
-|:------------------|:--------------------------------------------------------|
-| `'method`         | llhttp's method number, not an index into any list here |
-| `'status-code`    | a response's three digits                               |
-| `'http-major`     | the major version                                       |
-| `'http-minor`     | the minor version                                       |
-| `'flags`          | llhttp's flag bits                                      |
-| `'content-length` | *what remains to be read*, not what was declared        |
-| `'upgrade`        | 1 if this message upgrades, as `llhttp_get_upgrade`     |
+```scheme
+(parser-field-ref p 'status-code)   ; => 200
+```
 
-A name the machine does not declare raises; it is never answered with a
-default. The access is read-only: nothing sets a field from a callback.
+| Field             | What it holds                                              |
+|:------------------|:-----------------------------------------------------------|
+| `'method`         | the request method, as llhttp's method number              |
+| `'status-code`    | the response's three-digit status                          |
+| `'http-major`     | the major version: the first `1` of `HTTP/1.1`             |
+| `'http-minor`     | the minor version: the second `1` of `HTTP/1.1`            |
+| `'flags`          | llhttp's flag bits: framing, `Connection` values, and more |
+| `'content-length` | how much of the body is **still to come**                  |
+| `'upgrade`        | 1 if this message is an upgrade                            |
 
-`content-length` counts *down* as the body arrives, which is llhttp's own
-behaviour. Read it inside `on-headers-complete` if you want the declared
-length; by `on-message-complete` it is zero.
+Three things to know:
 
-To turn `method` into a symbol, use `httparse-method-name` from
-`(httparse methods)`. For when `upgrade` is set and how long it holds, see
+- **The fields are read-only.** Nothing you do in a callback changes them.
+- **An unknown name raises an error.** It is never quietly answered with 0.
+- **`content-length` counts down** as the body arrives, as llhttp's does.
+  Read it in `on-headers-complete` for the declared length; by
+  `on-message-complete` it is 0.
+
+To turn `'method` into a name such as `GET`, use
+[`httparse-method-name`](reference.md#httparse-method-name-procedure). When
+`'upgrade` is set, and how long it stays set, is in
 [pausing.md](pausing.md#knowing-in-advance-the-upgrade-field).
 
-## Deciding keep-alive vs close
+## Keep the connection open?
 
-`(httparse decisions)` is pure and turns those fields into llhttp's own two
-after-a-message decisions:
+`(httparse decisions)` gives you llhttp's own two rules:
 
-| Procedure                                                        | Arguments                              | Mirrors                    |
-|:-----------------------------------------------------------------|:---------------------------------------|:---------------------------|
-| [`should-keep-alive?`](reference.md#should-keep-alive-predicate) | major, minor, type, status code, flags | `llhttp_should_keep_alive` |
-| [`message-needs-eof?`](reference.md#message-needs-eof-predicate) | type, status code, flags               | `llhttp_message_needs_eof` |
+| Procedure                                                        | Asks                                     | llhttp's version           |
+|:-----------------------------------------------------------------|:-----------------------------------------|:---------------------------|
+| [`should-keep-alive?`](reference.md#should-keep-alive-predicate) | can another message follow this one?     | `llhttp_should_keep_alive` |
+| [`message-needs-eof?`](reference.md#message-needs-eof-predicate) | does this message end only at the close? | `llhttp_message_needs_eof` |
 
-They mirror llhttp exactly. `should-keep-alive?` is the version and
-`Connection` gate *and* not needing eof, so it takes both the version and
-`message-needs-eof?`'s inputs.
+Call `should-keep-alive?` when a message completes:
 
 ```scheme
 (import (httparse decisions))
 
 (list 'on-message-complete
       (lambda (p ctx)
-        (define keep?
-          (should-keep-alive? (parser-field-ref p 'http-major)
-                              (parser-field-ref p 'http-minor)
-                              response-or-request        ; the symbol you passed
-                              (parser-field-ref p 'status-code)
-                              (parser-field-ref p 'flags)))
-        (remember-keep-alive ctx keep?)
+        (remember-keep-alive
+         ctx
+         (should-keep-alive? (parser-field-ref p 'http-major)
+                             (parser-field-ref p 'http-minor)
+                             'request    ; the type you gave make-parser
+                             (parser-field-ref p 'status-code)
+                             (parser-field-ref p 'flags)))
         callback-continue))
 ```
 
-### Read the flags in time
+**Read the fields inside the callback.** Between one message and the next,
+the parser clears `flags`, so read them in `on-headers-complete` or
+`on-message-complete`, not later.
 
-Read the flags inside `on-headers-complete` or `on-message-complete`. The
-reset between messages zeroes `flags` before the next one begins.
+**Pass the type you chose**, `'request` or `'response`, the same one you
+gave `make-parser` ([modes.md](modes.md)). An unknown type raises an error
+rather than being treated as a response.
 
-### Pass the type symbol you chose
+### How `should-keep-alive?` decides
 
-Pass `'request` or `'response`, the same type you gave `make-parser` (see
-[modes.md](modes.md)). An unknown type is *refused, never defaulted*: both
-procedures raise rather than treat it as a response.
+It says yes only if both are true:
 
-### The version test is llhttp's, not `>= 1.1`
+1. **The version and `Connection` header allow it.** HTTP/1.1 stays open
+   unless the message said `Connection: close`. Anything else must have said
+   `Connection: keep-alive`.
+2. **The message does not need the connection to close** to end — that is,
+   `message-needs-eof?` is false.
 
-The gate is llhttp's literal `major > 0 && minor > 0`. An HTTP/1.1-or-later
-message stays alive unless it said `Connection: close`; anything else must
-have said `Connection: keep-alive`. So HTTP/2.0 (minor 0) needs an explicit
-`keep-alive` where a naive `>= 1.1` would not.
+One surprise, matching llhttp exactly: "HTTP/1.1 or later" is llhttp's
+literal test `major > 0 && minor > 0`. So `HTTP/2.0`, whose minor is 0, needs
+an explicit `Connection: keep-alive`, where a test for "at least 1.1" would
+not.
 
-### When a message needs eof
+### When a message ends at the close
 
-`message-needs-eof?` asks whether this message ends only when the connection
-closes. A request never does. A response does not when it is 1xx, 204 or 304,
-when `F-SKIP-BODY` is set (a HEAD response), or when a content length or a
-chunked coding frames it. A transfer coding that is *not* chunked leaves it
-framed by eof.
+`message-needs-eof?` asks whether a message ends only when the connection
+closes: a body with no stated length, which runs until the close. Such a
+message completes at [`parser-finish!`](reference.md#parser-finish-procedure)
+([usage.md](usage.md#4-finish)).
+
+- **A request never does.**
+- **A response does not** when it is `1xx`, `204` or `304`; when
+  `F-SKIP-BODY` is set (the response to a `HEAD`); or when a
+  `Content-Length` or a `chunked` coding gives its length.
+- **A response does** otherwise — including one whose `Transfer-Encoding`
+  does not end in `chunked`.
 
 ## The flag constants
 
-The library exports llhttp's `F-*` flag bits under llhttp's names and values,
-so you can name a bit rather than hard-code `2`. The grammar imports the same
-definitions.
-
-| Constant                  | Value |
-|:--------------------------|------:|
-| `F-CONNECTION-KEEP-ALIVE` |     1 |
-| `F-CONNECTION-CLOSE`      |     2 |
-| `F-CONNECTION-UPGRADE`    |     4 |
-| `F-CHUNKED`               |     8 |
-| `F-UPGRADE`               |    16 |
-| `F-CONTENT-LENGTH`        |    32 |
-| `F-SKIP-BODY`             |    64 |
-| `F-TRAILING`              |   128 |
-| `F-TRANSFER-ENCODING`     |   512 |
-
-256 is deliberately absent: llhttp leaves that bit unused. `F-TRAILING` is
-set by the zero chunk, not by a header, and neither decision reads it.
+`(httparse decisions)` also exports llhttp's flag bits, under llhttp's names
+and values, so you can name a bit instead of writing `2`:
 
 ```scheme
-(when (not (zero? (bitwise-and (parser-field-ref p 'flags)
-                               F-CONNECTION-CLOSE)))
+(unless (zero? (bitwise-and (parser-field-ref p 'flags) F-CONNECTION-CLOSE))
   (note-close-requested ctx))
 ```
+
+| Constant                  | Value | Set when the message                                     |
+|:--------------------------|------:|:---------------------------------------------------------|
+| `F-CONNECTION-KEEP-ALIVE` |     1 | says `Connection: keep-alive`                            |
+| `F-CONNECTION-CLOSE`      |     2 | says `Connection: close`                                 |
+| `F-CONNECTION-UPGRADE`    |     4 | says `Connection: upgrade`                               |
+| `F-CHUNKED`               |     8 | is framed by `chunked`                                   |
+| `F-UPGRADE`               |    16 | has an `Upgrade` header                                  |
+| `F-CONTENT-LENGTH`        |    32 | has a `Content-Length` header                            |
+| `F-SKIP-BODY`             |    64 | has no body: `on-headers-complete` returned `'skip-body` |
+| `F-TRAILING`              |   128 | has reached its zero-size last chunk                     |
+| `F-TRANSFER-ENCODING`     |   512 | has a `Transfer-Encoding` header                         |
+
+256 is missing on purpose: llhttp leaves that bit unused. Neither decision
+reads `F-TRAILING`.
