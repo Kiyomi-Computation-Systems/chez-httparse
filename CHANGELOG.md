@@ -6,6 +6,31 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **An API reference**, `docs/reference.md`: every export of this project's
+  libraries, and the procedures of the generator's runtime that an embedder
+  calls. The `docs.reference` lane checks it against the libraries' real
+  `export` forms and fails on a missing, extra, duplicated or empty entry, a
+  wrong module, or an alphabetical index that is incomplete, unsorted or links
+  the wrong anchor.
+- **`docs/installing.md`**: which two directories go on Chez's library path,
+  and three ways to put them there.
+- **`docs/building.md`**: the make targets, presets, lane names and opt-in
+  checks.
+- **`NOTICE`**, crediting llhttp, from which the parser derives, with its MIT
+  license text.
+
+### Changed
+
+- **The documentation is Markdown, split by task.** `docs/api.org` is now
+  `usage.md`, `callbacks.md`, `modes.md`, `errors.md`, `pausing.md`,
+  `connection.md` and `url.md`; `conformance.org` and `performance.org` are
+  now `.md`. The prose is rewritten for embedders; the facts and figures are
+  unchanged.
+- **README.org** is rewritten for developers: no status section, a CI badge,
+  and a page-by-page documentation list.
+
 ## [0.4.5] - 2026-10-01
 
 **A pin bump, so a parse error can name the span it abandoned.** byte-machine

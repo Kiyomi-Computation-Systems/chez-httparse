@@ -1,6 +1,6 @@
 ;;; The `upgrade` field: llhttp's `llhttp_get_upgrade`, read by an embedder.
 ;;;
-;;; `docs/api.org` lists `upgrade` among the fields `parser-field-ref` reads, as
+;;; `docs/pausing.md` lists `upgrade` among the fields `parser-field-ref` reads, as
 ;;; the answer llhttp gives through `llhttp_get_upgrade`. This lane holds the
 ;;; COMMITTED parser to that, because the trace cannot: no callback line prints
 ;;; the field, and on a 101 nothing inside the machine reads it either (the
