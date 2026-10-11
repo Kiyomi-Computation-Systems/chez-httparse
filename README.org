@@ -1,59 +1,48 @@
 * chez-httparse
 
-(CI badge goes here)
+[[https://github.com/Kiyomi-Computation-Systems/chez-httparse/actions/workflows/ci.yml][https://github.com/Kiyomi-Computation-Systems/chez-httparse/actions/workflows/ci.yml/badge.svg]]
 
-An HTTP/1.x parser for Chez Scheme, built as a byte-level state machine and
-measured against [[https://github.com/nodejs/llhttp][llhttp]]'s own conformance corpus — not by re-implementing
-its tests, but by replaying llhttp's *recorded traces* and comparing byte for
-byte, at every chunk size.
+An HTTP/1.x parser for Chez Scheme: a byte-level state machine, checked
+against [[https://github.com/nodejs/llhttp][llhttp]] by replaying llhttp's recorded conformance traces and
+comparing them byte for byte, at every chunk size.
 
 #+begin_quote
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
-*Status: v0.4.5.* Request and response parsing, strict and lenient: *all 274*
-fixtures in llhttp's conformance corpus — every HTTP fixture and every URL
-fixture it ships — at every chunk size from 1 to the input length, with none
-excluded. The URL fixtures are a second generated parser, for the five spans
-llhttp's own url binary reports. A live differential against a built llhttp
-agrees on 9,557 generated inputs besides. See
-[[file:docs/conformance.org][docs/conformance.org]].
-
-What an embedder gets:
-
-- *The message parser*, =(generated httparse-message)=. Request or response
-  and llhttp's eleven lenient flags are chosen when the parser is made; pausing,
-  =skip-body= and llhttp's two upgrade hand-offs are reported as results; and
-  =parser-finish!= ends a parse the way =llhttp_finish= does — a
-  close-delimited body completes, and a half-read message is
-  =invalid-eof-state=. Inside a callback, =parser-stream-offset= says where in
-  the stream that callback is.
-- *The url sub-parser*, =(generated httparse-url)=, for a request target broken
-  into schema, host, path, query and fragment.
-- *Three pure libraries* that need no runtime: =(httparse modes)= (the mode
-  tables), =(httparse methods)= (llhttp's method name/number tables) and
-  =(httparse decisions)= (its keep-alive / needs-eof rules and the flag bits they
-  read).
-
-[[file:docs/api.org][docs/api.org]] is the reference.
-[[file:docs/performance.org][docs/performance.org]] records what a parse
-allocates, how fast it runs, the ratio against llhttp, and what wrapping llhttp
-through the FFI would buy instead. =CHANGELOG.md= is the version history.
-
 * What it is
 
-- *A state machine, not a reader.* You feed it bytes; it calls you back. It
-  keeps no buffer of its own, copies no spans, and allocates nothing in
-  proportion to the input — a 10 KB body costs what a 10-byte one does.
-- *Resumable by construction.* A token, header or body split across any
-  number of feeds parses identically to one whole buffer. That is what the
-  corpus replay at every chunk size actually tests.
+- *A state machine, not a reader.* You feed it bytes and it calls you back.
+  It keeps no buffer, copies no spans, and allocates nothing in proportion to
+  the input: a 10 KB body costs what a 10-byte one does.
+- *Resumable.* A token, header or body split across any number of feeds
+  parses exactly as one whole buffer does.
+- *Conformant.* It passes all 274 fixtures in llhttp's corpus, every HTTP and
+  URL fixture upstream ships, at every chunk size from 1 to the input length.
+  A live differential against a built llhttp agrees on 9,557 generated inputs
+  as well. See [[file:docs/conformance.org][docs/conformance.org]].
 - *Generated and committed.* =src/generated/httparse-message.sls= is emitted
-  from =src/httparse/grammar.sls= and checked in, so what ships is reviewable
-  as a diff and loadable without running a generator. A reference
+  from =src/httparse/grammar.sls= and checked in, so the shipped parser is
+  reviewable as a diff and loads without running the generator. A reference
   interpreter runs beside it over every fixture and must agree.
-- *Pure Scheme.* No C, no FFI. The only dependency is the state-machine
-  generator's runtime library.
+- *Pure Scheme.* No C and no FFI. The only runtime dependency is the
+  generator's runtime library, vendored at =vendor/byte-machine=.
+
+* What you get
+
+- *The message parser*, =(generated httparse-message)=. Choose request or
+  response, and any of llhttp's eleven lenient flags, when you make the
+  parser. Pauses, =skip-body= and llhttp's two upgrade hand-offs come back as
+  results. =parser-finish!= ends a parse as =llhttp_finish= does: a
+  close-delimited body completes, and a half-read message is
+  =invalid-eof-state=. Inside a callback, =parser-stream-offset= gives the
+  callback's position in the stream.
+- *The URL parser*, =(generated httparse-url)=. Splits a request target into
+  schema, host, path, query and fragment spans.
+- *Three pure libraries* with no runtime dependency: =(httparse modes)= (mode
+  tables), =(httparse methods)= (llhttp's method names and numbers) and
+  =(httparse decisions)= (llhttp's keep-alive and needs-EOF rules, and the
+  flag bits they read).
 
 * Using it
 
@@ -92,87 +81,81 @@ through the FFI would buy instead. =CHANGELOG.md= is the version history.
     (else (parser-result-status r))))
 #+end_src
 
-*The complete runnable version of this example is
-[[file:test/common/example-tests.sps][test/common/example-tests.sps]]*, which runs in CI — so it cannot drift from
-what the library actually does. [[file:docs/api.org][docs/api.org]] is the reference.
+The complete, runnable version is
+[[file:test/common/example-tests.sps][test/common/example-tests.sps]], which the
+test suite runs, so this example cannot drift from the library.
+[[file:docs/api.org][docs/api.org]] is the full reference.
 
 * Requirements
 
-- Chez Scheme 10.4.1 or newer (=scheme=, =chez= and =chezscheme= are all
-  probed; Petite is rejected)
-- CMake 3.26 or newer (4.3.3 is what has actually been exercised)
+- Chez Scheme 10.4.1 or newer. Discovery tries =scheme=, =chez= and
+  =chezscheme=, and rejects Petite.
+- CMake 3.26 or newer. CI runs 3.31; development uses 4.x.
+- The generator submodule: clone with =--recursive=, or run
+  =git submodule update --init=.
 
-The CMake-layer specifications run with no Scheme installed, via the
-=no-scheme= preset. The optional live-llhttp differential additionally needs
-Node and a C toolchain; it is off unless you ask for it.
-
-* Portability
-
-The libraries are *pure R6RS*. Nothing under =src/= imports =(chezscheme)=: the
-grammars import =(rnrs)= and =(byte-machine graph)=, and both generated artifacts
-import =(rnrs)= and =(byte-machine runtime)= and nothing else. The same holds for
-byte-machine's own =src/=. Porting to Guile, Racket or another R6RS system is
-therefore a *tooling* job, not a library one.
-
-Chez appears in four places, all of them build- or test-time:
-
-- the test harness — =(only (chezscheme) machine-type scheme-version getenv
-  system statistics sstats-bytes real-time with-output-to-string
-  display-condition)=, eight names enumerated rather than a blanket import
-- =tools/emit-machine.ss= — command-line arguments, file output, =exit=
-- byte-machine's bench runner — timing, allocation, and =compile-file= for the
-  ahead-of-time lane
-- =cmake/HttparseChez.cmake= — probing for the executable
-
-Most of those eight have a direct equivalent or a short replacement. The
-exception is =statistics= / =sstats-bytes=, which back the allocation lane:
-allocation accounting has no portable spelling, so that lane is Chez-only by
-construction and a port would reimplement or drop it.
-
-Two things to expect. Library resolution differs — Racket wants =#lang r6rs=
-wrapping, Guile has its own search rules — and the generated parser is a large
-mutually-recursive set of internal definitions leaning on proper tail calls, a
-shape Chez compiles particularly well; the figures in
-[[file:docs/performance.org][docs/performance.org]] are Chez's and would need
-re-measuring.
-
-Every Scheme lane in the build already takes a =BACKEND= argument
-(=cmake/HttparseSchemeLane.cmake=), with =chez= as the only value it knows. That
-is where a second runtime attaches.
-
-*None of this has been tried.* The library is portable by construction, not by
-measurement — and this project does not claim a property it has not measured.
+The CMake-layer specifications also run with no Scheme installed, through the
+=no-scheme= preset. The optional live-llhttp differential needs Node, a C
+toolchain and a built llhttp checkout; see
+[[file:docs/conformance.org][docs/conformance.org]].
 
 * Building and testing
 
-Run =make= (or =make help=) for the full target list. The main entries:
+=make help= lists every target. The main ones:
 
-| =make build=    | configure and build the development preset      |
-| =make dev=      | build, then run the harness self-tests          |
-| =make test=     | build, then run the pull-request selection      |
-| =make test-all= | build, then run the complete selection          |
-| =make clean=    | remove all build trees                          |
+| =make build=    | configure and build the development preset |
+| =make dev=      | build, then run the harness self-tests     |
+| =make test=     | build, then run the pull-request selection |
+| =make test-all= | build, then run the complete selection     |
+| =make clean=    | remove all build trees                     |
 
-Every target is a thin wrapper over checked-in CMake presets, so
-=cmake --preset dev= and =ctest --preset pr= work identically everywhere,
-including on Windows where =make= is not in the base install.
+Each target wraps a checked-in CMake preset, so =cmake --preset dev= and
+=ctest --preset pr= work the same way without =make=, including on Windows.
 
-To run the parser against a live llhttp on generated input, see
-[[file:docs/conformance.org][docs/conformance.org]].
+* Portability
+
+The libraries are pure R6RS. Nothing under =src/= imports =(chezscheme)=:
+the grammars import =(rnrs)= and =(byte-machine graph)=, and the generated
+parsers import =(rnrs)= and =(byte-machine runtime)= only. The generator's
+own =src/= is the same. A port to another R6RS system is a tooling job, not a
+library one.
+
+Chez-specific code is confined to build and test time:
+
+- the test harness, through nine named imports: =machine-type=,
+  =scheme-version=, =getenv=, =system=, =statistics=, =sstats-bytes=,
+  =real-time=, =with-output-to-string= and =display-condition=
+- =tools/emit-machine.ss=, for command-line arguments, file output and =exit=
+- =cmake/HttparseChez.cmake=, which finds the executable
+
+Most of those imports have a direct equivalent elsewhere. =statistics= and
+=sstats-bytes= do not: allocation accounting has no portable spelling, so the
+allocation lane is Chez-only.
+
+Expect two differences on another system. Library resolution differs (Racket
+wants =#lang r6rs=, Guile has its own search rules). And the generated parser
+is a large set of mutually recursive definitions that relies on proper tail
+calls, a shape Chez compiles well, so the figures in
+[[file:docs/performance.org][docs/performance.org]] would need re-measuring.
+Every Scheme lane takes a =BACKEND= argument (=cmake/HttparseSchemeLane.cmake=),
+which is where a second runtime would attach.
+
+No port has been attempted; portability here is by construction, not by
+measurement.
 
 * Documentation
 
-- [[file:docs/api.org][docs/api.org]] — the public surface
-- [[file:docs/conformance.org][docs/conformance.org]] — what it parses, and every measured divergence
-- [[file:docs/performance.org][docs/performance.org]] — allocation and throughput, measured
-- =.plans/decisions/= — design decision records: the reasoning behind choices
-  these documents describe
-- =CHANGELOG.md= — release history
+- [[file:docs/api.org][docs/api.org]]: the public API
+- [[file:docs/conformance.org][docs/conformance.org]]: what it parses, how that is checked, and every
+  measured divergence from llhttp
+- [[file:docs/performance.org][docs/performance.org]]: allocation, throughput, the ratio against
+  llhttp, and what an FFI wrapper would buy instead
+- =.plans/decisions/=: design decision records
+- =CHANGELOG.md=: release history
 
 * License
 
-© [[https://kiyomicomputation.systems/][Kiyomi Computation Systems LLC]]. Licensed under BSD 3-Clause — see
-[[file:LICENSE][LICENSE]].
+© [[https://kiyomicomputation.systems/][Kiyomi Computation Systems LLC]]. BSD 3-Clause; see [[file:LICENSE][LICENSE]].
 
 llhttp's conformance corpus is vendored under =test/vendor/llhttp/= as test
-data and is MIT licensed; it is not part of the distributed library.
+data. It is MIT licensed and is not part of the distributed library.
