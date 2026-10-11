@@ -15,10 +15,19 @@ CMAKE ?= cmake
 CTEST ?= ctest
 CTEST_FLAGS ?= --output-on-failure --no-tests=error
 
+# The docs site is rendered with chez-cmark-gfm, which is not a dependency of
+# the library: name a checkout with CMARK_GFM_ROOT. These targets run Chez
+# directly rather than through CMake, so the site builds on a distribution's
+# Chez as well as on the version the library's own build requires. SITE_REF
+# is the git ref that ../ links in docs/ are pinned to on GitHub.
+CHEZ ?= chez
+SITE_REF ?= main
+SITE_LIBDIRS = .:test/site:test/support/harness:$(CMARK_GFM_ROOT)/src
+
 # Bare 'make' prints the target list rather than building; 'make all' still builds.
 .DEFAULT_GOAL := help
 
-.PHONY: all help doctor configure build dev test test-all prod clean corpus-refresh parser-refresh
+.PHONY: all help doctor configure build dev test test-all prod clean corpus-refresh parser-refresh site check-site cmark-gfm-root
 
 all: build   ## build the development preset
 
@@ -74,3 +83,26 @@ corpus-refresh:   ## re-vendor the llhttp corpus (needs LLHTTP_ROOT=/path/to/llh
 # and that lane run the same script.
 parser-refresh: configure   ## re-emit the checked-in generated parser
 	$(CMAKE) --build build/dev --target httparse_parser_refresh
+
+# Each site target first checks CMARK_GFM_ROOT names a chez-cmark-gfm checkout,
+# so a missing path fails with a sentence rather than a library-not-found.
+cmark-gfm-root:
+	@test -n "$(CMARK_GFM_ROOT)" || { echo "set CMARK_GFM_ROOT=/path/to/chez-cmark-gfm" >&2; exit 2; }
+	@test -f "$(CMARK_GFM_ROOT)/src/cmark/gfm.sls" || { echo "$(CMARK_GFM_ROOT) is not a chez-cmark-gfm checkout" >&2; exit 2; }
+
+# docs/*.md plus site/index.md, rendered to build/site/ through chez-cmark-gfm.
+site: cmark-gfm-root   ## render docs/ into build/site/ (needs CMARK_GFM_ROOT)
+	@mkdir -p build/site
+	@CHEZSCHEMELIBDIRS=$(SITE_LIBDIRS) SITE_REF="$(SITE_REF)" \
+	  $(CHEZ) --program build-site.sps
+	@cp site/style.css build/site/style.css
+	@echo "site: build/site ready (open build/site/index.html)"
+
+# The generator's own suites first, then the real site checked in memory: the
+# nav lists exactly docs/*.md, every link and anchor resolves, no .md link
+# leaks into the HTML, and preformatted code is never reflowed.
+check-site: cmark-gfm-root   ## test the site generator, then check docs/ with it
+	@CHEZSCHEMELIBDIRS=$(SITE_LIBDIRS) $(CHEZ) --program test/site/test-site.sps
+	@CHEZSCHEMELIBDIRS=$(SITE_LIBDIRS) $(CHEZ) --program test/site/test-site-render.sps
+	@CHEZSCHEMELIBDIRS=$(SITE_LIBDIRS) SITE_REF="$(SITE_REF)" \
+	  $(CHEZ) --program test/site/site-check.sps
