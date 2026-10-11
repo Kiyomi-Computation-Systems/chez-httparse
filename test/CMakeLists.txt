@@ -1397,6 +1397,41 @@ foreach(mode source aot)
     LABELS example)
 endforeach()
 
+# --- The API reference ------------------------------------------------------
+#
+# docs/reference.md is written by hand; this checks that it is complete. Every
+# export of this repository's public libraries must have exactly one entry,
+# and every entry for the generator's runtime must name a real export of it.
+# The public libraries are globbed rather than listed, so a new one fails this
+# lane until the page documents it. The two grammars are excluded by name:
+# they build the machines and are never imported by an embedder.
+
+file(GLOB HTTPARSE_REFERENCE_EXACT_SOURCES
+     "${CMAKE_SOURCE_DIR}/src/httparse/*.sls"
+     "${CMAKE_SOURCE_DIR}/src/generated/*.sls")
+list(REMOVE_ITEM HTTPARSE_REFERENCE_EXACT_SOURCES
+     "${CMAKE_SOURCE_DIR}/src/httparse/grammar.sls"
+     "${CMAKE_SOURCE_DIR}/src/httparse/url-grammar.sls")
+list(SORT HTTPARSE_REFERENCE_EXACT_SOURCES)
+list(JOIN HTTPARSE_REFERENCE_EXACT_SOURCES "|" HTTPARSE_REFERENCE_EXACT_JOINED)
+set(HTTPARSE_REFERENCE_LIBRARY
+    "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/reference.sls")
+
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.docs.reference.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/reference-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_REFERENCE_LIBRARY}
+            "${CMAKE_CURRENT_LIST_DIR}/common/reference-tests.sps"
+    ENVIRONMENT "HTTPARSE_REFERENCE_DOC=${CMAKE_SOURCE_DIR}/docs/reference.md"
+                "HTTPARSE_REFERENCE_EXACT_SOURCES=${HTTPARSE_REFERENCE_EXACT_JOINED}"
+                "HTTPARSE_REFERENCE_SUBSET_SOURCES=${HTTPARSE_GENERATOR_COLLECTION}/runtime.sls"
+    TIMEOUT 120
+    LABELS docs)
+endforeach()
+
 # --- Finishing a close-delimited body ---------------------------------------
 #
 # The one completion the corpus cannot reach: `parser-finish!` on a body the
@@ -1446,7 +1481,7 @@ endforeach()
 
 # --- The invalid-transfer-encoding node names -------------------------------
 #
-# docs/api.org names the node `parser-error-node-name` returns for each of the
+# docs/errors.md names the node `parser-error-node-name` returns for each of the
 # four ways a request fails with `invalid-transfer-encoding`. Node names are
 # ours, so no trace prints them. This lane drives the COMMITTED parser over
 # every strict request fixture that ends in code 15, and holds each to the
@@ -1477,7 +1512,7 @@ endforeach()
 
 # --- What parser-stream-offset answers inside a callback ---------------------
 #
-# docs/api.org says what a callback reads there: the bytes taken before an
+# docs/callbacks.md says what a callback reads there: the bytes taken before an
 # event, and the end of a span's fragment. Every other lane that reads the
 # offset inside a span callback feeds one buffer from index 0, where the
 # fragment's end and `to` are the same number, so a runtime that handed the

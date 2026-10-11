@@ -1,6 +1,6 @@
 ;;; What `parser-stream-offset` answers inside a callback.
 ;;;
-;;; `docs/api.org` gives it one answer per kind of callback:
+;;; `docs/callbacks.md` gives it one answer per kind of callback:
 ;;;
 ;;;   EVENT  the bytes the parser has taken before the callback, which is the
 ;;;          position llhttp's traces print as `off=` for that event;

@@ -2590,7 +2590,7 @@
       (make-error-node 'e-bad-te-value 'bad-te-value #f)
       ;; `e-request-invalid-te`, like `e-empty-transfer-encoding`,
       ;; `e-te-with-content-length` and `e-bad-te-value` above, is a
-      ;; DOCUMENTED embedder surface, not just an internal label. docs/api.org
+      ;; DOCUMENTED embedder surface, not just an internal label. docs/errors.md
       ;; lists the four as what `parser-error-node-name` returns for the four
       ;; ways a request fails with `invalid-transfer-encoding`. The CODE is
       ;; one per llhttp number, so the node name is how an embedder tells

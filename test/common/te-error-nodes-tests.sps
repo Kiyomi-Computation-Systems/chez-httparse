@@ -1,6 +1,6 @@
-;;; The node names docs/api.org gives for `invalid-transfer-encoding`.
+;;; The node names docs/errors.md gives for `invalid-transfer-encoding`.
 ;;;
-;;; `docs/api.org` tells an embedder that a request refused with code
+;;; `docs/errors.md` tells an embedder that a request refused with code
 ;;; `invalid-transfer-encoding` fails in one of four ways, and that
 ;;; `parser-error-node-name` tells the four apart. The code and reason are
 ;;; llhttp's, and the conformance lane already holds them to the corpus. The
@@ -31,7 +31,7 @@
 (define artifact-path (adapter-environment-variable "HTTPARSE_GENERATED_PARSER"))
 
 ;; documented-nodes : (Listof (Pair String Symbol))
-;; llhttp's reason text -> the node docs/api.org names for it. The four rows
+;; llhttp's reason text -> the node docs/errors.md names for it. The four rows
 ;; of the document's table, in its order.
 (define documented-nodes
   '(("Empty Transfer-Encoding" . e-empty-transfer-encoding)

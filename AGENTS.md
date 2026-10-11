@@ -829,7 +829,7 @@ and it is not a reason to skip the next one.
 
 ## A harness you decline to ship is only as good as the list that replaces it
 
-The FFI comparison in `docs/performance.org` needs a C toolchain, so its
+The FFI comparison in `docs/performance.md` needs a C toolchain, so its
 harness is kept out of the tree. What went in instead was a section called
 *Taking these yourself*: four numbered steps, the clang flags, the struct size,
 the shape of the shim.
@@ -887,7 +887,7 @@ what it was competing with, so the next person can see the claim expire.
 
 Cutting v0.2.0 meant moving the version string in `CHANGELOG.md` and the
 `README.org` status paragraph — the two places a checklist would name. The
-third was `docs/conformance.org`, which carried no version number at all:
+third was `docs/conformance.md`, which carried no version number at all:
 
 > v0.1 shipped 190 of them, strict-mode only. Pausing and `skipBody` (26) came
 > in after it, then the eleven lenient flags (37), then the url sub-parser

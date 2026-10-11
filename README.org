@@ -20,7 +20,7 @@ comparing them byte for byte, at every chunk size.
 - *Conformant.* It passes all 274 fixtures in llhttp's corpus, every HTTP and
   URL fixture upstream ships, at every chunk size from 1 to the input length.
   A live differential against a built llhttp agrees on 9,557 generated inputs
-  as well. See [[file:docs/conformance.org][docs/conformance.org]].
+  as well. See [[file:docs/conformance.md][docs/conformance.md]].
 - *Generated and committed.* =src/generated/httparse-message.sls= is emitted
   from =src/httparse/grammar.sls= and checked in, so the shipped parser is
   reviewable as a diff and loads without running the generator. A reference
@@ -84,7 +84,8 @@ comparing them byte for byte, at every chunk size.
 The complete, runnable version is
 [[file:test/common/example-tests.sps][test/common/example-tests.sps]], which the
 test suite runs, so this example cannot drift from the library.
-[[file:docs/api.org][docs/api.org]] is the full reference.
+[[file:docs/usage.md][docs/usage.md]] walks through it, and
+[[file:docs/reference.md][docs/reference.md]] lists every procedure.
 
 * Requirements
 
@@ -97,7 +98,7 @@ test suite runs, so this example cannot drift from the library.
 The CMake-layer specifications also run with no Scheme installed, through the
 =no-scheme= preset. The optional live-llhttp differential needs Node, a C
 toolchain and a built llhttp checkout; see
-[[file:docs/conformance.org][docs/conformance.org]].
+[[file:docs/building.md][docs/building.md]].
 
 * Building and testing
 
@@ -111,6 +112,8 @@ toolchain and a built llhttp checkout; see
 
 Each target wraps a checked-in CMake preset, so =cmake --preset dev= and
 =ctest --preset pr= work the same way without =make=, including on Windows.
+[[file:docs/building.md][docs/building.md]] covers the presets, the lanes and the
+opt-in checks.
 
 * Portability
 
@@ -136,7 +139,7 @@ Expect two differences on another system. Library resolution differs (Racket
 wants =#lang r6rs=, Guile has its own search rules). And the generated parser
 is a large set of mutually recursive definitions that relies on proper tail
 calls, a shape Chez compiles well, so the figures in
-[[file:docs/performance.org][docs/performance.org]] would need re-measuring.
+[[file:docs/performance.md][docs/performance.md]] would need re-measuring.
 Every Scheme lane takes a =BACKEND= argument (=cmake/HttparseSchemeLane.cmake=),
 which is where a second runtime would attach.
 
@@ -145,11 +148,20 @@ measurement.
 
 * Documentation
 
-- [[file:docs/api.org][docs/api.org]]: the public API
-- [[file:docs/conformance.org][docs/conformance.org]]: what it parses, how that is checked, and every
-  measured divergence from llhttp
-- [[file:docs/performance.org][docs/performance.org]]: allocation, throughput, the ratio against
-  llhttp, and what an FFI wrapper would buy instead
+Start with installing and usage; the rest is by task.
+
+- [[file:docs/installing.md][Installing]]: putting the libraries on Chez's library path
+- [[file:docs/usage.md][Usage]]: making a parser, feeding it, reading results, its lifecycle
+- [[file:docs/callbacks.md][Callbacks]]: the 25 callbacks, spans and stream offsets
+- [[file:docs/modes.md][Modes]]: request or response, and llhttp's lenient flags
+- [[file:docs/errors.md][Errors]]: reading an error and mapping it to a response
+- [[file:docs/pausing.md][Pausing and upgrades]]: pausing, resuming, and the upgrade hand-offs
+- [[file:docs/connection.md][Parser state and the connection]]: parser fields, keep-alive or close
+- [[file:docs/url.md][The URL parser]]: splitting a request target
+- [[file:docs/reference.md][API reference]]: every documented binding
+- [[file:docs/conformance.md][Conformance]]: what is checked against llhttp, and how
+- [[file:docs/performance.md][Performance]]: allocation and throughput, measured
+- [[file:docs/building.md][Building and testing]]: presets, lanes and the opt-in checks
 - =.plans/decisions/=: design decision records
 - =CHANGELOG.md=: release history
 
