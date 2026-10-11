@@ -26,3 +26,9 @@ test/fixtures/** -text
 # carrying a literal CR would either break every checksum or, worse, parse as
 # a plausible message while testing the wrong grammar. -text is enough forever.
 test/vendor/** -text
+
+# Project-internal notes, left out of release archives (`git archive`, and the
+# source tarballs GitHub builds from a tag). The design records, lessons and
+# agent instructions are for working on this repository, not for using it.
+/.plans export-ignore
+/AGENTS.md export-ignore
