@@ -1,42 +1,37 @@
 # Conformance
 
-The claim is narrow and checkable: **HTTP/1.x request and response parsing,
-byte-exact against llhttp's own recorded traces, for all 274 fixtures in its
-conformance corpus** — every HTTP fixture and every URL fixture it ships, at
-every chunk size.
+**The short version:** this parser produces exactly the same output as
+llhttp — byte for byte — on **all 274 fixtures** in llhttp's own test
+corpus, every HTTP fixture and every URL fixture it ships, however the input
+is split into feeds.
 
-Of the 274:
-
-| fixtures | exercise                            |
+| Fixtures | What they cover                     |
 |---------:|:------------------------------------|
 |      190 | strict request and response parsing |
-|       26 | pausing and `skipBody`              |
+|       26 | pausing and skipping a body         |
 |       37 | the eleven lenient flags            |
-|       21 | the url sub-parser                  |
+|       21 | the URL parser                      |
 
-Strict is the **default**; lenient is opt-in. The eleven flags are a bitset
-you hand [`make-parser`](reference.md#make-parser-procedure), not eleven
-callbacks it asks you — see [modes.md](modes.md).
+Strict parsing is the default; the lenient flags are opt-in
+([modes.md](modes.md)). The 21 URL fixtures test the separate URL parser,
+`(generated httparse-url)`, which reports a target's five parts the way
+llhttp's own URL test program does. The message parser reports the target as
+one span ([url.md](url.md)).
 
-**The 21 URL fixtures test a second parser, and they pass.** They exercise
-`(generated httparse-url)`, whose five separate spans exist only in llhttp's
-own url binary. The HTTP parser's request target is one `span[url]`; see
-[url.md](url.md).
+## What is not covered
 
-Outside the corpus, two llhttp behaviours are not reproduced:
+Two llhttp behaviours are left out on purpose, and no fixture uses either:
 
-- `HTTP_BOTH`, which sniffs whether a request or a response is coming. You
-  choose the type when you make the parser; see [modes.md](modes.md).
-- An `on_headers_complete` that returns 2 to force an upgrade. See
-  [connection.md](connection.md) for what you do instead.
+- **`HTTP_BOTH`**, where llhttp guesses whether a request or a response is
+  coming. Here you always say which ([modes.md](modes.md)).
+- **Forcing an upgrade** by returning 2 from `on_headers_complete`. This
+  parser's `on-headers-complete` has no such answer
+  ([pausing.md](pausing.md#the-field-and-the-hand-off-can-disagree)).
 
-No fixture uses either. A compatibility claim is only worth publishing if it
-names what it does not do.
+## How it is checked
 
-## How conformance is measured
-
-llhttp's test corpus is not a list of inputs. Each fixture carries the exact
-trace llhttp's own instrumented parser prints for it, offset by offset:
+Each fixture in llhttp's corpus records the exact trace llhttp prints while
+parsing it — every event and span, with its offset:
 
 ```text
 off=0 message begin
@@ -46,75 +41,43 @@ off=7 method complete
 off=60 headers complete method=6 v=1/1 flags=0 content_length=0
 ```
 
-The corpus is vendored verbatim from llhttp `v9.4.3-1-gee51043`,
-checksummed, and never edited. Every in-scope fixture is replayed **at every
-chunk size from 1 to its length**, and the parser's rendered trace is
-compared byte for byte. That is where resumability is tested: a parser that
-mishandled a token split across feeds would produce a different trace at
-some size. The pull-request selection replays the two extremes — one byte at
-a time and the whole buffer — and the complete selection replays every size;
-see [building.md](building.md).
+The test suite replays every fixture through this parser and compares the
+trace it prints with llhttp's, byte for byte.
 
-Two executors run the same fixtures and must agree: the committed generated
-parser and a reference interpreter built from the grammar. A code generator
-that emitted something wrong but well-formed does not pass.
+- **At every chunk size.** Each fixture is fed one byte at a time, two at a
+  time, and so on up to the whole input at once. A parser that mishandled a
+  token split across two feeds would print a different trace at some size.
+  Pull requests run the two extremes, one byte and the whole input; the full
+  selection runs every size ([building.md](building.md)).
+- **By two parsers.** The committed generated parser and an interpreter run
+  straight from the grammar must both pass, and must agree. A generator that
+  emitted wrong but well-formed code would not get through.
+- **Against a ratchet.** A manifest lists every fixture and its status. The
+  check fails if a passing fixture breaks, and also if one marked `deferred`
+  starts passing — so every change in either direction is a reviewed diff.
+  Today no fixture is `deferred`, and the ratchet checks that the count is
+  zero.
 
-The result is a **ratchet**: a manifest naming every fixture and its status.
-It fails both when a passing fixture breaks and when one marked `deferred`
-starts passing, so a change in either direction is a reviewed diff.
+The corpus is copied unchanged from llhttp `v9.4.3-1-gee51043`, checksummed,
+and never edited.
 
-## Nothing is out
+## Beyond the corpus: a live llhttp
 
-Every fixture the corpus ships is gated and passing: **274 of 274**. No
-fixture is marked `deferred`, and the ratchet asserts that as a count of
-zero rather than by having no such rows.
+274 passing fixtures says nothing about inputs nobody wrote a fixture for.
+So an optional test lane runs a real llhttp binary, built from the same
+commit as the corpus, side by side with this parser on **generated** input:
+messages assembled from a grammar, and mutated copies of real fixtures. Over
+about 110,000 comparisons across four seeds, the two agree everywhere except
+the two cases below. Any disagreement outside them fails the lane.
 
-**That is a statement about fixtures, not about every difference from
-llhttp.** The divergences below are found by generated input the corpus does
-not contain. There are two, and they are the same narrow case seen from both
-sides.
+### The two known differences
 
-## Divergences from llhttp, measured
+Both happen only when a feed ends **exactly** at the end of a token. No
+fixture does that — every one has another byte after the token — and one
+more byte makes the two parsers agree again.
 
-A live llhttp binary, built from the same commit the corpus came from, runs
-against generated input the corpus does not contain: messages assembled from
-a grammar, and mutants of real fixtures. Over ~110,000 comparisons across
-four seeds, every disagreement falls into one of the classes below. An
-unclassified one fails the lane.
-
-### Not a divergence: the request target is parsed, not carried
-
-```text
-OPTIONS a.com:443 HTTP/1.1
-
-llhttp: off=9 error code=7 reason="Unexpected char in url schema"
-ours:   off=9 error code=7 reason="Unexpected char in url schema"
-```
-
-llhttp runs a URL sub-parser over the request target and rejects targets
-whose **structure** is wrong. So does this parser: the same URL machine runs
-over the request target, so a target llhttp refuses is refused here, at the
-same offset, with the same code and reason.
-
-**The target is one `span[url]`**, which is what every `request/uri.md`
-fixture is written against. llhttp builds the same machine two ways — five
-separate spans for its `url` binary, one whole span inside the HTTP parser —
-and so does this parser.
-
-**This makes the parser strict about targets.** A target with the wrong
-structure is an error, not a span. That is llhttp's behaviour, reproduced
-deliberately; see [url.md](url.md).
-
-### A completion event at the exact end of the input
-
-Two mirrored cases, both visible **only** when a feed ends exactly at a
-token boundary. No recorded fixture does: every one has a byte after the
-token.
-
-- **One event short.** llhttp fires a keyword's completion on the keyword's
-  last byte. The state-machine generator's keyword table reports
-  `need-input` there and takes the terminal edge only when a further byte
-  arrives.
+- **One event short.** llhttp reports a keyword as complete on its last
+  byte. This parser's keyword table waits for one more byte first.
 
   ```text
   input "HTTP" (a response, 4 bytes, whole buffer)
@@ -123,9 +86,9 @@ token.
   ours:   ... (nothing)
   ```
 
-- **One event too many.** Where a completion fires one byte **past** its
-  delimiter — `url complete`, `header_field complete` — llhttp needs that
-  byte to be present and this parser does not.
+- **One event too many.** Some completions fire one byte **past** their
+  delimiter — `url complete`, `header_field complete`. llhttp needs that
+  byte to be present; this parser does not.
 
   ```text
   input "PUT /url " (9 bytes, whole buffer)
@@ -134,19 +97,51 @@ token.
   ours:   ... off=4 len=4 span[url]="/url" / off=9 url complete
   ```
 
-One more byte in either case and the two agree exactly. The first is a
-limitation of the generator's keyword table; the second is a modelling
-difference.
+The first is a limit of the generator's keyword table; the second is a
+difference in how the two model a completion.
 
-## A property that is true only with its qualifier
+The request target is **not** a difference, though it might look like one.
+llhttp checks a target's structure with its URL rules, and so does this
+parser, so a target llhttp refuses is refused here at the same offset with
+the same code and reason:
 
-A resumable parser should produce the same trace however the bytes arrive.
-**That holds for a parse that reaches no error**: over generated input, 71
-of 71 error-free cases were invariant across chunk sizes. It is false for 13
-of 169 that error.
+```text
+OPTIONS a.com:443 HTTP/1.1
 
-A span still open when the parse fails is printed only for the bytes a chunk
-boundary already flushed:
+llhttp: off=9 error code=7 reason="Unexpected char in url schema"
+ours:   off=9 error code=7 reason="Unexpected char in url schema"
+```
+
+### What it found that the corpus could not
+
+Each of these is matched to llhttp, and now pinned by a test that needs no
+llhttp:
+
+1. `message begin` fires even when the first byte cannot start any method.
+2. Several spaces between the method and the target do not produce an
+   **empty** target span. llhttp needs one space and skips the rest, before
+   the target and before the protocol; so does this parser.
+3. The two RTSP methods are spelled `GET_PARAMETER` and `SET_PARAMETER`, with
+   underscores, as llhttp's method table spells them. No fixture uses either.
+4. A host with two `@` that are **not** next to each other is accepted:
+   llhttp accepts `http://a@b@c/p` and refuses only `a@@b`. The corpus's
+   "Double `@`" fixture has its two together, so it cannot tell the rules
+   apart.
+5. A bare LF after a request's version needs **both** LF-related lenient
+   flags. With `OPTIONAL_CR_BEFORE_LF` alone, llhttp still refuses — same
+   offset, same reason, different code.
+6. A response status line with no reason phrase, ended by a bare LF, is
+   accepted with `OPTIONAL_CR_BEFORE_LF` alone.
+
+### A rule that holds only for parses without errors
+
+A resumable parser should print the same trace however its input is split.
+That is true **when the parse reaches no error**: 71 of 71 error-free
+generated cases were identical at every chunk size. It is false for 13 of
+169 that end in an error.
+
+The reason: a span still open when the parse fails is printed only for the
+bytes a chunk boundary had already flushed.
 
 ```text
 ICE/2.0 102 OK / Upgrade:websocket / Trailer : X-T     (a token error)
@@ -156,119 +151,75 @@ one byte:     ... header_value complete /
               off=35 len=7 span[header_field]="Trailer" / error
 ```
 
-llhttp does exactly the same. The unqualified property is false, and the
-corpus cannot show it, because upstream's fixtures are ones the qualifier
-holds for.
+llhttp does exactly the same. The corpus can't show it, because its fixtures
+are all cases where the rule holds.
 
-## What the differential reaches that the corpus does not
+## How the live comparison is built
 
-Each of these is a behaviour no corpus fixture reaches, matched to llhttp
-and pinned by an offline check:
+This section is for anyone changing the comparison itself.
 
-1. `message begin` fires even when the first byte is one no method may start
-   with. No fixture begins with such a byte.
-2. Repeated spaces between the method and the target do not produce an
-   **empty** target span. llhttp requires one space and skips the rest; so
-   does this parser, before the target and before the protocol.
-3. The two RTSP methods are spelled `GET_PARAMETER` and `SET_PARAMETER`.
-   That is how llhttp's map keys them — underscores, as RFC 2326 spells
-   them — and only `'M-SEARCH'` is quoted and hyphenated. No fixture uses
-   either.
-4. A host holding two `@` that are not adjacent is accepted. llhttp accepts
-   `http://a@b@c/p` and refuses only `a@@b`. `url.md`'s "Double `@`"
-   fixture has its two adjacent, so neither the corpus nor the
-   oracle-measured cases can tell the two rules apart.
-5. A bare LF after a request's version needs **both** lf flags. With
-   `OPTIONAL_CR_BEFORE_LF` alone llhttp still refuses, at the same offset,
-   with the same reason and a different code. Only a flag **pair** can see
-   it.
-6. A response status line with no reason phrase, ending in a bare LF, is
-   accepted under `OPTIONAL_CR_BEFORE_LF` alone. Disabling each lenient fork
-   in turn cannot find a site like this one, because a fork that is not
-   there is not a site.
+### Pairs of lenient flags
 
-## Both properties, both machines
+llhttp's fixture harness picks its lenient flags at compile time, one binary
+per flag, so it cannot test a **pair** of flags: 55 pairs would need 55
+binaries, and none exist. Its only combination fixtures set
+`lenient_all`, which turns on **nine** of the eleven, so
+`spaces-after-chunk-size` and `header-value-relaxed` are never combined with
+anything in the corpus.
 
-The property lane needs no llhttp and runs on every pull request. It asks
-two things of generated input:
+So the comparison builds one more llhttp binary, `http-modes-c`: the same
+parser with [`tools/oracle/lenient-init.c`](../tools/oracle/lenient-init.c),
+a small hook of ours that reads the message type and a flag mask from the
+environment. It only sets two fields; every trace line still comes from
+llhttp's own code. And it is checked against llhttp's own binaries: with no
+flags it must match `http-request-c` and `http-response-c`, and with one
+flag it must match `http-request-lenient-headers-c`, which llhttp's harness
+builds with none of our code.
 
-- a parse that reaches no error produces the same trace however the bytes
-  arrive, and
-- the shipped artifact agrees with the interpreted grammar.
+The flag combinations follow a fixed schedule — the 11 single flags, all 55
+pairs, then all eleven together — so changing the seed changes the input,
+not which combinations are covered. Half the cases are malformed in ways the
+flags under test should accept, so the lenient path runs to the end; the
+other half are malformed at random.
 
-It asks both of **both** machines, the message parser and the url
-sub-parser, each with its own artifact and its own twin.
-
-Every floor in that lane is **per kind**. Both properties pass vacuously
-over a run that selected nothing, so both are guarded by a floor. One floor
-over the whole run would be satisfied by the message kinds alone, whatever
-the url machine contributes. `HTTPARSE_PROPERTY_URL_CASES=0` shows it: the
-global floor passes, the per-kind ones fail.
-
-`url.md`'s `noScan` annotation is **checked, not quoted**. It marks that
-file's four error fixtures; only three of them actually diverge across chunk
-sizes. "Failing on broken schema" closes its schema span before the error,
-so no chunk boundary has an open span to flush early — and llhttp does not
-diverge on it either.
-
-## Lenient flags, in combination
-
-Upstream's fixture harness picks its init hook with a `-D` at compile time
-and ships one per (kind, single flag). So you cannot ask it about a **pair**
-of flags at all: 55 pairs would be 55 binaries, and no hook exists for any
-of them. Its only combination fixtures are three `*-lenient-all` ones, and
-`lenient_all` sets **nine of the eleven**, leaving `spaces-after-chunk-size`
-and `header-value-relaxed` combined with nothing anywhere in the corpus.
-
-A fourth oracle binary, `http-modes-c`, is the same parser graph built with
-[`tools/oracle/lenient-init.c`](../tools/oracle/lenient-init.c), an init
-hook of ours that reads the kind and a flag mask from the environment. It
-assigns two integer fields and prints nothing. Every trace line still comes
-from upstream's `extra.c`, so the comparison never reads a trace printer of
-ours.
-
-**It is held to upstream's own binaries rather than argued into place.** At
-no flags it must equal `http-request-c` and `http-response-c`; at one flag
-it must equal `http-request-lenient-headers-c`, built by upstream's harness
-with none of our code.
-
-The flag subsets **walk a fixed schedule** — 11 singletons, then all 55
-pairs, then the whole set — so the seed moves the input rather than the
-coverage. A random draw over 55 pairs needs hundreds of cases, and "probably
-covered" is not a coverage claim.
-
-Half the cases **match** their malformations to the subset they were given,
-so the lenient path is walked to the end; the other half draw them
-independently.
-
-## The kinds and the binaries
+### Requests, responses and URLs
 
 `request` and `response` are two modes of llhttp's message parser. `url` is
-its URL sub-parser built standalone — `test/md-test.ts`'s `buildURL()`, with
-both exits looped back to the entry, which is the program `url.md` was
-recorded from. The kind travels with each generated case and picks the
-binary on llhttp's side and the machine on ours, so a url case is never
-asked of a message parser.
+its URL parser built on its own — the program `url.md` was recorded from,
+which reads URL after URL. Each generated case carries its kind, which picks
+the llhttp binary on one side and the parser on the other.
+`HTTPARSE_DIFFERENTIAL_URL_CASES=0` turns the URL cases off.
 
-`HTTPARSE_DIFFERENTIAL_URL_CASES=0` turns the url kind off and leaves the
-request and response kinds as they are.
+### Three seeds, not one
 
-## One seed is not a lane
+A run uses the seed you give it and the next two. With the `@` rule above
+deliberately broken, the default seed alone finds nothing, while three of
+five seeds measured do. A comparison pinned to one seed can be lucky, and
+"no disagreements" looks the same either way. `HTTPARSE_DIFFERENTIAL_SEED`
+names the run, and any one seed can be replayed on its own.
 
-A run is the seed you give it and its **two successors**, and that is a
-measurement rather than a precaution. With the `@` rule above broken, the
-default seed alone finds nothing; three of five seeds measured find it. A
-lane pinned to one seed can be silently lucky, and `unclassified=0` reads as
-evidence either way.
+### The property lane
 
-`HTTPARSE_DIFFERENTIAL_SEED` still names the run with one number, and any
-member of a sweep replays alone when you name it directly.
+A second lane needs no llhttp and runs on every pull request. On generated
+input, for both the message parser and the URL parser, it checks that an
+error-free parse prints the same trace however the input is split, and that
+the committed parser agrees with the interpreted grammar.
+
+A property can pass by testing nothing, so each kind of input has its own
+minimum number of cases. One minimum over the whole run would be met by the
+message cases alone: `HTTPARSE_PROPERTY_URL_CASES=0` shows it — a single
+overall minimum still passes, the per-kind ones fail.
+
+The `noScan` marks in `url.md` are checked, not trusted. They mark that
+file's four error fixtures, but only three of them actually change with the
+chunk size: "Failing on broken schema" closes its span before the error, so
+there is nothing left open to flush, and llhttp does not change either.
 
 ## Running it yourself
 
-The differential is local and opt-in, never a merge gate: llhttp's own test
-harness needs Node and a C toolchain, and the evidence CI needs is already
-checked in.
+The live comparison is optional and never blocks a merge: llhttp's harness
+needs Node and a C toolchain, and the evidence CI needs is already in the
+tree.
 
 ```sh
 git clone https://github.com/nodejs/llhttp ~/src/llhttp
@@ -277,6 +228,6 @@ cd - && cmake --preset dev -DHTTPARSE_LLHTTP_ROOT=$HOME/src/llhttp
 ctest --preset pr -R differential
 ```
 
-Without that variable the lane is **absent** — not skipped, not failing,
-not registered at all. [building.md](building.md#the-live-llhttp-differential)
-covers what configuring it builds and how to remove it again.
+Without that variable the lane does not exist at all — it is not skipped,
+it is never registered. [building.md](building.md#optional-the-live-llhttp-comparison)
+covers what configuring it builds and how to remove it.
