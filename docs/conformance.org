@@ -6,19 +6,22 @@ response parsing, byte-exact against llhttp's own recorded traces, for* all
 274 *fixtures in its conformance corpus — every HTTP fixture and every URL
 fixture it ships, at every chunk size.*
 
-v0.1 shipped 190 of them, strict-mode only. Pausing and =skipBody= (26) came
-in after it, then the eleven lenient flags (37), then the url sub-parser (21).
-All of that ships in *v0.2.0*, where the deferral list is empty for the first
-time.
+Of the 274, 190 are strict request and response parsing, 26 exercise
+pausing and =skipBody=, 37 the eleven lenient flags, and 21 the url
+sub-parser.
 
-Strict is still the *default* and lenient is still opt-in; what changed since
-is only how you ask. The eleven flags are a bitset you hand =make-parser=,
-not eleven callbacks it asks you — see [[file:api.org][api.org]].
+Strict is the *default* and lenient is opt-in. The eleven flags are a bitset
+you hand =make-parser=, not eleven callbacks it asks you — see
+[[file:api.org][api.org]].
 
-*The 21 URL fixtures are a SECOND PARSER, and they pass.* They were listed
-here as out of scope until M11; what they exercise is
-=(generated httparse-url)=, whose five separate spans exist only in llhttp's
-own url binary. The HTTP parser's request-target is still one =span[url]=.
+*The 21 URL fixtures are a SECOND PARSER, and they pass.* What they exercise
+is =(generated httparse-url)=, whose five separate spans exist only in
+llhttp's own url binary. The HTTP parser's request-target is one =span[url]=.
+
+Outside the corpus, two llhttp behaviours are not reproduced: =HTTP_BOTH=,
+which sniffs whether a request or a response is coming, and an
+=on_headers_complete= that returns 2 to force an upgrade. No fixture uses
+either; [[file:api.org][api.org]] says what happens instead.
 
 A compatibility claim that names what it does not do is the only kind worth
 publishing.
@@ -47,20 +50,19 @@ parser and a reference interpreter built from the grammar — so a code
 generator that emitted something wrong-but-well-formed does not pass.
 
 The result is a *ratchet*: a manifest naming every fixture and its status. It
-fails both when a passing fixture breaks and when a deferred one starts
-passing, so a change in either direction is a reviewed diff.
+fails both when a passing fixture breaks and when one marked =deferred=
+starts passing, so a change in either direction is a reviewed diff.
 
 * Nothing is out
 
-Every fixture the corpus ships is gated and passing: *274 of 274*. The
-deferral column that stood here through eleven milestones is empty, and the
-ratchet asserts the emptiness as a number rather than by no longer having a
-row.
+Every fixture the corpus ships is gated and passing: *274 of 274*. No
+fixture is marked =deferred=, and the ratchet asserts that as a count of zero
+rather than by having no such rows.
 
 *That is a statement about FIXTURES, not about every difference from llhttp.*
 The measured divergences below are found by generated input the corpus does
-not contain. There were three; *the largest is now closed*, and the two that
-remain are the same narrow case seen from both sides.
+not contain. There are two, and they are the same narrow case seen from both
+sides.
 
 * Divergences from llhttp, measured
 
@@ -70,9 +72,7 @@ assembled from a grammar and mutants of real fixtures. Over ~110,000
 comparisons across four seeds, every disagreement falls into one of the
 following, and an unclassified one fails the lane.
 
-** Closed: the request target is now parsed, not carried
-
-This was the largest of the three — *45 comparisons* — and it is gone.
+** Not a divergence: the request target is parsed, not carried
 
 #+begin_example
 OPTIONS a.com:443 HTTP/1.1
@@ -82,19 +82,18 @@ ours:   off=9 error code=7 reason="Unexpected char in url schema"
 #+end_example
 
 llhttp runs a URL sub-parser over the request target and rejects targets
-whose *structure* is wrong. This parser carried the target as a single span
-and read on. Since the sub-parser was spliced into the request-target path,
-it does not: =agreed= went 1097 → 1142, every one of the 45 became an
-agreement, and the class was deleted rather than left at zero.
+whose *structure* is wrong. So does this parser: the same URL machine runs
+over the request target, so a target llhttp refuses is refused here, at the
+same offset and with the same code and reason.
 
-*The target is still ONE =span[url]=*, which is what every =uri.md= fixture
-is written against. llhttp builds the same machine two ways — five separate
+*The target is ONE =span[url]=*, which is what every =uri.md= fixture is
+written against. llhttp builds the same machine two ways — five separate
 spans for its =url= binary, one whole span inside the HTTP parser — and so
 does this.
 
-*This made the parser stricter.* A target that used to parse may now be an
-error. That is llhttp's behaviour, arrived at deliberately; see
-[[file:api.org][api.org]].
+*This makes the parser strict about targets.* A target with the wrong
+structure is an error, not a span. That is llhttp's behaviour, reproduced
+deliberately; see [[file:api.org][api.org]].
 
 ** A completion event at the exact end of the input
 
@@ -125,8 +124,8 @@ byte after the token.
   ours:   ... off=4 len=4 span[url]="/url" / off=9 url complete
   #+end_example
 
-One more byte in either case and the two agree exactly. The first is an
-upstream gap with a brief filed against it; the second is a modelling
+One more byte in either case and the two agree exactly. The first is a
+limitation of the generator's keyword table; the second is a modelling
 difference.
 
 * A property that is true only with its qualifier
@@ -147,37 +146,34 @@ one byte:     ... header_value complete /
               off=35 len=7 span[header_field]="Trailer" / error
 #+end_example
 
-llhttp does exactly the same thing. The unqualified property would have been
-a false one, and the corpus could not have said so, because upstream chose
-fixtures the qualifier holds for.
+llhttp does exactly the same thing. The unqualified property is false, and
+the corpus cannot show it, because upstream's fixtures are ones the
+qualifier holds for.
 
-* Things found this way
+* What the differential reaches that the corpus does not
 
-The live differential is not decoration. Building it turned up six defects
-the corpus could not see, all now fixed and pinned by offline checks:
+The live differential is not decoration. Each of these is a behaviour no
+corpus fixture reaches, matched to llhttp and pinned by an offline check:
 
-1. =message begin= was withheld when the first byte was one no method may
-   start with. No fixture begins with such a byte.
-2. Repeated spaces between the method and the target produced an *empty*
-   target span. llhttp requires one space and skips the rest; so does this
-   parser now, before the target and before the protocol.
-3. The two RTSP methods were spelled =GET-PARAMETER= and =SET-PARAMETER=.
-   llhttp's map keys them =GET_PARAMETER= and =SET_PARAMETER= — underscores,
-   as RFC 2326 spells them — and only ='M-SEARCH'= is quoted and
-   hyphenated. Six milestones of a wrong name that no fixture uses.
-4. A host holding two =@= that are not adjacent was refused. llhttp accepts
+1. =message begin= fires even when the first byte is one no method may start
+   with. No fixture begins with such a byte.
+2. Repeated spaces between the method and the target do not produce an
+   *empty* target span. llhttp requires one space and skips the rest; so does
+   this parser, before the target and before the protocol.
+3. The two RTSP methods are spelled =GET_PARAMETER= and =SET_PARAMETER=.
+   That is how llhttp's map keys them — underscores, as RFC 2326 spells them —
+   and only ='M-SEARCH'= is quoted and hyphenated. No fixture uses either.
+4. A host holding two =@= that are not adjacent is accepted. llhttp accepts
    =http://a@b@c/p= and refuses only =a@@b=; =url.md='s "Double =@=" fixture
    has its two adjacent, so neither the corpus nor the oracle-measured cases
-   could tell the two rules apart.
-5. A bare LF after a request's version was accepted under
-   =OPTIONAL_CR_BEFORE_LF= alone. llhttp needs *both* lf flags; with the
-   first alone it still refuses, at the same offset and with the same reason,
-   and a different code. Only a flag *pair* can see it.
-6. A response status line with no reason phrase, ending in a bare LF, was
-   refused. Upstream gates it on =OPTIONAL_CR_BEFORE_LF= and this parser had
-   no fork there at all — a thirty-third lenient site where decision 0020's
-   sweep measured thirty-two, because a fork that is not there is not a
-   site.
+   can tell the two rules apart.
+5. A bare LF after a request's version needs *both* lf flags. With
+   =OPTIONAL_CR_BEFORE_LF= alone llhttp still refuses, at the same offset and
+   with the same reason, and a different code. Only a flag *pair* can see it.
+6. A response status line with no reason phrase, ending in a bare LF, is
+   accepted under =OPTIONAL_CR_BEFORE_LF= alone. Disabling each lenient fork
+   in turn cannot find a site like this one, because a fork that is not there
+   is not a site.
 
 * Both properties, both machines
 
@@ -211,8 +207,8 @@ and =header-value-relaxed= combined with nothing anywhere in the corpus.
 A fourth oracle binary, =http-modes-c=, is the same parser graph built with
 =tools/oracle/lenient-init.c= — an init hook of ours that reads the kind and
 a flag mask from the environment. It assigns two integer fields and prints
-nothing; every trace line still comes from upstream's =extra.c=, which is
-what decision 0010 protects.
+nothing; every trace line still comes from upstream's =extra.c=, so the
+comparison never reads a trace printer of ours.
 
 *It is held to upstream's own binaries rather than argued into place.* At no
 flags it must equal =http-request-c= and =http-response-c=; at one flag it
@@ -226,8 +222,7 @@ not a coverage claim.
 
 Half the cases *match* their malformations to the subset they were given, so
 the lenient path is walked to the end; the other half draw them
-independently, which is where both of this producer's first findings came
-from.
+independently.
 
 * The kinds and the binaries
 
@@ -238,16 +233,16 @@ recorded from. The kind travels with each generated case and picks the binary
 on llhttp's side and the machine on ours, so a url case is never asked of a
 message parser.
 
-=HTTPARSE_DIFFERENTIAL_URL_CASES=0= turns the url kind off and reproduces the
-run as it was before it existed.
+=HTTPARSE_DIFFERENTIAL_URL_CASES=0= turns the url kind off and leaves the
+request and response kinds as they are.
 
 * One seed is not a lane
 
 The run is the seed it is given and its *two successors*, and that is a
-measurement rather than a precaution. The =@= defect above did not appear at
-the default seed; it appeared at three of the five seeds tried. A lane pinned
-to one seed can be silently lucky, and =unclassified=0= reads as evidence
-either way.
+measurement rather than a precaution. With the =@= rule above broken, the
+default seed alone finds nothing; three of five seeds measured find it. A lane
+pinned to one seed can be silently lucky, and =unclassified=0= reads as
+evidence either way.
 
 =HTTPARSE_DIFFERENTIAL_SEED= still names the run with one number, and any
 member of a sweep replays alone by being named directly.

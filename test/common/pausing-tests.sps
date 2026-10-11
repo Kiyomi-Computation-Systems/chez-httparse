@@ -177,7 +177,7 @@
                        "off=74 chunk complete"
                        "off=74 message complete"))))))
 
-;;; The half that keeps the new line honest.
+;;; The other half: the bare `pause` line belongs to a callback's pause only.
 (harness-group "the machine's own pause is still an error line"
   (lambda ()
     (harness-case "an upgrade pause renders with its code and reason"

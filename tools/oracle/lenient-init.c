@@ -3,8 +3,8 @@
  * environment, so ONE binary can be asked for any combination of lenient
  * flags.
  *
- * WHY THIS EXISTS. Decision 0010 says this project calls upstream's harness
- * rather than reimplementing it, and every other piece of the differential
+ * WHY THIS EXISTS. This project calls upstream's harness rather than
+ * reimplementing it, and every other piece of the differential
  * obeys that: the binaries are built by llhttp's own `test/fixtures/index.ts`,
  * and every trace line is printed by upstream's `extra.c`. This file is the
  * one exception, and it is a narrow one.
@@ -20,9 +20,9 @@
  *
  * WHAT IS AND IS NOT REIMPLEMENTED. This assigns two integer fields. It
  * prints nothing, parses nothing and decides nothing: every line the oracle
- * emits still comes from upstream's `extra.c`, which is what decision 0010
- * protects -- a second implementation of the TRACE FORMAT would make the
- * comparison circular, and there is none here.
+ * emits still comes from upstream's `extra.c`, which is what calling the
+ * harness protects -- a second implementation of the TRACE FORMAT would make
+ * the comparison circular, and there is none here.
  *
  * AND IT IS HELD TO UPSTREAM'S OWN HOOKS. With an empty mask this must
  * produce, byte for byte, what `http-request-c` and `http-response-c`

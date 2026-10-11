@@ -22,7 +22,7 @@
 ;;; buffer in hand and say nothing about the stream. Slices of one whole-input
 ;;; buffer fed from 0 make `to` equal the stream position by coincidence, and
 ;;; every other lane that reads the offset in a span callback feeds that way: a
-;;; runtime that handed the callback `to` instead passed all of them.
+;;; runtime that handed the callback `to` instead passes all of them.
 ;;;
 ;;; THE CONFORMANCE LANE SEES THE SPAN HALF ONLY BY THE ADAPTER'S CHOICE. It
 ;;; renders through the adapter, which reads this offset for both kinds of

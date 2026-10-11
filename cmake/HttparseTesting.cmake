@@ -22,9 +22,9 @@ include_guard(GLOBAL)
 
 # --- Vocabulary ------------------------------------------------------------
 #
-# Layers follow the upstream plan's testing strategy (section 22) rather than a
-# generic unit/integration split, so a preset can select exactly the evidence a
-# given CI stage needs.
+# Layers name the kind of evidence a lane produces rather than a generic
+# unit/integration split, so a preset can select exactly the evidence a given
+# CI stage needs.
 
 set(HTTPARSE_TEST_LAYERS
   harness       # the test harness proving things about itself
@@ -44,13 +44,13 @@ set(HTTPARSE_TEST_BACKENDS chez cmake)
 
 # Selectors are labels that carry no layer, backend or mode meaning and exist
 # only so a preset can include or exclude a lane the layer alone cannot
-# separate. `full-scan` is the first: decision 0008 item 5 puts the corpus's
-# every-chunk-size replay on the release preset and its two extremes on every
-# pull request, and both lanes are `conformance` lanes.
+# separate. `full-scan` is the only one: the corpus's every-chunk-size replay
+# runs on the release preset and its two extremes on every pull request, and
+# both lanes are `conformance` lanes.
 set(HTTPARSE_TEST_SELECTORS full-scan)
 
-# o1 outlives the backend that owned it: no HTTPARSE_TEST_MODES_<backend>
-# below claims it, so a lane naming it for a backend that does not is caught
+# o1 belongs to no backend: no HTTPARSE_TEST_MODES_<backend> below claims
+# it, so a lane naming it for a backend that does not is caught
 # as an incompatible backend/mode pairing rather than an unrecognized mode --
 # the distinction HttparseTestingSpec.cmake's chez.o1 case exists to prove,
 # and removing the token here would collapse it into the wrong error.
@@ -169,14 +169,13 @@ endfunction()
 # httparse_test_run_directory(<name> <override> <out_dir>)
 #
 # Where a lane launches from. Empty override means the derived private
-# directory, which is the default precisely because Chez once resolved includes
-# against the process working directory: a test allowed to run from the
-# repository could load a body the build never staged, and would keep passing
-# after that body stopped being staged correctly.
+# directory: a test allowed to run from the repository can resolve a file
+# against the process working directory and load a body the build never
+# staged, and would keep passing after that body stopped being staged
+# correctly.
 #
 # A lane that overrides this is making a claim about where it must launch
-# from; none currently does (the include-era working-directory matrix retired
-# with upstream decision 0006), and the never-from-the-repository default stays
+# from; none currently does, and the never-from-the-repository default stays
 # because it costs nothing and forecloses a class of accident. Pure, so that
 # the choice can be specified without registering a test or creating a
 # directory.
@@ -200,8 +199,7 @@ endfunction()
 # The working directory is inside the build tree, never the repository, unless
 # WORKING_DIRECTORY names an existing directory of the caller's choosing. That is
 # not tidiness: it is what keeps a test's outcome independent of where the
-# developer happened to stand, and it predates -- and outlives -- the include
-# mechanism whose working-directory hazards first forced it (upstream decision 0006).
+# developer happened to stand.
 function(httparse_add_test)
   cmake_parse_arguments(PARSE_ARGV 0 arg "" "NAME;TIMEOUT;WORKING_DIRECTORY" "COMMAND;LABELS;ENVIRONMENT")
 

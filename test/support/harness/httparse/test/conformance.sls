@@ -2,13 +2,12 @@
 ;;;
 ;;; THE SCAN SCHEDULE. Upstream replays each fixture at every chunk size from 1
 ;;; to the input length, feeding fixed-size chunks (llparse__run_scan), and
-;;; `noScan` collapses that to the single whole-buffer feed. This is where
-;;; decision 0008's claim that resumability "is the corpus, not an extra suite"
-;;; is cashed out, and where its pr/release split lives: `pr` runs the two
-;;; extremes, `release` runs every size.
+;;; `noScan` collapses that to the single whole-buffer feed. So resumability
+;;; is not an extra suite; it is the corpus, replayed. The pr/release split
+;;; lives here too: `pr` runs the two extremes, `release` runs every size.
 ;;;
-;;; THE COMPARATOR. Decision 0008 requires bit-exact equality and an adapter
-;;; that may rename but never compute, so this compares bytes and reports the
+;;; THE COMPARATOR. Conformance is bit-exact equality, with an adapter that
+;;; may rename but never compute, so this compares bytes and reports the
 ;;; first difference. It does NOT normalise, reorder, or match loosely.
 ;;;
 ;;; WHY LINE LISTS RATHER THAN ONE BLOB. Upstream joins its trace with newlines,

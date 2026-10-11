@@ -10,10 +10,10 @@
 ;;; own (code, reason), and `parser-result-error` stays #f, so the resumable
 ;;; outcome is still distinguishable from the failed one.
 ;;;
-;;; `headers complete` renders here from M4 on. Its line carries four numbers
-;;; -- method, version pair, flags, content length -- and every one is READ OFF
-;;; THE PARSER'S OWN FIELDS, never recomputed from the headers this lane fed
-;;; in, which is what keeps the adapter a rename (decision 0014).
+;;; `headers complete` carries four numbers -- method, version pair, flags,
+;;; content length -- and every one is READ OFF THE PARSER'S OWN FIELDS, never
+;;; recomputed from the headers this lane fed in, which is what keeps the
+;;; adapter a rename.
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)
@@ -81,8 +81,7 @@
   (lambda ()
     (harness-case "request/sample.md#1 reproduces exactly, headers included"
       (lambda ()
-        ;; The whole expected block of that fixture, minus its last line --
-        ;; `headers complete`, which M3 cannot render.
+        ;; The whole expected block of that fixture.
         (check-equal "trace"
                      (trace "OPTIONS /url HTTP/1.1\r\nHeader1: Value1\r\nHeader2:  Value2\r\n\r\n")
                      '("off=0 message begin"
@@ -110,7 +109,7 @@
         ;; its first message is `PUT /url HTTP/1.0` with no headers, and the
         ;; oracle records `off=21 headers complete method=4 v=1/0`. The rest of
         ;; that fixture is a second message and a `Connection: close` error,
-        ;; both later milestones', so only its first twelve lines are asserted.
+        ;; which this input does not reach, so only its first message is fed.
         (check-equal "1.0"
                      (list-tail (trace "PUT /url HTTP/1.0\r\n\r\n") 9)
                      '("off=21 headers complete method=4 v=1/0 flags=0 content_length=0"
@@ -133,8 +132,8 @@
     (harness-case "an empty value is announced as an empty span"
       (lambda ()
         ;; llhttp opens and immediately closes the value span
-        ;; (`emptySpan(span.headerValue, ...)`), which is only observable
-        ;; because of the upstream empty-span change this project asked for.
+        ;; (`emptySpan(span.headerValue, ...)`), and the generator delivers an
+        ;; empty span as a zero-length fragment.
         (check-equal "value"
                      (list-head (list-tail (after-start-line "Empty:\r\n\r\n") 2) 2)
                      '("off=24 len=0 span[header_value]=\"\""
@@ -202,9 +201,7 @@
                        "off=30 error code=10 reason=\"Invalid header field char\""))
         ;; The same rule for another name in llhttp's SPECIAL_HEADERS, which
         ;; no fixture exercises: `proxy-connection` is in the table, so it
-        ;; takes the same path. This is what makes its presence observable at
-        ;; all in this slice -- the connection FLAGS it also selects are the
-        ;; next slice's.
+        ;; takes the same path.
         (check-equal "Proxy-Connection"
                      (list-tail (trace "PUT /url HTTP/1.1\r\nProxy-Connection : x\r\n\r\n") 9)
                      '("off=19 len=16 span[header_field]=\"Proxy-Connection\""
@@ -222,8 +219,7 @@
         ;; request/content-length.md, "Error on `Content-Length` overflow":
         ;; 22 digits in, and the span is 21 of them -- the offending digit is
         ;; CONSUMED before the overflow is reported, so the error is at 56 and
-        ;; not at 55. Only the accumulator can produce that span, which is why
-        ;; this fixture is this milestone's and not the header section's.
+        ;; not at 55. Only the accumulator can produce that span.
         (check-equal "trace"
                      (list-tail (trace "PUT /url HTTP/1.1\r\nContent-Length: 1000000000000000000000\r\n\r\n") 11)
                      '("off=35 len=21 span[header_value]=\"100000000000000000000\""
@@ -328,8 +324,8 @@
                      (list-tail (trace "PUT /url HTTP/1.1\r\nConnection: CLOSE\r\n\r\n") 13)
                      '("off=40 headers complete method=4 v=1/1 flags=2 content_length=0"
                        "off=40 message complete"))
-        ;; A chunked request parks after `headers complete` until there is a
-        ;; chunk reader, so this asserts the flag and stops where M4 does.
+        ;; The input ends after the empty line, so the trace stops at
+        ;; `headers complete` with no chunk to read.
         (check-equal "CHUNKED is chunked"
                      (list-tail (trace "PUT /url HTTP/1.1\r\nTransfer-Encoding: CHUNKED\r\n\r\n") 13)
                      '("off=49 headers complete method=4 v=1/1 flags=208 content_length=0"))))
@@ -345,18 +341,17 @@
                        "off=49 headers complete method=4 v=1/1 flags=208 content_length=0"))))
     (harness-case "close is not closed, and the table knows the difference"
       (lambda ()
-        ;; The `close` / `closed` pair a Gate 0 spike measured, and the reason
-        ;; `make-sequence-dispatch-node` could not have been used here: the
-        ;; longer token is not a Connection keyword, so no bit is set.
+        ;; The `close` / `closed` pair, which a keyword trie tells apart and
+        ;; `make-sequence-dispatch-node` rejects: the longer token is not a
+        ;; Connection keyword, so no bit is set.
         (check-equal "closed sets nothing"
                      (list-tail (trace "PUT /url HTTP/1.1\r\nConnection: closed\r\n\r\n") 13)
                      '("off=41 headers complete method=4 v=1/1 flags=0 content_length=0"
                        "off=41 message complete"))))
     (harness-case "an Upgrade header sets its own bit, beside Connection's"
       (lambda ()
-        ;; request/connection.md, "Upgrade GET request" (the short one): every
-        ;; line of that fixture except its last, which is the upgrade PAUSE --
-        ;; a later milestone's. flags=15 is UPGRADE | CONNECTION_UPGRADE |
+        ;; request/connection.md, "Upgrade GET request" (the short one), line
+        ;; for line. flags=15 is UPGRADE | CONNECTION_UPGRADE |
         ;; CONNECTION_KEEP_ALIVE, so all three bits and two headers are pinned
         ;; by one expectation.
         (check-equal "flags=15"
@@ -387,8 +382,8 @@
                        ;; answers 1: complete, then pause. The fixture's own
                        ;; last line is `error code=22`, which llhttp's
                        ;; harness prints for a pause and which this adapter
-                       ;; can now RENAME -- a pause carries its own
-                       ;; (code, reason) of its own.
+                       ;; RENAMES, because a pause carries its own
+                       ;; (code, reason).
                        "off=75 error code=22 reason=\"Pause on CONNECT/Upgrade\""))))
     (harness-case "a bare Transfer-Encoding is a request error, after the line that reports it"
       (lambda ()
@@ -414,9 +409,9 @@
                        "off=56 error code=15 reason=\"Request has invalid `Transfer-Encoding`\""))))
     (harness-case "Content-Length after Transfer-Encoding is the mirror conflict"
       (lambda ()
-        ;; The other half of the pair M4 Slice ① could only build one side of:
-        ;; the TRANSFER_ENCODING flag can now be set, so this branch is
-        ;; reachable and carries its own reason and its own code.
+        ;; The mirror of a Transfer-Encoding after a Content-Length: with the
+        ;; TRANSFER_ENCODING flag already set, the Content-Length name is
+        ;; refused, with its own reason and its own code.
         (check-equal "trace"
                      (list-tail (trace (string-append
                                         "PUT /url HTTP/1.1\r\n"
@@ -425,16 +420,15 @@
                        "off=62 header_field complete"
                        "off=62 error code=11 reason=\"Content-Length can't be present with Transfer-Encoding\""))))))
 
-(harness-group "the upgrade decision, and the pause it has no words for"
+(harness-group "the upgrade decision, and the pause that ends it"
   (lambda ()
     (harness-case "CONNECT does not read the body its own Content-Length declares"
       (lambda ()
         ;; request/method.md, "CONNECT with body". llhttp sets `upgrade` for
         ;; CONNECT before the headers-complete callback, and its body decision
         ;; then answers 1 -- message complete and PAUSE -- so the ten bytes are
-        ;; never read. Reading them is what this parser did before the decision
-        ;; core was complete, and it is a behaviour bug the trace shows.
-        (check-equal "no body span, and a pause the adapter cannot spell"
+        ;; never read. Reading them is a behaviour bug the trace shows.
+        (check-equal "no body span: message complete, then the pause"
                      (list-tail (trace (string-append
                                         "CONNECT foo.bar.com:443 HTTP/1.0\r\n"
                                         "User-agent: Mozilla/1.1N\r\n"
@@ -448,9 +442,8 @@
         ;; request/connection.md, "Emitting part of body and pausing". The
         ;; early exit is `upgrade && (CONNECT || !hasBody)`, and this request
         ;; has a body -- so it is NOT taken, the four declared bytes are read,
-        ;; and the pause happens at the END. Without this case nothing
-        ;; distinguishes the two upgrade arms, because the fixture that would
-        ;; is one of the seven the pause gap blocks.
+        ;; and the pause happens at the END. This case and the CONNECT one
+        ;; above pin the two upgrade arms apart.
         (check-equal "body then pause"
                      (list-tail (trace (string-append
                                         "PUT /url HTTP/1.1\r\n"

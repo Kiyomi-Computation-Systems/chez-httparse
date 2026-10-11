@@ -1,5 +1,4 @@
-;;; The duplicate-case body, as a program. Merged from its .chez.sps wrapper
-;;; by the include collapse (upstream decision 0006).
+;;; The duplicate-case body, as a program.
 
 (import (rnrs) (httparse test harness))
 

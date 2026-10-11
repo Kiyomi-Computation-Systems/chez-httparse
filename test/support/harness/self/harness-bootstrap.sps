@@ -1,5 +1,4 @@
-;;; The bootstrap body, as a program. Merged from its .chez.sps wrapper by
-;;; the include collapse (upstream decision 0006).
+;;; The bootstrap body, as a program.
 ;;;
 ;;; harness-begin is deliberately not called: the bootstrap judges the
 ;;; runner without using its suite lifecycle.
@@ -69,7 +68,7 @@
 ;; --- the assertion primitive ------------------------------------------------
 ;;
 ;; The point of this file. A `check` that always returned a true value would
-;; make every test in every later milestone pass, and no test written with
+;; make every test in the project pass, and no test written with
 ;; `check` could notice.
 
 (bootstrap-assert "check: a true value returns true" (eq? (check "true" #t) #t))
@@ -91,7 +90,7 @@
   ;; counting failures would still bump the check count and still set the case
   ;; flag, so a "the counters moved" assertion passes while the defect that
   ;; matters most is present: failures print, nothing counts them, and every
-  ;; suite in every later milestone exits 0. Nothing written with `check` can
+  ;; suite in the project exits 0. Nothing written with `check` can
   ;; report that -- recording a failure is the mechanism that would be broken --
   ;; so this lane, which counts its own failures and exits by hand, is the only
   ;; witness there is. harness-counters is

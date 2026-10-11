@@ -40,12 +40,9 @@ set(HTTPARSE_MUTATION_STAGE_DIRS "cmake" "test/support/cmake")
 set(HTTPARSE_MUTATION_VERIFY_COMMAND "")
 
 # Where the verify command runs. Empty means the stage directory, which is what
-# every pass wants. The one caller that ever set it was the include-era
-# working-directory matrix, which needed a pass per launch directory because
-# what it asserted was that the launch directory does not matter -- a claim no
-# command run from one fixed place can make. That matrix retired with the
-# include mechanism (upstream decision 0006); the hook is kept for the next caller that
-# has to run a verify command from somewhere other than the stage.
+# every pass wants: library roots are absolute, so no pass's outcome depends on
+# where it launches. The hook is for a caller that has to run a verify command
+# from somewhere other than the stage.
 set(HTTPARSE_MUTATION_VERIFY_WORKING_DIRECTORY "")
 
 # httparse_mutation(FILE <repo-relative> SPEC <spec basename> LABEL <text>
@@ -201,8 +198,8 @@ endfunction()
 #                 out_reason explains which one.
 #   caught        rc was nonzero and every declared expectation was met. With
 #                 neither EXPECT_STATUS nor EXPECT_OUTPUT_MATCHES given, this is
-#                 the whole rule: any nonzero result is caught, the ordinary,
-#                 pre-slice-3 way.
+#                 the whole rule: any nonzero result is caught, the ordinary
+#                 way.
 #
 # expect_status and expect_output_matches are both tested for "was this
 # declared at all" with STREQUAL "", not truthiness: a status is a small
@@ -264,7 +261,7 @@ function(httparse_mutation_run source_root stage_dir)
   # Both this counter and _hp_mutation_count are written with PARENT_SCOPE,
   # which reaches only the immediate caller -- and different passes call from
   # different scopes: bare script scope for a simple pass, a helper function's
-  # own scope for a repeated one (httparse_slice3_launcher_pass, for
+  # own scope for a repeated one (httparse_launcher_pass, for
   # instance, called once per launcher parse decision). A plain variable would
   # not survive that; a global property has no scope to lose. The caller reads
   # the total back with httparse_mutation_totals once every pass has run.

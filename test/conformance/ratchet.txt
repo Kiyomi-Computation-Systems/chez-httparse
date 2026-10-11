@@ -1,20 +1,20 @@
 # ratchet -- which vendored llhttp fixtures this parser claims to pass.
 #
-# Decision 0008 item 6: this gate is TWO-WAY. A `passing` fixture that fails is
-# an error, and a `not-yet` fixture that PASSES is also an error. A manifest
-# that only fails one way is a TODO list, and a milestone whose exit criterion
-# can be met by accident is not an exit criterion.
+# This gate is TWO-WAY. A `passing` fixture that fails is an error, and a
+# `not-yet` fixture that PASSES is also an error. A manifest that only fails
+# one way is a to-do list: a fixture can start passing by accident and
+# nobody notices.
 #
 # Statuses:
 #   passing   this parser reproduces the fixture's trace exactly, at every
 #             chunk size the selection runs.
-#   not-yet   in scope for v0.1 and not yet reproduced.
-#   deferred  outside v0.1 by decision 0009. The trailing word says which
-#             class: pausing, lenient, skip-body, url-sub-parser.
+#   not-yet   in scope and not yet reproduced.
+#   deferred  needs a lenient flag this parser does not implement. A trailing
+#             word on the line names the reason.
 #
 # The deferred/in-scope split is DERIVED from each fixture's own meta and
 # checked against this file, so a refresh cannot smuggle a lenient fixture in
-# as `not-yet` and have it counted against v0.1's bar.
+# as `not-yet` and have it counted against the in-scope bar.
 #
 # A fixture is identified by its file and 1-based ordinal within that file.
 # Regenerate the skeleton (statuses are NOT preserved) only when the corpus is

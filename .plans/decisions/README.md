@@ -8,3 +8,7 @@ line pointing at its replacement.
 Decisions that only restate the implementation plan do not need a record. These
 exist for choices a reader of the plan would otherwise have to reverse-engineer
 from the code.
+
+These records are kept as history. They cite the milestone plans, upstream
+briefs and development ledger that informed them; those documents are not part
+of the published tree, so such links do not resolve.

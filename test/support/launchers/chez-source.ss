@@ -7,12 +7,10 @@
 ;;; WHY FLAGS RATHER THAN POSITIONS
 ;;;
 ;;; A lane needs one library root per library family it imports, and the count
-;;; grows as library families are added -- the harness today, the parser
-;;; libraries next. A positional protocol renumbers every caller at each
-;;; of those steps. A separator-joined list was rejected outright: it would
-;;; need a path separator that is `:` on Unix and `;` on Windows, which is the
-;;; open question in the upstream tree's milestone-0-portability-spike.md section 9, for no
-;;; benefit here.
+;;; grows as library families are added. A positional protocol renumbers every
+;;; caller each time. A separator-joined list is ruled out: it would need a
+;;; path separator that is `:` on Unix and `;` on Windows, a portability
+;;; question this launcher gains nothing by having to answer.
 ;;;
 ;;; THE OBJECT GUARD
 ;;;
@@ -27,7 +25,7 @@
 ;;;
 ;;; Petite, and whether the build is threaded. Discovery rejects Petite at
 ;;; configure time and re-probes the exact binary registered here, and the
-;;; toolchain layer refused to gate on threading because httparse has no
+;;; toolchain layer does not gate on threading because httparse has no
 ;;; threads. A second copy of either rule would be a requirement inherited
 ;;; rather than owned.
 ;;;
@@ -128,11 +126,12 @@
 (compile-imported-libraries #f)
 
 ;; Nothing includes, so nothing resolves through source-directories at all
-;; (upstream decision 0006; measured inert for the aot launcher as mutation C3b, and
-;; extended here by the absence of any include form). Emptied rather than
-;; left at Chez's CWD-containing default: it still narrows what a later
-;; top-level load or include added to this file could reach, and an empty
-;; list costs nothing to state.
+;; (measured inert for the aot launcher by SchemeMutationSuite.cmake's
+;; "source-directories is not emptied" mutation, and extended here by the
+;; absence of any include form).
+;; Emptied rather than left at Chez's CWD-containing default: it still
+;; narrows what a later top-level load or include added to this file could
+;; reach, and an empty list costs nothing to state.
 (source-directories '())
 
 ;; Every root is paired with the same always-empty guard directory.

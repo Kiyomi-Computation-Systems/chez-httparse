@@ -2,8 +2,8 @@
 ;;;
 ;;; Two halves. The first judges the parser on hand-built markdown, so a
 ;;; failure names the rule that broke. The second runs it over the real
-;;; vendored corpus and asserts counts and total decodability -- the M1 exit
-;;; criterion, measured rather than asserted in prose.
+;;; vendored corpus and asserts counts and total decodability, measured rather
+;;; than asserted in prose.
 (import (rnrs)
         (httparse test harness)
         (httparse test corpus-load)
@@ -302,7 +302,7 @@
                      0)))
     (harness-case "every fixture's input decodes to bytes"
       (lambda ()
-        ;; The M1 exit criterion: all 274 load AND decode.
+        ;; All 274 load AND decode.
         (check-equal "undecodable fixtures"
                      (length (filter (lambda (f)
                                        (guard (e (#t #t))
@@ -315,8 +315,8 @@
         ;; Upstream's driver treats a /slash-delimited/ expectation as a regular
         ;; expression, and the loader reads one as a pattern -- but the vendored
         ;; corpus contains none. (The two /.../ lines in url.md are URL *inputs*,
-        ;; `/foo\tbar/` and `/foo\fbar/`, not expectations; counting them with a
-        ;; grep that ignores block structure is how they were first miscounted.)
+        ;; `/foo\tbar/` and `/foo\fbar/`, not expectations; a grep that ignores
+        ;; block structure miscounts them.)
         ;; So the comparator may compare literal text only. If a refresh ever
         ;; introduces a real pattern this goes red, which is the notice that the
         ;; comparator needs teaching rather than a fixture silently mismatching.
@@ -329,9 +329,8 @@
         ;; WHICH ARMS THE ORACLE CAN JUDGE. llhttp's chunk-extension states can
         ;; emit eight distinct reasons; the vendored corpus records two. The six
         ;; below are translated from `src/llhttp/http.ts` and no fixture can
-        ;; confirm their offsets -- which the M5 mutation pass showed by
-        ;; surviving in EVERY lane, a finding about the corpus rather than about
-        ;; the grammar.
+        ;; confirm their offsets, so a mutation to one of their arms can survive
+        ;; in EVERY lane -- a gap in the corpus rather than in the grammar.
         ;;
         ;; This is the notice that the situation changed: a refresh that adds a
         ;; fixture for any of the six turns this red, and the response is to
@@ -349,8 +348,8 @@
         ;; what follows them is neither a space nor a line ending. No fixture
         ;; carries the second, so nothing in the corpus can judge the three
         ;; arms that produce it -- including the bare-LF one, which is the
-        ;; `.match`-consumes trap this repo has now been wrong about four
-        ;; times, each time exactly where no fixture looked.
+        ;; `.match`-consumes trap, easiest to get wrong exactly where no
+        ;; fixture looks.
         ;;
         ;; The grammar names the llparse idiom behind each of those arms and
         ;; where that idiom IS measured. This is the other half: a refresh
@@ -363,15 +362,15 @@
                      '("Invalid status code"))))
     (harness-case "only one of the five no-body status codes is recorded with framing"
       (lambda ()
-        ;; WHY THREE M7 MUTATIONS SURVIVED EVERY LANE. llhttp asks two
+        ;; WHY A MUTATION HERE CAN SURVIVE EVERY LANE. llhttp asks two
         ;; overlapping questions about a response: the body decision names
         ;; 100, 102, 103, 204 and 304 exactly, and `message_needs_eof` names
         ;; 1xx, 204 and 304 again. On a message with NO framing header the two
         ;; agree, so either alone produces the right trace and a mutation to
         ;; one of them changes nothing. They part only when such a status
         ;; arrives WITH a `Content-Length` or a `Transfer-Encoding`, and the
-        ;; corpus records that for 304 alone -- which is exactly why the 304
-        ;; mutation was caught and the 204 one was not.
+        ;; corpus records that for 304 alone -- so a mutation to the 304 arm
+        ;; is caught and the same mutation to the 204 arm is not.
         ;;
         ;; A fact about the fixtures, so it needs no parser and can be neither
         ;; a snapshot nor a change-detector. A refresh that brings a `204` or

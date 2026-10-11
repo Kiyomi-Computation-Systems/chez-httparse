@@ -217,8 +217,8 @@
 ;;; THE URL GENERATOR IS A SECOND INSTRUMENT and is calibrated the same way.
 ;;; It exists because the message generator reaches almost none of the url
 ;;; sub-parser: a request target is one field out of ten and its pool is ten
-;;; fixed strings, so the machine spliced in by decision 0023 is exercised by
-;;; a handful of shapes and none of its error arms.
+;;; fixed strings, so the url machine inside the request target is exercised
+;;; by a handful of shapes and none of its error arms.
 (harness-group "a url run replays from its seed"
   (lambda ()
     (harness-case "the same seed produces the same cases, byte for byte"
@@ -393,10 +393,10 @@
            all-flags))))
     (harness-case "EVERY PAIR OF FLAGS APPEARS, and there are 55 of them"
       (lambda ()
-        ;; The whole reason this producer exists. Decision 0020 found two
-        ;; cross-flag interactions the hard way -- an invalid-transfer-encoding
-        ;; refusal suppressed by EITHER of two flags, and a chunk-size arm
-        ;; that needs BOTH of two others -- so the pairs are not a hypothesis.
+        ;; The whole reason this producer exists. Flags do interact -- an
+        ;; invalid-transfer-encoding refusal is suppressed by EITHER of two
+        ;; flags, and a chunk-size arm needs BOTH of two others -- so the
+        ;; pairs are not a hypothesis.
         (check-equal "pairs of eleven flags" (length all-pairs) 55)
         (let ((subsets (map subset-of (generate-lenient 5 67))))
           (check-equal "pairs the schedule missed"
@@ -425,12 +425,12 @@
     (harness-case "half the cases match their malformations to their subset"
       (lambda ()
         ;; MEASURED, and the reason the split exists: drawn freely, 4 of 134
-        ;; lenient inputs parsed without an error, because an input dies at
+        ;; lenient inputs parse without an error, because an input dies at
         ;; the first thing its subset cannot excuse -- and fragmentation
         ;; invariance is a property of parses that reach NO error. A matched
         ;; case offers a malformation only when the flag that excuses it is in
-        ;; the subset; a free case draws them independently, which is where
-        ;; both of this producer's first two findings came from.
+        ;; the subset; a free case draws them independently, so it still
+        ;; reaches the errors and interactions a subset does not excuse.
         (let ((origins (map gen-case-origin (generate-lenient 5 67))))
           (check "matched"
                  (exists (lambda (o) (harness-string-contains? o " matched")) origins))

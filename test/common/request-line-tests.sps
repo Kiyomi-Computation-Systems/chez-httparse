@@ -9,8 +9,8 @@
 ;;;   off=13 len=4 span[protocol]="HTTP" / off=17 protocol complete /
 ;;;   off=18 len=3 span[version]="1.1" / off=21 version complete
 ;;;
-;;; The grammar runs here through the REFERENCE INTERPRETER. The generated lane
-;;; and the conformance driver arrive with the slice that emits the parser.
+;;; The grammar runs here through the REFERENCE INTERPRETER; the emitted parser
+;;; is judged by the conformance driver.
 (import (rnrs)
         (httparse test harness)
         (httparse grammar)
@@ -82,10 +82,10 @@
   (run-with input (lambda (p bv) (parser-feed! p bv 0 (bytevector-length bv)))))
 
 ;; The same run fed in fixed-size chunks of `n` bytes -- the shape upstream's
-;; `llparse__run_scan` uses and decision 0008 adopts. Feeding stops at the first
-;; result that is not `need-input`. Span text is per FRAGMENT, so a span that
-;; crosses a chunk boundary arrives here as several events; rejoining them is
-;; the trace formatter's job, not this runner's.
+;; `llparse__run_scan` uses and the conformance driver adopts. Feeding stops at
+;; the first result that is not `need-input`. Span text is per FRAGMENT, so a
+;; span that crosses a chunk boundary arrives here as several events; rejoining
+;; them is the trace formatter's job, not this runner's.
 (define (run/chunked input n)
   (run-with input
     (lambda (p bv)
@@ -101,8 +101,8 @@
 (define (events-of/chunked input n) (let-values (((r e) (run/chunked input n))) e))
 
 ;; Every callback is declared `required?`, so a parser must bind all of them
-;; even when a case ignores what they report. (Learned from the parser
-;; refusing an empty binding list, which is the declaration doing its job.)
+;; even when a case ignores what they report. An empty binding list is
+;; refused, which is the declaration doing its job.
 (define (ignoring-bindings)
   (define (ignore-event p ctx) callback-continue)
   (define (ignore-span p ctx bv from to) callback-continue)
@@ -131,8 +131,8 @@
         (list 'on-chunk-extension-value-complete ignore-event)
         (list 'on-chunk-complete ignore-event)
         (list 'on-message-complete ignore-event)))
-;; Since M3 the request line no longer terminates the parse -- it runs on into
-;; the header section -- so a well-formed line leaves the parser wanting more
+;; The request line does not terminate the parse -- it runs on into the
+;; header section -- so a well-formed line leaves the parser wanting more
 ;; input rather than stopped. What these cases claim is that the line was
 ;; ACCEPTED, and that is "no error".
 (define (status-of input) (let-values (((r e) (run input))) (parser-result-status r)))
@@ -166,9 +166,9 @@
     (harness-case "it verifies"
       (lambda ()
         ;; `verify-machine` RETURNS A VERDICT; IT DOES NOT RAISE ONE, so the
-        ;; answer has to be read. This case asked only whether the call
-        ;; returned -- and a `verification-result` always does, clean or not
-        ;; -- so it was green from M2 to M7 while checking nothing. What
+        ;; answer has to be read. A case that asked only whether the call
+        ;; returned would be green while checking nothing, because a
+        ;; `verification-result` always returns, clean or not. What
         ;; actually gates this lane is `make-interpreted-machine` above,
         ;; which does raise; this is the check that says so out loud, and
         ;; names the diagnostics when it does not.
@@ -184,9 +184,9 @@
         ;; a grammar broken enough to produce diagnostics never reaches the
         ;; case that would report them. A machine broken HERE does, and it
         ;; proves the two accessors above answer differently for a machine
-        ;; the verifier refuses -- which the old `(check "verify-machine
-        ;; returns" ...)` could not have, because a verification result is
-        ;; truthy either way.
+        ;; the verifier refuses -- which a check that the call merely
+        ;; returned could not, because a verification result is truthy
+        ;; either way.
         (let ((v (verify-machine
                   (make-machine
                    'probe 'entry
@@ -337,9 +337,8 @@
         ;; THE EVENT IS llhttp'S, MEASURED. For ` / HTTP/1.1` a live llhttp
         ;; prints `off=0 message begin` and then `off=0 error code=6`. No
         ;; fixture in the corpus begins with a byte no method may start with,
-        ;; so this number cannot come from a recorded trace -- it came from
-        ;; the differential lane, which found this parser printing the error
-        ;; alone.
+        ;; so this number cannot come from a recorded trace -- it comes from
+        ;; the live differential.
         (check-equal "code" (error-code-of " / HTTP/1.1\r\n") 'invalid-method)
         (check-equal "offset" (error-offset-of " / HTTP/1.1\r\n") 0)
         (check-equal "the message began and nothing else did"
@@ -374,9 +373,9 @@
     (harness-case "end of input inside the method is llhttp's Invalid EOF state"
       (lambda ()
         ;; A finish from any UNSAFE state is llhttp's HPE_INVALID_EOF_STATE
-        ;; (code 14, reason verbatim -- #42), not a numberless error of our own.
-        ;; The corpus never finishes (decision 0016), so this is where it is
-        ;; pinned; `unit.finish` holds the other unsafe states.
+        ;; (code 14, reason verbatim), not a numberless error of our own.
+        ;; The corpus harness never calls `llhttp_finish`, so this is where it
+        ;; is pinned; `unit.finish` holds the other unsafe states.
         (let* ((bv (string->utf8 "GE"))
                (p (make-parser compiled (ignoring-bindings) #f request-init)))
           (parser-feed! p bv 0 2)
@@ -386,7 +385,7 @@
     (harness-case "end of input before any byte finishes cleanly"
       (lambda ()
         ;; Between messages, clean end of input is `finished`, not an error --
-        ;; which is what lets the message loop terminate in a later milestone.
+        ;; which is what lets the message loop terminate.
         (check-equal "status"
                      (parser-result-status
                       (parser-finish! (make-parser compiled (ignoring-bindings) #f request-init)))
@@ -397,7 +396,7 @@
     (harness-case "byte-at-a-time feeding produces the same events"
       (lambda ()
         ;; The corpus replays every fixture at every chunk size; this is the
-        ;; same property on one input, before the conformance driver exists.
+        ;; same property on one input, without the conformance driver.
         (let ((input "OPTIONS /url HTTP/1.1\r\n")
               (events '()))
           (define (ev name)
@@ -503,8 +502,8 @@
                      '(invalid-constant "Expected HTTP/, RTSP/ or ICE/" 10))))
     (harness-case "a run of capitals is not a protocol"
       (lambda ()
-        ;; The A-Z loop this replaced accepted `HTTX/1.1` outright, version and
-        ;; all, because it had no notion of a constant.
+        ;; An A-Z loop would accept `HTTX/1.1` outright, version and all,
+        ;; because it has no notion of a constant.
         (check-equal "status" (status-of "GET / HTTX/1.1\r\n") 'error)
         (check-equal "events"
                      (only '(protocol protocol-complete) "GET / HTTX/1.1\r\n")
@@ -625,7 +624,7 @@
                      '(invalid-version "Invalid major version" 11))))
     (harness-case "a third component is not part of the version"
       (lambda ()
-        ;; The digits-and-dot loop this replaced took `1.1.1` whole.
+        ;; A digits-and-dot loop would take `1.1.1` whole.
         (check-equal "span" (only '(version) "GET / HTTP/1.1.1\r\n")
                      '((version 11 3 "1.1")))
         (check-equal "error" (error-of "GET / HTTP/1.1.1\r\n")
@@ -753,8 +752,8 @@
         ;; matches, and the RTSP pair are written `GET_PARAMETER: 41` and
         ;; `SET_PARAMETER: 42` -- underscores, as RFC 2326 spells them. Only
         ;; `'M-SEARCH': 24` is quoted, because a hyphen cannot be a bare key.
-        ;; This table carried hyphens for six milestones; no corpus fixture
-        ;; uses either method, so nothing could say so until a live llhttp did.
+        ;; No corpus fixture uses either method, so only a live llhttp can
+        ;; confirm the spelling.
         (check-equal "method" (assq 'method (events-of "GET_PARAMETER / HTTP/1.1\r\n"))
                      '(method 0 13 "GET_PARAMETER"))))
     (harness-case "and the hyphenated spelling is not a method at all"

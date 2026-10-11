@@ -1,6 +1,6 @@
 ;;; The live llhttp differential, over inputs nobody wrote down.
 ;;;
-;;; DECISION 0010 PLACES THIS LANE. The vendored corpus is the CI oracle and
+;;; WHY THIS LANE IS LOCAL. The vendored corpus is the CI oracle and
 ;;; already carries llhttp's own trace for every fixture at every chunk size,
 ;;; so replaying fixtures through a live binary would print what is already
 ;;; checked in. What a live binary adds is the one thing no recorded trace
@@ -22,7 +22,7 @@
 ;;;
 ;;; THERE ARE THREE KINDS AND THREE BINARIES. `request` and `response` are
 ;;; two modes of llhttp's message parser; `url` is its URL sub-parser built
-;;; standalone, which decision 0022 makes a second machine on this side too.
+;;; standalone, and it is a second machine on this side too.
 ;;; The kind travels with the case and picks the binary over there and the
 ;;; machine over here, so a url case is never asked of a message parser.
 ;;;
@@ -77,21 +77,21 @@
     (or (and (string? v) (string->number v)) 67)))
 
 ;; THREE SEEDS, NOT ONE, AND THAT IS A MEASUREMENT RATHER THAN A PRECAUTION.
-;; The url kind's first find -- a host holding two `@` that are not adjacent,
-;; which llhttp accepts and this parser refused -- DID NOT APPEAR AT THE
-;; DEFAULT SEED. It appeared at three others out of five tried. A lane pinned
-;; to one seed is a lane that can be silently lucky, and a green run would
-;; have read as evidence.
+;; A divergence can be absent at one seed and present at its neighbours: a
+;; host holding two `@` that are not adjacent, which llhttp accepts, does not
+;; show up at the default seed but does at `20260915 + 1`. A lane pinned to
+;; one seed is a lane that can be silently lucky, and a green run would read
+;; as evidence.
 ;;
 ;; The sweep is the seed it was given and its two successors, so the run is
 ;; still named by one number and any member replays alone by being named
-;; directly. `20260915 + 1` is one of the three that found it.
+;; directly.
 (define seeds (list seed (+ seed 1) (+ seed 2)))
 
 ;; TWO MACHINES, AND THE CASE'S KIND SAYS WHICH -- exactly as the conformance
 ;; driver picks one per fixture. `url` is llhttp's URL sub-parser built
-;; standalone (decision 0022); it shares no callback and no field with the
-;; message parser, and the oracle side picks a different BINARY for it.
+;; standalone; it shares no callback and no field with the message parser,
+;; and the oracle side picks a different BINARY for it.
 (define (machine-for kind)
   (if (eq? kind 'url) httparse-url-machine httparse-message-machine))
 
@@ -152,10 +152,10 @@
                      acc))))))
 
 ;; THE URL CASES ARE A SEPARATE RUN, not more bases in the existing one. Added
-;; to `bases`, they would have changed every message mutant this lane has ever
-;; produced, and a new divergence would have had two possible causes. Kept
-;; apart, the request and response inputs are byte for byte what they were
-;; before the url kind existed, so anything new comes from the new kind.
+;; to `bases`, they would change every message mutant this lane produces, and
+;; a divergence would have two possible causes. Kept apart, the request and
+;; response inputs do not depend on the url bases at all, so a divergence in a
+;; message case cannot come from the url kind.
 (define (cases-at s)
   (append (generate-structured s case-count)
           (generate-mutants s case-count bases)
@@ -195,9 +195,9 @@
                           (number->string size) ":" (number->string (+ size 1)) " "
                           (oracle-hex-encode (gen-case-bytes c))
                           ;; NO MASK FIELD FOR A STRICT CASE, so it goes to
-                          ;; upstream's own binary and the message and url
-                          ;; halves are compared against exactly the program
-                          ;; they were before the lenient kind existed.
+                          ;; upstream's own binary and every strict comparison
+                          ;; is against the program the corpus was recorded
+                          ;; from.
                           ;;
                           ;; The mask is this project's own bit numbering from
                           ;; `(httparse modes)`; `lenient-init.c` translates
@@ -252,24 +252,17 @@
 
 ;; --- how a divergence is named -------------------------------------------
 ;;
-;; Two classes account for every divergence this lane has found, and both are
-;; things this project has already decided about rather than discoveries left
-;; lying around. A divergence in NEITHER class fails the lane: that is the
-;; whole point of naming them, and a classifier wide enough to swallow a new
-;; bug would be worse than none.
+;; Two classes account for every known divergence, and both are decided
+;; limitations rather than open findings. A divergence in NEITHER class fails
+;; the lane: that is the whole point of naming them, and a classifier wide
+;; enough to swallow a new bug would be worse than none.
 ;;
 ;; Each class is anchored by an exact witness below -- llhttp's own bytes for
 ;; one reduced input -- so the class is pinned by an example and the predicate
 ;; only decides membership for the rest. When a class is fixed, its witness
-;; turns red and says so.
-;;
-;; THERE WERE THREE, AND THE MECHANISM ABOVE IS HOW THE THIRD LEFT. The
-;; `url-machine` class covered 45 comparisons where llhttp ran its URL
-;; sub-parser over the request target and this parser read on. Splicing that
-;; machine in closed every one of them, and the witness went red BEFORE
-;; anyone thought to look at the counts -- which is what decision 0018 buys.
-;; Its input is still here, one group down, asserting the agreement it now
-;; produces.
+;; turns red and says so. A fixed class is then deleted, and its witness is
+;; kept, inverted, asserting the agreement it now produces -- the
+;; `OPTIONS a.com:443` group below is one.
 
 (define (ends-with? s suffix)
   (let ((n (string-length s)) (m (string-length suffix)))
@@ -483,16 +476,14 @@
         (list (string-append "refused: " (drive-refusal-detail t)))
         (map utf8->string t))))
 
-(harness-group "the divergence that was, and is not"
+(harness-group "an authority-form OPTIONS target stops inside the url machine"
   (lambda ()
     ;; `OPTIONS a.com:443` is an authority-form target, which llhttp's URL
-    ;; machine rejects for a method that is not CONNECT. THIS WAS THE WITNESS
-    ;; FOR A DIVERGENCE CLASS: decision 0009 deferred the URL machine, and
-    ;; until it was spliced into the request target this parser read the
-    ;; target as one opaque span and carried on to the version.
+    ;; machine rejects for a method that is not CONNECT. A parser that read
+    ;; the target as one opaque span would carry on to the version instead.
     ;;
-    ;; It is kept, inverted, as the sharpest evidence there is that the
-    ;; machine is in the path. A count going to zero is a number; two traces
+    ;; So this is the sharpest evidence there is that the URL machine is in
+    ;; the request path. A count of zero divergences is a number; two traces
     ;; that are the same list of strings is the behaviour.
     (harness-case "llhttp stops inside the target and so does this parser"
       (lambda ()
@@ -514,8 +505,9 @@
 
 (harness-group "and a CONNECT target still gets through"
   (lambda ()
-    ;; The other half of the same change, and the reason it needed a branch
-    ;; rather than one entry: `0-home0.netscape.com:443` has no scheme and no
+    ;; The other half of the URL machine in the request target, and the
+    ;; reason it needs a branch rather than one entry:
+    ;; `0-home0.netscape.com:443` has no scheme and no
     ;; leading slash, so `url_start` would refuse its first byte. llhttp
     ;; routes a CONNECT request past `start` and opens at the host instead.
     ;; `request/method.md#4` covers this in the corpus; here it is checked
@@ -591,11 +583,11 @@
 
 (harness-group "the first byte is not a reason to withhold message begin"
   (lambda ()
-    ;; A DIVERGENCE THIS LANE FOUND AND THE GRAMMAR NOW FIXES. The start node
-    ;; used to reject a non-tchar first byte before `message begin` fired, so
-    ;; `@ET / HTTP/1.1` printed the error alone. llhttp prints the event
-    ;; first. No corpus fixture begins with a non-tchar, so nothing in the
-    ;; tree could have said so.
+    ;; llhttp prints `message begin` before it refuses a first byte no method
+    ;; may start with, so `@ET / HTTP/1.1` prints the event and then the
+    ;; error. A start node that refused the byte first would print the error
+    ;; alone. No corpus fixture begins with a non-tchar, so only the live
+    ;; oracle can say which is right.
     (harness-case "a first byte no method may start with still begins a message"
       (lambda ()
         (check-equal "@ET"
@@ -608,19 +600,18 @@
                      (oracle-trace-of "request" " / HTTP/1.1" 11))))
     (harness-case "a leading CRLF is still skipped and moves the offset"
       (lambda ()
-        ;; The arm that stayed: llhttp's start matches CR and LF back to
-        ;; itself, so the event lands at 2 rather than 0.
+        ;; The exception: llhttp's start matches CR and LF back to itself,
+        ;; so the event lands at 2 rather than 0.
         (check-equal "crlf"
                      (our-trace-of "request" "\r\nGET / HTTP/1.1\r\n\r\n" 20)
                      (oracle-trace-of "request" "\r\nGET / HTTP/1.1\r\n\r\n" 20))))))
 
 ;;; --- WHAT THE URL KIND BUYS -----------------------------------------------
 ;;;
-;;; The url cases were added AFTER the request target got its machine, so
-;;; there was no divergence class here to anchor: all 1431 comparisons they
-;;; contribute agreed on their first run. What the three groups below pin is
-;;; the two ways that agreement could be worthless -- comparing the WRONG
-;;; PARSER, and comparing graph the corpus already covers.
+;;; The url kind has no divergence class to anchor: its comparisons agree.
+;;; What the three groups below pin is the two ways that agreement could be
+;;; worthless -- comparing the WRONG PARSER, and comparing graph the corpus
+;;; already covers.
 
 (harness-group "the url kind reaches a different binary and a different machine"
   (lambda ()
@@ -664,13 +655,13 @@
   (lambda ()
     ;; `#` AND `?` ARE ORDINARY INSIDE A FRAGMENT -- upstream's edge is
     ;; `fragment.match(['?','#'], fragment)` -- and no fixture in `url.md`
-    ;; carries either. MEASURED: dropping `#` from that edge leaves all 86
-    ;; lanes green, `url.md`'s 21 at every chunk size included, and turns
-    ;; this lane's `unclassified` count from 0 to 48.
+    ;; carries either. MEASURED: dropping `#` from that edge leaves every
+    ;; other lane green, `url.md`'s 21 at every chunk size included, and puts
+    ;; 48 of this lane's comparisons outside the classifier.
     ;;
     ;; So it is written down here as llhttp's own bytes rather than left to a
-    ;; count: this is the case the url kind was added for, and a lane that
-    ;; only ever printed `agreed=N` would not say which N.
+    ;; count: this is the case the url kind exists for, and a lane that only
+    ;; ever printed `agreed=N` would not say which N.
     (harness-case "a fragment runs through a second `#`"
       (lambda ()
         (let ((theirs (oracle-trace-of "url" "*?a&b=c#a#b" 11)))
@@ -683,11 +674,12 @@
 ;;; --- THE FOURTH BINARY IS HELD TO UPSTREAM'S OWN -------------------------
 ;;;
 ;;; `http-modes-c` is the one piece of this differential whose init hook is
-;;; not upstream's. Decision 0026 says why that is inside decision 0010's
-;;; rule rather than an exception to it -- the hook assigns two integer
+;;; not upstream's. The oracle is upstream's harness, not a driver of ours,
+;;; because a printer of our own would be a second implementation of the
+;;; format under comparison. The hook keeps to that -- it assigns two integer
 ;;; fields and prints nothing, so every trace line still comes from
-;;; upstream's `extra.c` -- but "inside the rule" is an argument, and what
-;;; follows is a measurement.
+;;; upstream's `extra.c` -- but that is an argument, and what follows is a
+;;; measurement.
 ;;;
 ;;; TWO EQUIVALENCES, and between them they pin both fields the hook writes.
 

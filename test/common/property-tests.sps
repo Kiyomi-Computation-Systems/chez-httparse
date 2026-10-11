@@ -164,8 +164,8 @@
 
 ;; THE URL CASES ARE A SEPARATE RUN, not more bases in the existing one --
 ;; the same reason the differential keeps them apart. `HTTPARSE_PROPERTY_URL_CASES=0`
-;; reproduces this lane as it was before the url kind existed, so a finding
-;; here has one possible source.
+;; runs this lane without the url kind, so a finding here has one possible
+;; source.
 ;; LENIENT CASES ARE A MODE, NOT A MACHINE. They run the same parser as the
 ;; strict ones, with two fields written before the first byte -- so both
 ;; properties apply to them unchanged, and the only new question is whether
@@ -233,10 +233,9 @@
 ;;     20260916      57        53      93
 ;;     31337         40        56     104
 ;;
-;; The request and response columns grew when the lenient producer arrived --
-;; a lenient case is a request or a response too. RE-MEASURED rather than
-;; scaled: the figures these replace were taken before it existed, and a
-;; scaled guess is what put a wrong table here in the first place.
+;; The request and response columns include the lenient cases, because a
+;; lenient case is a request or a response too. Every row is measured; none
+;; is scaled from a smaller run.
 ;;
 ;; and by mode, at 201 lenient cases:
 ;;
@@ -255,9 +254,9 @@
 ;; error.
 ;;
 ;; THE LENIENT ROW IS WHY THE GENERATOR MATCHES HALF ITS MALFORMATIONS TO THE
-;; FLAGS IT WAS GIVEN. Drawn freely it was 4 of 134, because an input dies at
-;; the first thing its subset cannot excuse -- and this property is about
-;; parses that reach no error. The floor is what said so.
+;; FLAGS IT WAS GIVEN. Drawn freely, 4 of 134 reach no error, because an
+;; input dies at the first thing its subset cannot excuse -- and this
+;; property is about parses that reach no error.
 (define kind-floor 15)
 
 (harness-begin "property.generated-input")

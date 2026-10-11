@@ -1,21 +1,21 @@
 ;;; (httparse test oracle): read a live llhttp fixture binary's output back
 ;;; into the same trace the parser is measured against.
 ;;;
-;;; WHY THIS EXISTS. Decision 0010 puts a live llhttp behind a local, opt-in
-;;; lane whose job is generated input. Upstream's binary prints RAW trace
-;;; lines; upstream's JavaScript checker then coalesces adjacent span
-;;; fragments before comparing (`normalizeSpans`), which is why a corpus
-;;; fixture matches at every chunk size. Our side already reproduces that step
-;;; -- `trace-format` does it -- so the whole job here is turning a printed
-;;; line back into the EVENT it was printed from, and letting the existing
-;;; renderer do the rest. Reimplementing the coalescing beside it would be a
-;;; second copy of a subtle rule.
+;;; WHY THIS EXISTS. A live llhttp sits behind a local, opt-in lane whose job
+;;; is generated input. Upstream's binary prints RAW trace lines; upstream's
+;;; JavaScript checker then coalesces adjacent span fragments before comparing
+;;; (`normalizeSpans`), which is why a corpus fixture matches at every chunk
+;;; size. Our side already reproduces that step -- `trace-format` does it --
+;;; so the whole job here is turning a printed line back into the EVENT it was
+;;; printed from, and letting the existing renderer do the rest.
+;;; Reimplementing the coalescing beside it would be a second copy of a subtle
+;;; rule.
 ;;;
 ;;; THE RECOGNISER IS THE PART THAT CAN FAIL SILENTLY, by matching less than
 ;;; it should and dropping a line into the catch-all. Two things guard it.
 ;;; First, a quoted span line carries its own length, so the parse is checked
 ;;; against `len=` and a disagreement is a refusal rather than a shorter
-;;; comparison. Second, the corpus is 190 already-normalised expected blocks:
+;;; comparison. Second, the corpus's expected blocks are already normalised:
 ;;; running them through this module must give them back unchanged, which is
 ;;; a check that needs no llhttp and runs on every pull request.
 ;;;

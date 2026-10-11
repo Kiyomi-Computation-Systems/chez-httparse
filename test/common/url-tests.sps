@@ -16,7 +16,8 @@
 ;;;      inside a URL an edge for each. Those cases were MEASURED against a
 ;;;      purpose-built url oracle -- `test/md-test.ts`'s `buildURL()`, built
 ;;;      through llhttp's own `test/fixtures/index.ts` -- and never read off
-;;;      this parser. Decision 0010 is the rule; M9 and M10 set the precedent.
+;;;      this parser. That oracle is a local build and not a lane, so its
+;;;      answers are written into the cases.
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)
@@ -209,10 +210,10 @@
         (check-equal "trace" (trace "@nope")
                      '("off=0 error code=7 reason=\"Unexpected start char in url\""))))))
 
-;;; A DIVERGENCE THE LIVE DIFFERENTIAL FOUND, at three seeds out of four and
-;;; never at the default one. `url.md`'s "Double `@`" fixture is `a:b@@host`
-;;; -- the two are ADJACENT -- so the corpus cannot tell "no second `@`" from
-;;; "no `@` straight after an `@`", and this parser had the first.
+;;; A RULE ONLY THE LIVE DIFFERENTIAL REACHES. `url.md`'s "Double `@`"
+;;; fixture is `a:b@@host` -- the two are ADJACENT -- so the corpus cannot
+;;; tell "no second `@`" from "no `@` straight after an `@`", and llhttp's
+;;; rule is the second.
 ;;;
 ;;; Upstream builds `server` and `server_with_at` from one loop, and the edges
 ;;; inside that loop name `server` EXPLICITLY rather than the loop variable:
@@ -237,7 +238,8 @@
     (harness-case "a bracket resets it as well as a userinfo byte"
       (lambda ()
         ;; oracle: `[` and `]` take the same edge back to `server`, so this is
-        ;; what says the fix moved BOTH and not just the one the witness used.
+        ;; what says BOTH edges return there and not just the one the case
+        ;; above uses.
         (check-equal "trace" (trace "a://a@[b]@c/")
                      '("off=0 len=1 span[url.schema]=\"a\""
                        "off=4 len=7 span[url.host]=\"a@[b]@c\""
@@ -245,8 +247,8 @@
     (harness-case "and adjacent ones are still Double @"
       (lambda ()
         ;; The half `url.md` does record, restated here beside its neighbour:
-        ;; a fix that simply deleted the error edge would pass the two cases
-        ;; above and this is what stops it.
+        ;; a parser with no error edge at all would pass the two cases above
+        ;; and this is what stops it.
         (check-equal "trace" (trace "a://a@@b/p")
                      '("off=0 len=1 span[url.schema]=\"a\""
                        "off=7 error code=7 reason=\"Double @ in url\""))))))

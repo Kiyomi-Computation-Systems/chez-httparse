@@ -3,9 +3,9 @@
 # WHY THIS FILE EXISTS
 #
 # Every positive assertion and every negative case in every other specification
-# routes through two functions in SpecSupport.cmake. Neither was tested. Breaking
-# either one left all four specifications green, which meant the whole suite
-# could report success while checking nothing -- the one failure mode that no
+# routes through two functions in SpecSupport.cmake. Breaking either one leaves
+# every other specification green, so without this file the whole suite could
+# report success while checking nothing -- the one failure mode that no
 # amount of care in the specifications themselves would reveal.
 #
 # WHY IT CANNOT USE THE HELPERS IT TESTS

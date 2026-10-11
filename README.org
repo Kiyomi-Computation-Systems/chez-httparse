@@ -13,70 +13,32 @@ byte, at every chunk size.
 
 *Status: v0.4.5.* Request and response parsing, strict and lenient: *all 274*
 fixtures in llhttp's conformance corpus — every HTTP fixture and every URL
-fixture it ships — at every chunk size from 1 to the input length, with an
-empty deferral list. The URL fixtures are a second generated parser, for the
-five spans llhttp's own url binary reports. A live differential against a built
-llhttp agrees on 9,557 generated inputs besides. See
+fixture it ships — at every chunk size from 1 to the input length, with none
+excluded. The URL fixtures are a second generated parser, for the five spans
+llhttp's own url binary reports. A live differential against a built llhttp
+agrees on 9,557 generated inputs besides. See
 [[file:docs/conformance.org][docs/conformance.org]].
 
-v0.4.5 moves the byte-machine pin to =v0.7.0=, whose parse errors record the
-span they abandoned and where its withheld bytes begin. An embedder that holds a
-request target or a field name to a size limit can then count the bytes a
-failing feed withheld, however the input was split. This project calls neither
-new accessor and adds no API; it carries the runtime that has them. The shipped
-parsers are byte-identical to v0.4.4. A parse that ends in an error allocates 16
-bytes more, and feeding a message a byte at a time is 2.7% slower; a
-whole-buffer parse is unchanged to within a clock tick. See
-[[file:docs/performance.org][docs/performance.org]].
+What an embedder gets:
 
-v0.4.4 documents what =parser-stream-offset= answers inside a callback: the
-bytes taken before an event, which is llhttp's ~off=~, and the end of a span's
-fragment. An embedder can measure the bytes no span covers from those. And
-=parser-finish!= no longer runs an empty =on-body-data= for a close-delimited
-body that got no bytes, which llhttp never does. The shipped parser gains one
-state; every recorded trace is unchanged. See [[file:docs/api.org][docs/api.org]].
+- *The message parser*, =(generated httparse-message)=. Request or response
+  and llhttp's eleven lenient flags are chosen when the parser is made; pausing,
+  =skip-body= and llhttp's two upgrade hand-offs are reported as results; and
+  =parser-finish!= ends a parse the way =llhttp_finish= does — a
+  close-delimited body completes, and a half-read message is
+  =invalid-eof-state=. Inside a callback, =parser-stream-offset= says where in
+  the stream that callback is.
+- *The url sub-parser*, =(generated httparse-url)=, for a request target broken
+  into schema, host, path, query and fragment.
+- *Three pure libraries* that need no runtime: =(httparse modes)= (the mode
+  tables), =(httparse methods)= (llhttp's method name/number tables) and
+  =(httparse decisions)= (its keep-alive / needs-eof rules and the flag bits they
+  read).
 
-v0.4.3 moves the byte-machine pin to =v0.6.1=, whose keyword walk no longer
-copies the prefix it has matched on every byte. A header name's cost no longer
-depends on how much of =Transfer-Encoding= (or any name the parser reads by
-name) it happens to match, and a lane asserts that shape. A small POST allocates
-less than half what it did, and a whole-buffer parse is 35–80% faster. The
-shipped parser is byte-identical to v0.4.2. See
-[[file:docs/performance.org][docs/performance.org]].
-
-v0.4.2 corrects how =docs/api.org= maps a Transfer-Encoding error to a response
-status. Every request failure under =invalid-transfer-encoding= is a =400=
-(RFC 9112 §6.3), not the =501= the note gave for one of them. The four node
-names that tell those failures apart are now pinned by a lane. The shipped
-parser is byte-identical to v0.4.1.
-
-v0.4.1 documents the =upgrade= field as llhttp's =llhttp_get_upgrade=, with
-when it is valid, and pins it with a lane over the corpus. The shipped parser
-is byte-identical to v0.4.0.
-
-v0.4.0 aligns the =parser-finish!= path with llhttp on the two points the
-corpus cannot reach. A close-delimited response body now fires
-=on-message-complete= when the embedder finishes the parse, and a finish from a
-half-read message reports llhttp's =invalid-eof-state= / "Invalid EOF state" in
-place of an error of our own. Conformance holds at 274/274 — no fixture
-finishes — but the shipped parser is no longer byte-identical: v0.3.0's
-additions did not touch it, these do (a node added, an error renamed). The
-release also documents the result surfaces a connection layer reads at a pause
-or an upgrade hand-off, and how =parser-error-node-name= splits one error code
-across two response statuses.
-
-v0.3.0 adds two pure, runtime-safe libraries for embedders, lifted out of the
-build-time grammar: =(httparse methods)= (llhttp's method name/number tables)
-and =(httparse decisions)= (its keep-alive / needs-eof rules and the flag bits
-they read). Additive — conformance and performance are unchanged, and the
-shipped parser is byte-identical.
-
-v0.1 shipped 190 fixtures, strict-mode only, and parsed a 308-byte request at
-14,925 msg/s; v0.2 parses the same request at *175,000*. None of that twelvefold
-is in this repository — it is four dispatch fixes in the generator, and
-[[file:docs/performance.org][docs/performance.org]] records them, the ratios
-against llhttp (25.5× on its own bench input, from 485×), and what wrapping
-llhttp through the FFI would actually buy.
+[[file:docs/api.org][docs/api.org]] is the reference.
+[[file:docs/performance.org][docs/performance.org]] records what a parse
+allocates, how fast it runs, the ratio against llhttp, and what wrapping llhttp
+through the FFI would buy instead. =CHANGELOG.md= is the version history.
 
 * What it is
 
@@ -201,10 +163,10 @@ To run the parser against a live llhttp on generated input, see
 * Documentation
 
 - [[file:docs/api.org][docs/api.org]] — the public surface
-- [[file:docs/conformance.org][docs/conformance.org]] — what v0.1 parses, and every measured divergence
+- [[file:docs/conformance.org][docs/conformance.org]] — what it parses, and every measured divergence
 - [[file:docs/performance.org][docs/performance.org]] — allocation and throughput, measured
-- =.plans/= — the architecture document and the milestone plan
-- =.plans/decisions/= — decision records
+- =.plans/decisions/= — design decision records: the reasoning behind choices
+  these documents describe
 - =CHANGELOG.md= — release history
 
 * License

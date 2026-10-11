@@ -5,10 +5,9 @@
 # Its policies are whatever that CMake defaults to in script mode, and CMake 3
 # leaves a policy unset there unless the script asks. CMake 4 removed the OLD
 # behaviour of every policy older than 3.5, so the same script behaves
-# differently under the two. CorpusProvenanceSpec shipped that way: its
-# `if(NOT ... IN_LIST ...)` needs CMP0057, it passed on every CMake 4 machine
-# that ran it, and the Linux runner's CMake 3 read it as a syntax error the
-# first time CI got that far.
+# differently under the two. `if(NOT ... IN_LIST ...)` is the standing
+# example: it needs CMP0057, so a script that uses it without a floor passes on
+# CMake 4 and is a syntax error under CMake 3.
 #
 # RUNNING THE SCRIPTS CANNOT CATCH THIS ON A CMAKE 4 MACHINE, because the
 # behaviour it would need to see does not exist there. So the floor is checked

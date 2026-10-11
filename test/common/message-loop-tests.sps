@@ -12,9 +12,9 @@
 ;;;
 ;;; ONE ARM OF `should_keep_alive` HAS NO STRICT FIXTURE: HTTP/1.0 WITH
 ;;; `Connection: keep-alive` restarting. `request/connection.md#4` records it
-;;; and is lenient, so it is deferred by decision 0009 and cannot gate. What
-;;; the cases below pin is the other three -- 1.1 restarts, 1.1 with `close`
-;;; does not, 1.0 without keep-alive does not.
+;;; under `request-lenient-keep-alive`, so the conformance lane judges it in
+;;; that mode and not here. What the cases below pin is the other three --
+;;; 1.1 restarts, 1.1 with `close` does not, 1.0 without keep-alive does not.
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)

@@ -1,8 +1,8 @@
 name: CI
 
 # macOS is verified locally on the maintainer's arm64 laptop, not here: a hosted
-# macOS runner bills at ten times the Linux rate, and the arm64 cell was
-# recording a brew-installed Chez rather than exercising the pinned floor.
+# macOS runner bills at ten times the Linux rate, and an arm64 cell there
+# would record a brew-installed Chez rather than exercise the pinned floor.
 # CI therefore covers the Linux amd64 cell and the no-Scheme build layer.
 
 on:

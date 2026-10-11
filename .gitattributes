@@ -18,7 +18,7 @@
 test/fixtures/** -text
 *.expected -text
 
-# The vendored llhttp corpus (decision 0007) is upstream's bytes, checksummed
+# The vendored llhttp corpus is upstream's bytes, never edited, checksummed
 # in test/vendor/llhttp/PROVENANCE and verified by a registered spec. It is
 # marked binary for the same reason as the fixtures above, one step earlier:
 # no fixture in it contains a CR byte *today*, so eol=lf would be harmless

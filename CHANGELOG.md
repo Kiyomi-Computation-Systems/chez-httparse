@@ -933,11 +933,11 @@ ratcheted rather than omitted — see
 [0009](.plans/decisions/0009-v01-is-strict-request-and-response-parsing.md).
 
 Gate 0 and Slice 1: project bootstrap, then the milestone ladder in
-[.plans/2026-09-13-gate0-http-parser-milestone-plan.md](.plans/2026-09-13-gate0-http-parser-milestone-plan.md).
+`.plans/2026-09-13-gate0-http-parser-milestone-plan.md`.
 The governing architecture is
-[.plans/chez-http-server-architecture.md](.plans/chez-http-server-architecture.md);
+`.plans/chez-http-server-architecture.md`;
 the bootstrap slice design is
-[.plans/2026-08-28-gate0-slice1-harness-port-design.md](.plans/2026-08-28-gate0-slice1-harness-port-design.md).
+`.plans/2026-08-28-gate0-slice1-harness-port-design.md`.
 
 ### Added
 
@@ -972,7 +972,7 @@ the bootstrap slice design is
   README's example is an `example` lane that runs in CI, so it cannot drift.
 - The fifth upstream brief, for a keyword table that waits one byte past a
   decided match
-  ([.plans/2026-09-15-upstream-keyword-terminal-brief.md](.plans/2026-09-15-upstream-keyword-terminal-brief.md)).
+  (`.plans/2026-09-15-upstream-keyword-terminal-brief.md`).
 
 
 - Gate 0 decision records: project naming and the mechanical rename map

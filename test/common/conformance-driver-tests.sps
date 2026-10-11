@@ -1,19 +1,18 @@
 ;;; The two-way ratchet, driven over the vendored corpus.
 ;;;
-;;; This is the lane the milestone exit criteria are stated in. For every
-;;; in-scope fixture it replays the input at each chunk size the selection asks
-;;; for, renders the parser's callbacks into llhttp's trace text through the
-;;; adapter, and compares BIT-EXACTLY against the fixture's own expected block
-;;; (decision 0008).
+;;; This is the lane conformance is stated in. For every in-scope fixture it
+;;; replays the input at each chunk size the selection asks for, renders the
+;;; parser's callbacks into llhttp's trace text through the adapter, and
+;;; compares BIT-EXACTLY against the fixture's own expected block.
 ;;;
-;;; THE GATE IS TWO-WAY (decision 0008 item 6). A `passing` entry that fails is
-;;; an error, and a `not-yet` entry that PASSES is also an error. The second
-;;; half is what stops a milestone's exit criterion from being met by accident:
-;;; the manifest is a reviewed file, so every promotion is a diff.
+;;; THE GATE IS TWO-WAY. A `passing` entry that fails is an error, and a
+;;; `not-yet` entry that PASSES is also an error. The second half is what stops
+;;; a fixture from starting to pass by accident and going unnoticed: the
+;;; manifest is a reviewed file, so every promotion is a diff.
 ;;;
-;;; `deferred` entries are not run. Decision 0009 puts them outside v0.1, and a
-;;; lane that gated on them would be asserting something this milestone has
-;;; deliberately not built.
+;;; `deferred` entries are not run. A deferred fixture needs a capability this
+;;; parser does not implement, and a lane that gated on it would be asserting
+;;; something the parser deliberately does not do.
 ;;;
 ;;; THE GATE RUNS THE SHIPPED ARTIFACT. `(generated httparse-message)` is
 ;;; the committed derived parser, loaded and run here as itself rather than
@@ -22,8 +21,8 @@
 ;;; reference interpreter runs beside it over the same fixtures and must agree.
 ;;;
 ;;; A FIXTURE THE ADAPTER REFUSES IS A FAILING FIXTURE, NOT A CRASHED LANE. The
-;;; adapter raises on a callback or error code it has no row for, which is the
-;;; no-default discipline decision 0008 item 2 requires. Here that is caught and
+;;; adapter raises on a callback or error code it has no row for, which is its
+;;; no-default discipline. Here that is caught and
 ;;; reported as this fixture not passing -- the parser produced something the
 ;;; oracle's vocabulary has no word for, which is exactly a conformance failure.
 (import (rnrs)
@@ -50,7 +49,7 @@
 (define ratchet-path (adapter-environment-variable "HTTPARSE_RATCHET_FILE"))
 
 ;; 'extremes (chunk size 1 and the whole buffer) or 'full (every size) --
-;; decision 0008 item 5's split across the pr and release presets.
+;; the split between the pr and release presets.
 (define selection
   (let ((v (adapter-environment-variable "HTTPARSE_SCAN_SELECTION")))
     (if (and (string? v) (string=? v "full")) 'full 'extremes)))
@@ -110,10 +109,9 @@
 ;; "finish=%d", s->finish)`. It never calls `llhttp_finish`, so no callback
 ;; fires and no end-of-input state is entered; the trace simply gains
 ;; `off=NULL finish=N` after the last feed. Driving this parser to its
-;; eof-targets instead would produce a finish error the oracle records on no
-;; fixture -- `invalid-eof-state` now (#42), the numberless `unexpected-eof`
-;; the adapter refused before M6 -- so decision 0016 has the driver print the
-;; `finish` field rather than finish.
+;; eof-targets instead would produce a finish error, `invalid-eof-state`, that
+;; the oracle records on no fixture -- so the driver prints the `finish` field
+;; and never finishes.
 (define (finishing? f)
   (let ((type (fixture-meta-ref f 'type #f)))
     (and (string? type)

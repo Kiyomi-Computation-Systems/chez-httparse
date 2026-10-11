@@ -2,13 +2,13 @@
 
 - [[file:api.org][api.org]] — the public surface: making a parser, feeding it, the callbacks,
   reading its state.
-- [[file:conformance.org][conformance.org]] — what this parses, the 21 fixtures it does not, and every
-  measured divergence from llhttp.
+- [[file:conformance.org][conformance.org]] — what this parses, how that is measured against llhttp,
+  and every measured divergence from it.
 - [[file:performance.org][performance.org]] — allocation and throughput, measured.
 
 Design records live outside this directory, because they are about how the
 project decided rather than about how to use it:
 
-- =../.plans/= — the architecture document and the milestone plan
-- =../.plans/decisions/= — decision records, numbered and dated
+- =../.plans/decisions/= — design decision records, numbered: the reasoning
+  behind choices these pages describe
 - =../CHANGELOG.md= — release history

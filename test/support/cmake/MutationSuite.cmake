@@ -6,17 +6,16 @@
 # specification at all -- an absent test is visibly absent, a vacuous one reports
 # success.
 #
-# This suite exists because the same check was once run by hand and written up
-# in a decision record as evidence. Evidence that lives in a transcript is not
-# evidence: nobody can rerun it, and it cannot fail when the code changes. The
-# hand-run version also missed the most important case, because it only mutated
-# the modules and never the assertion helper every specification depends on.
+# The suite is checked in rather than run by hand because evidence that lives
+# in a transcript is not evidence: nobody can rerun it, and it cannot fail when
+# the code changes. It mutates the assertion helper every specification depends
+# on as well as the modules, because a broken helper hides every other failure.
 #
 # Adding a decision to a module means adding a mutation here. The SITES check
 # will tell you when a pattern has drifted; it will not tell you when a new,
 # untested decision has been added.
 #
-# ONE PASS, SEVENTY-THREE MUTATIONS
+# ONE PASS
 #
 # Every mutation below is declared before the single httparse_mutation_run
 # call at the end of this file, so this suite is one pass by construction.
@@ -24,13 +23,7 @@
 # httparse_mutation_totals once that call returns: SITES tells you when a
 # pattern has drifted, but a deleted httparse_mutation() declaration is not
 # a pattern that failed to match, and only the totals check can see one.
-#
-# Measured on this tree when the harness was ported (Slice 1, 2026-08-28):
-# seventy-two mutations arrived with the port, their FIND/REPLACE literals
-# renamed in lockstep with the modules they mutate -- the upstream tree
-# carries the full derivation history of that number, which this file
-# deliberately does not restate -- plus one of this repository's own, the
-# rename-audit witness at the bottom of the manifest. 72 + 1 = 73.
+# EXPECTED_MUTATIONS is counted from the declarations below, never predicted.
 
 cmake_minimum_required(VERSION 3.26)
 
@@ -163,7 +156,7 @@ httparse_mutation(
 #
 # These are the reason this suite exists. Every negative case in every other
 # specification, and every positive assertion in all of them, routes through
-# these two functions. Break either and all four specifications stayed green --
+# these two functions. Break either and every other specification stays green --
 # which is how a suite reports success while checking nothing.
 
 httparse_mutation(
@@ -250,14 +243,10 @@ httparse_mutation(
 
 # --- MutationRunner (httparse_mutation_verdict and its registration) ---
 #
-# The machinery every specification above is trusted through, and the one
-# module in this directory that had neither a specification nor a mutation
-# targeting it -- even though it is staged like everything else. A re-review
-# found that the fix narrowing "caught" to "caught for the declared reason"
-# had reproduced the same defect class one layer down: the `elseif`
-# translating a wrong-reason result into a failure could be deleted by hand
-# and the whole suite stayed 89/89, because nothing mutated the decision that
-# branch depends on. These mutations are what closes that.
+# The machinery every specification above is trusted through, staged and
+# mutated like everything else. Without these entries the `elseif` translating
+# a wrong-reason result into a failure can be deleted and the whole suite stays
+# green, because nothing else mutates the decision that branch depends on.
 
 httparse_mutation(
   FILE test/support/cmake/MutationRunner.cmake SPEC MutationRunnerSpec.cmake
@@ -271,7 +260,7 @@ httparse_mutation(
   FIND [[  if(NOT expect_status STREQUAL "" AND NOT rc EQUAL expect_status)]]
   REPLACE [[  if(FALSE)]])
 
-# The exact bug this pure function was extracted to fix: expect_output_matches
+# The defect this pure function exists to prevent: expect_output_matches
 # tested by truthiness rather than by presence. A regex CMake reads as false --
 # "0", OFF, NOTFOUND, anything ending "-NOTFOUND" -- would silently stop being
 # enforced. MutationRunnerSpec.cmake's "reads as CMake-false" case is the one
@@ -363,14 +352,12 @@ httparse_mutation(
   set(${out_message} "" PARENT_SCOPE)]]
   REPLACE [[function(httparse_expect_exit_classify code out_status out_message)]])
 
-# A reviewer once deleted this exact block by hand from
-# HttparseSchemeLane.cmake's copy of the same shape (below) and ran the
-# whole suite: 37/37 passed, because nothing forwarded WORKING_DIRECTORY far
-# enough to notice it stopped arriving. This is that block's other occurrence
-# -- the registrar itself, not a caller of it -- and until the WORKING_DIRECTORY
-# assertions in HttparseExpectExitSpec.cmake, its path was exercised by
-# nothing at all: every case that reaches httparse_add_exit_code_test in
-# that specification is rejected before this line runs.
+# The registrar's own WORKING_DIRECTORY forwarding -- the same shape as
+# HttparseSchemeLane.cmake's copy below, but in the registrar itself rather
+# than a caller of it. Only the WORKING_DIRECTORY assertions in
+# HttparseExpectExitSpec.cmake exercise this path: every other case that
+# reaches httparse_add_exit_code_test in that specification is rejected
+# before this line runs.
 httparse_mutation(
   FILE cmake/HttparseExpectExit.cmake SPEC HttparseExpectExitSpec.cmake
   LABEL "expect-exit: WORKING_DIRECTORY is parsed and then never forwarded to the registrar"
@@ -379,10 +366,8 @@ httparse_mutation(
 
 # The other direction of the same conditional: forwarding the keyword to the
 # registrar unconditionally, even when the caller gave no WORKING_DIRECTORY at
-# all. A re-review found this direction just as unwitnessed as the one above
-# was before it got a mutation: only HttparseExpectExitSpec.cmake's
-# "absent" assertion can see a keyword arriving that should not have, and
-# nothing mutated the condition to make it arrive.
+# all. Only HttparseExpectExitSpec.cmake's "absent" assertion can see a
+# keyword arriving that should not have.
 httparse_mutation(
   FILE cmake/HttparseExpectExit.cmake SPEC HttparseExpectExitSpec.cmake
   LABEL "expect-exit: WORKING_DIRECTORY is forwarded to the registrar even when the caller did not give one"
@@ -422,14 +407,10 @@ httparse_mutation(
 # mutation: a dropped interpolation and two one-word typos. Any of the three
 # would otherwise pass every existing assertion undetected.
 #
-# Re-anchored on ${mode}: M0 slice 5b Task 2 replaced the literal "source" in
-# the no-runtime message with the mode argument, so a lane can name the mode
-# it actually failed to find a runtime for (see MutationRunner.cmake's SITES
-# comment -- a pattern that stops matching after a refactor must be updated,
-# not deleted). REPLACE is unchanged: both specification cases this mutation
-# is caught by still call with mode `source`, so a REPLACE that hardcodes
-# "source" reproduces exactly the same break -- dropped program interpolation
-# -- as before this re-anchoring.
+# FIND is anchored on ${mode}: the no-runtime message names the mode the lane
+# failed to find a runtime for. REPLACE hardcodes "source", which still
+# isolates the dropped program interpolation, because both specification
+# cases this mutation is caught by call with mode `source`.
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
   LABEL "scheme-lane: the chez no-runtime message drops its program interpolation"
@@ -449,9 +430,9 @@ httparse_mutation(
   REPLACE [[      "'${mode}' is not an execution mode this land module can build a command for. Known modes: source aot."]])
 
 # httparse_add_scheme_lane's own decisions -- argument validation, backend
-# routing, and the environment it hands to the registrar -- had no coverage at
-# all before this: any specification failure here means the registration
-# function itself, not the functional core above it, stopped doing its job.
+# routing, and the environment it hands to the registrar. Any specification
+# failure here means the registration function itself, not the functional
+# core above it, stopped doing its job.
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
   LABEL "scheme-lane: unexpected arguments to the registrar are accepted"
@@ -473,10 +454,8 @@ httparse_mutation(
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
   LABEL "scheme-lane: an unknown backend no longer stops registration"
-  # Re-anchored on the two-clause form left once the removed backend's
-  # comma-in-path and relative-path statuses left the vocabulary with it (see
-  # MutationRunner.cmake's SITES comment -- a pattern that stops matching
-  # after a refactor must be updated, not deleted).
+  # Anchored on the whole two-clause guard; the companion below narrows it
+  # instead of deleting it.
   FIND [[  if(status STREQUAL "unknown-backend"
      OR status STREQUAL "unknown-mode")]]
   REPLACE [[  if(FALSE)]])
@@ -507,7 +486,7 @@ httparse_mutation(
   REPLACE [[  if(FALSE)]])
 
 # This is the mutation that matters most: if EXPECT_EXIT stopped being able to
-# route to the exit-code registrar, every expected-red test in this milestone
+# route to the exit-code registrar, every expected-red test in the tree
 # would silently become a "must exit 0" test.
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
@@ -517,13 +496,9 @@ httparse_mutation(
 
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
-  # Re-anchored on ${lane_mode}: M0 slice 5b Task 1 replaced the literal
-  # "source" with the mode httparse_test_name_parse reads from the lane's
-  # own name (see MutationRunner.cmake's SITES comment -- a pattern that stops
-  # matching after a refactor must be updated, not deleted). REPLACE still
-  # means only "the execution mode entry is gone"; the fingerprint-sample
-  # entry and arg_ENVIRONMENT are untouched, exactly as before this
-  # re-anchoring.
+  # Anchored on ${lane_mode}, the mode httparse_test_name_parse reads from the
+  # lane's own name. REPLACE means only "the execution mode entry is gone";
+  # the fingerprint-sample entry and arg_ENVIRONMENT are untouched.
   LABEL "scheme-lane: the source execution mode is no longer declared in the environment"
   FIND [[    "HTTPARSE_EXECUTION_MODE=${lane_mode}"
 ]]
@@ -544,20 +519,12 @@ httparse_mutation(
   FIND [[    if(arg_WRONG_FINGERPRINT)]]
   REPLACE [[    if(FALSE)]])
 
-# This is the mutation a whole-branch review found undetectable. The incident,
-# as history: with this block deleted by hand and the configure re-run, the
-# include-era working-directory matrix's three lanes all launched from their
-# derived directories instead of the three fixture directories
-# test/CMakeLists.txt had built for them -- three copies of one vacuous lane,
-# and nothing anywhere failed, because neither registrar this block feeds was
-# ever asked whether it received WORKING_DIRECTORY at all.
-#
-# That matrix retired with the include mechanism (upstream decision 0006), and no lane
-# overrides its run directory today, so a forwarding break is now invisible to
-# every registration in the tree. What can still see it is exactly what the
-# incident proved was missing: HttparseSchemeLaneSpec.cmake's absent/present
-# assertions on the keyword, which this mutation and the one below hold in
-# place.
+# No lane in the tree overrides its run directory, so a forwarding break here
+# is invisible to every registration: each lane launches from its derived
+# directory whether or not WORKING_DIRECTORY arrives. What can see it is
+# HttparseSchemeLaneSpec.cmake's absent/present assertions on the keyword,
+# asked of both registrars this block feeds, which this mutation and the one
+# below hold in place.
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
   LABEL "scheme-lane: WORKING_DIRECTORY is parsed and then never forwarded to either registrar"
@@ -568,10 +535,7 @@ httparse_mutation(
 # routed to, unconditionally, even when the lane gave no WORKING_DIRECTORY at
 # all. Both registrars' "absent" assertions in HttparseSchemeLaneSpec.cmake
 # can see this -- the plain path and the exit-code path both splice the same
-# working_directory_args, so one mutation here is witnessed by both -- but
-# until now nothing mutated the condition to make the keyword arrive
-# unwanted, the same blind spot the if(FALSE) mutation above used to be alone
-# in closing.
+# working_directory_args, so one mutation here is witnessed by both.
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
   LABEL "scheme-lane: WORKING_DIRECTORY is forwarded to either registrar even when the lane did not give one"
@@ -580,9 +544,8 @@ httparse_mutation(
 
 # The run directory decides where every lane launches from; the three
 # decisions inside httparse_test_run_directory each get their own
-# mutation. (The include-era matrix that first hung off this function is
-# gone -- upstream decision 0006 -- but an override that silently stops arriving, or
-# arrives empty, still launches lanes from the wrong place.)
+# mutation. An override that silently stops arriving, or arrives empty,
+# launches lanes from the wrong place.
 httparse_mutation(
   FILE cmake/HttparseTesting.cmake SPEC HttparseTestingSpec.cmake
   LABEL "testing: WORKING_DIRECTORY names a directory that need not exist"
@@ -621,9 +584,9 @@ httparse_mutation(
   FIND [[  if(duplicate_basenames)]]
   REPLACE [[  if(FALSE)]])
 
-# Carried over from the deleted guard module rather than dying with it: the
-# initializer it mutates moved verbatim into the per-lane detector, and a
-# mutation is not dead while its REPLACE still changes a live line.
+# The detector's own accumulator initialization: CMake resolves an unset local
+# through the calling scope, so without it the detector inherits whatever
+# `duplicates` its caller has lying around.
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
   LABEL "scheme-lane: the duplicate detector leaves a stale value when there are none"
@@ -631,21 +594,21 @@ httparse_mutation(
   set(duplicates "")]]
   REPLACE [[  set(seen "")]])
 
-# M0 slice 5b remainder, Task 4: every decision the three aot lanes and the
-# staleness lane (Tasks 1 and 3) added to HttparseSchemeLane.cmake, broken
-# on a staged copy. What is deliberately *not* mutated here: the builder's
-# own body (the copy-source-of-record logic, the DEPENDS list, the prefix
-# order). Those live inside `add_custom_command` arguments the spec's stub
-# never executes; their end-to-end witness is the staleness lane itself,
-# permanently registered and asserting exit 3 -- which is exactly the
-# division of labour W12 prescribes.
+# Every decision the aot lanes and the staleness lane rely on in
+# HttparseSchemeLane.cmake, broken on a staged copy. What is deliberately
+# *not* mutated here: the builder's own body (the copy-source-of-record logic,
+# the DEPENDS list, the prefix order). Those live inside `add_custom_command`
+# arguments the spec's stub never executes; their end-to-end witness is the
+# staleness lane itself, permanently registered and asserting exit 3. The
+# specification covers what the registrar decides; the lane covers what the
+# custom command does.
 
-# C1. Protium's actual behaviour for its Chez aot lane: fingerprint the
-# repository originals. Under it the staleness lane's expectation and its
-# measurement read the same files again, they agree, and the lane that
-# exists to exit 3 exits 0 -- the whole defect upstream decision record 0004
-# demonstrated and this slice closes. Witnessed with no runtime present by
-# the spec's two-source aot case and its one-source registration case.
+# A compiled lane that fingerprints the repository originals instead of its
+# measured copies. Under it the staleness lane's expectation and its
+# measurement read the same files, they agree, and the lane that exists to
+# exit 3 exits 0 -- a staleness check that can never see staleness.
+# Witnessed with no runtime present by the spec's two-source aot case and its
+# one-source registration case.
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
   LABEL "scheme-lane: a compiled lane measures the repository originals"
@@ -653,19 +616,19 @@ httparse_mutation(
       set(${out_measured} ${measured} PARENT_SCOPE)]]
   REPLACE [[      set(${out_measured} ${ARGN} PARENT_SCOPE)]])
 
-# C1b. The aot run command names one --object-dir per library root the source
-# lane names. The generator's was absent until the first aot lane that imported
-# a generator library, which failed with an unbound library rather than a
-# missing directory -- a failure mode that looks like a broken import, not a
-# broken build layer. Witnessed with no runtime present by the spec's
-# two-source aot command-line case.
+# The aot run command names one --object-dir per library root the source
+# lane names. Without the generator's, an aot lane that imports a generator
+# library fails with an unbound library rather than a missing directory -- a
+# failure mode that looks like a broken import, not a broken build layer.
+# Witnessed with no runtime present by the spec's two-source aot command-line
+# case.
 httparse_mutation(
   FILE cmake/HttparseSchemeLane.cmake SPEC HttparseSchemeLaneSpec.cmake
   LABEL "scheme-lane: a compiled lane looks for the generator's objects beside the sources"
   FIND [[        "--object-dir" "${object_dir}/generator"]]
   REPLACE [[        "--object-dir" "${object_dir}/src"]])
 
-# C2. harness-fingerprint-combine is order-sensitive by design, so a
+# harness-fingerprint-combine is order-sensitive by design, so a
 # reordered measured list computes a different digest over the same bytes.
 # Only a two-or-more-source manifest can see this, which is what the spec's
 # example-two case exists for.
@@ -675,11 +638,11 @@ httparse_mutation(
   FIND [[    list(APPEND copies "${dir}/${name}")]]
   REPLACE [[    list(PREPEND copies "${dir}/${name}")]])
 
-# C4. The literal the mode plumbing replaced. Distinct from the deletion
-# mutation above ("the source execution mode is no longer declared"): this
-# one keeps the entry and makes it wrong, which is the defect a compiled
-# lane actually suffers. Not caught by the harness's own assertion -- under
-# W8 that assertion accepts any vocabulary member and `source` is one -- but
+# The execution mode written as the literal `source`. Distinct from the
+# deletion mutation above ("the source execution mode is no longer declared"):
+# this one keeps the entry and makes it wrong, which is the defect a compiled
+# lane actually suffers. Not caught by the harness's own assertion -- that
+# assertion accepts any vocabulary member and `source` is one -- but
 # by the spec's "an aot lane declares the aot mode" case, asserted with no
 # runtime present, which is why the mode logic lives in the registrar
 # rather than in the custom command.
@@ -718,11 +681,11 @@ httparse_mutation(
 # --- RenameAudit ------------------------------------------------------------
 #
 # The audit exists to catch the upstream project's name leaking back into the
-# build/test tree (decision 0003, exit criterion 5), so its witness is exactly
-# that: a leaked token planted in a scanned module. The planted text is
-# assembled with string(CONCAT) because this manifest is itself inside the
-# audit's scan surface -- written literally, the mutation's own declaration
-# would trip the audit on the pristine tree.
+# build/test tree, so its witness is exactly that: a leaked token planted in a
+# scanned module. The planted text is assembled with string(CONCAT) because
+# this manifest is itself inside the audit's scan surface -- written
+# literally, the mutation's own declaration would trip the audit on the
+# pristine tree.
 string(CONCAT RENAME_AUDIT_PLANT "# imported from " "byte" "-machine")
 httparse_mutation(
   FILE cmake/HttparseTesting.cmake SPEC RenameAuditSpec.cmake
@@ -731,11 +694,11 @@ httparse_mutation(
   REPLACE "${RENAME_AUDIT_PLANT}"
   EXPECT_OUTPUT_MATCHES "upstream project token leaked")
 
-# Decision 0011 item 3: the allowlist must not have become a blanket
-# permission. This plants a forbidden shape IMMEDIATELY BESIDE a legitimate
-# one, so an audit that stripped the allowed form and then stopped looking --
-# or that skipped any file mentioning the dependency at all -- is caught. An
-# exemption no test can fail is an exemption that will widen.
+# The allowlist must not become a blanket permission. This plants a forbidden
+# shape IMMEDIATELY BESIDE a legitimate one, so an audit that stripped the
+# allowed form and then stopped looking -- or that skipped any file mentioning
+# the dependency at all -- is caught. An exemption no test can fail is an
+# exemption that will widen.
 string(CONCAT RENAME_AUDIT_ADJACENT_PLANT
        "# vendor/" "byte" "-machine is fine; " "BYTE" "_MACHINE" "_EXTRA is not")
 httparse_mutation(

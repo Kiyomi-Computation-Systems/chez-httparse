@@ -1,8 +1,9 @@
 # Specification: the vendored llhttp corpus is upstream's bytes, unmodified.
 #
-# Decision 0007 vendors the corpus as data and forbids editing it: a fixture we
-# come to believe is wrong becomes a ratchet entry and a decision record, never
-# a change to these bytes. A rule like that is worthless as prose -- the whole
+# The corpus is vendored as data and is never edited: a fixture we come to
+# believe is wrong becomes a ratchet entry and a decision record, never a
+# change to these bytes, because a golden we may edit when it disagrees with us
+# is not a golden. A rule like that is worthless as prose -- the whole
 # failure mode is someone "just fixing" a fixture to make a lane green, which
 # reads as a reasonable diff -- so it is a registered check instead (AGENTS.md:
 # prefer a check to a comment).
@@ -69,7 +70,7 @@ foreach(_line IN LISTS _corpus_lines)
       spec_record_failure()
       message(SEND_ERROR
         "httparse-spec: '${_rel}' does not match PROVENANCE. "
-        "Vendored corpus files are never edited (decision 0007 item 6): "
+        "Vendored corpus files are never edited: "
         "restore them with cmake -DLLHTTP_ROOT=<checkout> -P cmake/HttparseCorpusRefresh.cmake. "
         "expected ${_expected}, got ${_actual}")
     endif()
@@ -102,7 +103,7 @@ foreach(_rel IN LISTS _corpus_present)
     spec_record_failure()
     message(SEND_ERROR
       "httparse-spec: '${_rel}' is in the corpus but not recorded in PROVENANCE. "
-      "Nothing enters test/vendor/ except through the refresh script (decision 0007 item 3).")
+      "Nothing enters test/vendor/ except through the refresh script.")
   endif()
 endforeach()
 
