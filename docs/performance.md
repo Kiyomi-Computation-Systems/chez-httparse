@@ -146,7 +146,7 @@ llhttp is **8.8 to 12.2 times faster**.
 Chez 10.4.1 at `optimize-level 0`, llhttp 9.4.3, the generator pinned at
 `v0.7.0`. Each figure is the median of seven rounds, llhttp's binaries and
 the Scheme program alternating within each round. Both sides count a
-megabyte as 2^20 bytes, as llhttp's output does, and every one of the
+megabyte as 2²⁰ bytes, as llhttp's output does, and every one of the
 381,842 and 516,222 repetitions of the two requests completed a message.
 
 A ratio taken in one sitting holds across machines better than a rate does,
@@ -408,7 +408,7 @@ The Scheme side is not in this tree, and it is short:
 
 1. For each request, make **one** message parser of type `request`.
 2. Bind the 25 callbacks to procedures that return `callback-continue`.
-3. Feed it the whole input 2^28 / *len* times — 256 MiB, a second or more
+3. Feed it the whole input 2²⁸ / *len* times — 256 MiB, a second or more
    per input.
 4. Count `on-message-complete` and check it equals the repetitions.
 5. Time the loop alone.
