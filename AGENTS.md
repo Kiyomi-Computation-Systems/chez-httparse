@@ -1142,3 +1142,29 @@ not only about tidiness. **History in a comment is how a stale comment
 survives review.** When writing one, describe the code in the present
 tense; when the code changes, the sentence is then wrong in a way that is
 visible, rather than right about the past.
+
+## A claim fixed in one place is still wrong in its copies
+
+The URL grammar's header once said the HTTP parser does not use it. That was
+corrected when someone noticed the parser splices the same subgraph into the
+request target. The guide page that said the same thing in prose was not
+touched, because nobody looked for it. When the docs were later split into
+pages by several writers working in parallel, the sentence was copied twice
+more: into the URL page ("the message parser does not use it") and into the
+URL machine's reference entry. Each copy was caught separately, by running
+the claim against the parser, and each looked like an isolated slip.
+
+It was one claim with three homes. A fact about this code is usually stated
+in a comment beside the code, again in a guide page, again in the reference,
+and sometimes in the changelog; a rewrite that splits or merges pages copies
+whatever those say, true or not. Fixing the instance in front of you leaves
+the others standing, and they now disagree with the fixed one — which is
+worse than all of them being wrong, because a reader picks whichever they
+found first.
+
+So when you correct a claim, **search for the claim, not the file.** Grep for
+its distinctive phrasing and its key identifiers across `src/`, `docs/`,
+`README.org` and the test comments, and fix every instance in the same
+change. And when you split or rewrite documentation, treat every sentence
+you carry over as a claim to re-check, not text to preserve: the source page
+is evidence of what someone believed, not of what the code does.
