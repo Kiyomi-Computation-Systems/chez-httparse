@@ -1,50 +1,70 @@
 # Errors
 
-When the input is malformed, [`parser-feed!`](reference.md#parser-feed-procedure)
-returns a result whose status is `'error`, and
-[`parser-result-error`](reference.md#parser-result-error-accessor) carries a
-`ParserError` describing it. After a malformation the parser makes no further
-progress.
+When the parser meets something it won't accept, the feed returns a result
+with status `'error`, and
+[`parser-result-error`](reference.md#parser-result-error-accessor) holds the
+error.
 
-This page covers reading that error, which part of it to match on, and how to
-turn one family of errors into an HTTP response status.
+The parser stops there. Feeding it again just returns the same status and
+reads nothing; to use it for a new connection,
+[reset](reference.md#parser-reset-procedure) it.
 
-## Reading an error
+## What an error tells you
 
-| Accessor                                                                 | Gives you                                  |
-|:-------------------------------------------------------------------------|:-------------------------------------------|
-| [`parser-error-code`](reference.md#parser-error-code-accessor)           | a symbol, e.g. `'invalid-header-token`     |
-| [`parser-error-reason`](reference.md#parser-error-reason-accessor)       | llhttp's own text, as a string             |
-| [`parser-error-offset`](reference.md#parser-error-offset-accessor)       | the stream offset where the parser refused |
-| [`parser-error-node-name`](reference.md#parser-error-node-name-accessor) | the grammar node that refused, as a symbol |
+| Accessor                                                                 | Gives you                                                 |
+|:-------------------------------------------------------------------------|:----------------------------------------------------------|
+| [`parser-error-code`](reference.md#parser-error-code-accessor)           | a symbol, such as `'invalid-header-token` — match on this |
+| [`parser-error-reason`](reference.md#parser-error-reason-accessor)       | llhttp's message, as a string — log this                  |
+| [`parser-error-offset`](reference.md#parser-error-offset-accessor)       | where in the stream the parser stopped                    |
+| [`parser-error-node-name`](reference.md#parser-error-node-name-accessor) | which rule in the grammar refused, as a symbol            |
 
 ```scheme
 (let ((r (parser-feed! parser buf 0 (bytevector-length buf))))
   (when (eq? (parser-result-status r) 'error)
     (let ((e (parser-result-error r)))
-      (log-refusal (parser-error-code e)      ; switch on this
+      (log-refusal (parser-error-code e)      ; match on this
                    (parser-error-reason e)    ; log this
                    (parser-error-offset e)))))
 ```
 
-The offset counts bytes since the parser was made or last reset, across every
-feed, not an index into the buffer you just fed.
+The offset counts bytes from the start of the stream — since the parser was
+made or reset, across every feed — not from the start of the buffer you
+just fed.
 
-## The code and reason together are the identity
+## Match on the code, log the reason
 
-The code and the reason are llhttp's, deliberately, and an error's identity is
-the *pair* rather than either half. llhttp gives several distinct failures one
-code, and gives one reason, "Expected CRLF after version", two codes. Switch on
-the symbol and log the text, and you get the same answer llhttp would give.
+The codes and reasons are llhttp's own, so this parser reports exactly what
+llhttp would.
 
-[`parser-error-code`](reference.md#parser-error-code-accessor) is one-to-one
-with llhttp's error number.
+- **The code** is a symbol, one for each of llhttp's error numbers. It is
+  what your program should branch on.
+- **The reason** is llhttp's human-readable text. Log it, but don't match on
+  it: it can be reworded.
 
-## Mapping a Transfer-Encoding error to a response status
+Neither one alone pins down a failure. llhttp uses one code for several
+different failures, and uses one reason — "Expected CRLF after version" —
+under two different codes. Together, the code and the reason identify the
+failure exactly.
 
-Every `invalid-transfer-encoding` on a request is a `400`, and the code alone
-is enough to say so. A strict parser refuses a request with that code in four
-ways:
+## Errors that are not bad input
+
+A few `'error` results come from somewhere other than malformed bytes:
+
+| Code                          | Comes from                                                                      |
+|:------------------------------|:--------------------------------------------------------------------------------|
+| the code you chose            | a callback returned `make-callback-failure`; the reason is `"callback failure"` |
+| `callback-contract-violation` | a callback returned something other than its allowed outcomes                   |
+| `paused-h2-upgrade`           | an HTTP/2 preface, handing the connection off — see [pausing.md](pausing.md)    |
+
+The last one is not a failure at all: it is how llhttp reports a hand-off to
+HTTP/2, and this parser reports it the same way.
+
+## Turning an error into a response status
+
+One family of errors comes with exact rules from RFC 9112:
+`invalid-transfer-encoding`. On a request, **every one is a `400`**, and the
+code alone tells you so. A strict parser refuses a request with that code in
+four ways:
 
 | Request                                    | Node                        | Why a `400`       |
 |:-------------------------------------------|:----------------------------|:------------------|
@@ -55,37 +75,36 @@ ways:
 
 The sections are RFC 9112's.
 
-- **The first three rows.** `chunked` is not the final coding, and §6.3 item 4
-  says the server "MUST respond with the 400 (Bad Request) status code" to such
-  a request and then close the connection. llhttp quotes that rule at the
-  branch that produces the third row.
-- **`chunked, chunked`** also lands at `e-bad-te-value`. Its final coding is
+- **The first three rows.** `chunked` is not the last coding, and §6.3 item
+  4 says the server "MUST respond with the 400 (Bad Request) status code" to
+  such a request and then close the connection. llhttp quotes that rule
+  where it produces the third row.
+- **`chunked, chunked`** also lands at `e-bad-te-value`. It does end in
   `chunked`, but §6.1 lets a sender apply `chunked` only once, so the message
   is malformed and still a `400`.
-- **The fourth row.** The request carries both framing headers. §6.1 lets a
-  server reject that, the parser does, and either way the server "MUST close
-  the connection" after answering it. The opposite order, `Transfer-Encoding`
-  then `Content-Length`, is refused too, but under `invalid-content-length`.
+- **The fourth row** carries both framing headers. §6.1 lets a server reject
+  that, this parser does, and either way the server "MUST close the
+  connection" after answering. The other order — `Transfer-Encoding`, then
+  `Content-Length` — is refused too, but under `invalid-content-length`.
 
 ### When to answer `501`
 
-A `501` is still possible, but the parser does not produce one. RFC 9112 §6.1
-gives a SHOULD `501` for a transfer coding the server does not understand, and
-the MUST in §6.3 wins wherever both apply. So §6.1 is left with the requests
-the parser *accepts*: codings that end in `chunked` but list another first,
-such as `gzip, chunked`.
+The parser never reports a case that calls for a `501`, but your server
+may still need to send one. RFC 9112 §6.1 says a server SHOULD answer `501` to a transfer coding it does not
+understand, and where §6.3's MUST also applies, the MUST wins. That leaves
+§6.1 with requests the parser **accepts**: codings that end in `chunked` but
+list another first, such as `gzip, chunked`.
 
-Only you know which codings you implement. If `gzip` is not one of them, you
-answer that request with a `501` yourself, from the `Transfer-Encoding` value
-your header callbacks collected.
+Only you know which codings you support. If `gzip` is not one of them,
+answer that request with a `501` yourself, using the `Transfer-Encoding`
+value your header callbacks collected.
 
-## Telling failures within one code apart
+## Telling failures with one code apart
 
-Because llhttp gives several distinct failures one number, so does this
-parser, and those failures share a code. Usually that is what you want. When
-it is not (a log line that says *which* Transfer-Encoding failure it was, say),
-match on [`parser-error-node-name`](reference.md#parser-error-node-name-accessor),
-which returns the Node column of the table above.
+Several failures can share a code. Usually that is fine. When you want to
+know *which* one it was — for a more useful log line, say — read
+[`parser-error-node-name`](reference.md#parser-error-node-name-accessor). It
+returns the Node column of the table above.
 
 ```scheme
 (case (parser-error-code e)
@@ -95,20 +114,14 @@ which returns the Node column of the table above.
   (else (handle-other-error e)))
 ```
 
-Do not match on the reason string. That match breaks as soon as llhttp
-re-words the reason.
+Use it only to split a code you have already matched. The node name is this
+parser's own label for a rule in its grammar, not llhttp's, so it is finer
+than the code but less stable: a grammar change can move it, where llhttp's
+code and reason will not.
 
-The node name is the *grammar's* own label for the node that refused. It is
-finer than the code, which is why it can split one. But it is this parser's
-label, not llhttp's, and a node name can move where a `(code, reason)` pair
-will not. So reach for it only to split within a code you have already
-matched; the pair stays the stable, llhttp-faithful identity.
-
-A node name marks a *site*, and is not always a one-per-failure key: one
-declaration can surface under several node names when it is reachable with
-different spans open (end of input is the extreme). For each of the four in
-the table above it is one key, because every refusal under that reason stops
-at that node.
-[`../test/common/te-error-nodes-tests.sps`](../test/common/te-error-nodes-tests.sps)
-holds those four names to every strict request fixture in the corpus that
-ends in this code.
+A node name names a **place** in the grammar, so one failure can show up
+under more than one name when it is reachable from different places. For the
+four in the table, it is one name each.
+[`test/common/te-error-nodes-tests.sps`](../test/common/te-error-nodes-tests.sps)
+checks those four against every strict request fixture in llhttp's corpus
+that fails with this code.

@@ -29,7 +29,7 @@ length; by `on-message-complete` it is zero.
 
 To turn `method` into a symbol, use `httparse-method-name` from
 `(httparse methods)`. For when `upgrade` is set and how long it holds, see
-[pausing.md](pausing.md#does-this-message-upgrade).
+[pausing.md](pausing.md#knowing-in-advance-the-upgrade-field).
 
 ## Deciding keep-alive vs close
 
