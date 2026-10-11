@@ -1,12 +1,12 @@
 ;;; Tests for (httparse test adapter): the rename tables, judged alone.
 ;;;
-;;; Decision 0008 item 2 makes this layer a table lookup with no default, so
-;;; what is checked here is mostly what it REFUSES. A table that quietly
-;;; defaulted would let a parser reporting the wrong thing render a trace that
-;;; matches, which is the one failure the corpus cannot catch by itself.
+;;; This layer is a table lookup with no default, so what is checked here is
+;;; mostly what it REFUSES. A table that quietly defaulted would let a parser
+;;; reporting the wrong thing render a trace that matches, which is the one
+;;; failure the corpus cannot catch by itself.
 ;;;
-;;; No parser runs here. The events are hand-built, as decision 0008 item 4
-;;; requires of the instrument.
+;;; No parser runs here. The events are hand-built, because the instrument has
+;;; to be calibrated on its own before it can measure a parser.
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)
@@ -74,7 +74,7 @@
       (lambda ()
         ;; request/sample.md#1's last-but-one line, built here from field
         ;; values rather than from a parser -- the instrument is calibrated
-        ;; before it is used (decision 0008 item 4).
+        ;; before it is used.
         (check-equal "sample.md#1"
                      (line (adapter-event-for 'on-headers-complete 60 #f
                                               '((type . 1) (method . 6) (status-code . 0)
@@ -216,8 +216,8 @@
     (harness-case "a span callback with no bytes is refused"
       (lambda ()
         ;; An empty span is `(bytevector)`, which is not #f. Accepting #f here
-        ;; would silently turn a missing fragment into an empty one -- the very
-        ;; distinction the empty-span work upstream was done to preserve.
+        ;; would silently turn a missing fragment into an empty one, which is
+        ;; a distinction the generator delivers on purpose.
         (check "refused" (refuses? (lambda () (adapter-event-for 'on-method-data 0 #f #f))))
         (check-equal "empty is not missing"
                      (line (adapter-event-for 'on-protocol-data 9 (make-bytevector 0) #f))
@@ -236,10 +236,9 @@
     (harness-case "one binding per trace row, and nothing else"
       (lambda ()
         (let ((bs (trace-recorder-bindings (make-trace-recorder) '(request) #f)))
-          ;; It was one MORE than the rows until the message type became a
-          ;; settable field. The exact count is the check worth keeping: a
-          ;; binding with no row is a callback this harness invented, and a
-          ;; row with no binding is one the parser would refuse to run.
+          ;; The exact count is the check worth keeping: a binding with no
+          ;; row is a callback this harness invented, and a row with no
+          ;; binding is one the parser would refuse to run.
           (check-equal "exactly one per row" (length bs) (length adapter-trace-names))
           (check "the message type is not among them"
                  (not (assq 'on-message-type bs))))))
@@ -319,12 +318,10 @@
                      (adapter-parser-inits '(request headers version)))))
     (harness-case "and the bindings no longer carry a lenient callback at all"
       (lambda ()
-        ;; Until the generator grew settable fields each flag was an optional
-        ;; decision callback and this group counted bindings. The machine declares
-        ;; none of them now, so a leftover binding would not be ignored --
-        ;; `make-parser` refuses a binding naming no declaration, which is
-        ;; how a half-finished version of this change would have announced
-        ;; itself.
+        ;; The flags are settable fields, not decision callbacks, so the
+        ;; machine declares no callback for any of them. A stray binding would
+        ;; not be ignored -- `make-parser` refuses a binding naming no
+        ;; declaration.
         (let ((bs (trace-recorder-bindings (make-trace-recorder) '(request version) #f)))
           (check "none bound"
                  (not (exists (lambda (b)
@@ -335,7 +332,7 @@
     (harness-case "an undeclared flag is refused by the init reader too"
       (lambda ()
         ;; The refusal above goes through `trace-recorder-bindings`; this is
-        ;; the same guard on the path that now carries the flags.
+        ;; the same guard on the path that carries the flags.
         (check "not a flag"
                (refuses? (lambda () (adapter-parser-inits '(request lenient)))))
         (check "a near miss"
@@ -469,7 +466,8 @@
                      '("off=32 error code=8 reason=\"Invalid method for HTTP/x.x request\""))))
     (harness-case "the two line-ending codes render as two different numbers"
       (lambda ()
-        ;; Decision 0013's collision: one reason, two numbers. A table keyed on
+        ;; One reason, two numbers: llhttp says code 9 when there is no CR at
+        ;; all and code 2 when a CR is not followed by LF. A table keyed on
         ;; the reason could not tell these apart.
         (check-equal "no CR"
                      (line (adapter-error-event 'invalid-version
@@ -496,8 +494,8 @@
                        (cr-expected . 25) (unexpected-space . 30)))))
     (harness-case "the four header reasons under code 10 all render as 10"
       (lambda ()
-        ;; Decision 0013's other direction: one number, several reasons. The
-        ;; reason is what tells them apart, and it passes through untouched.
+        ;; The other direction: one number, several reasons. The reason is
+        ;; what tells them apart, and it passes through untouched.
         (check-equal "field char"
                      (line (adapter-error-event 'invalid-header-token
                                                 "Invalid header field char" 30))
@@ -510,8 +508,8 @@
       (lambda ()
         ;; NOT A CALLBACK AND NOT AN OUTCOME. llhttp's fixture harness prints
         ;; `s->finish` once the input runs out, with a NULL position -- so
-        ;; there is no offset to render and the number is a parser field like
-        ;; any other (decision 0014).
+        ;; there is no offset to render and the number is a parser field,
+        ;; read as llhttp's own hook reads it.
         (check-equal "a complete message"
                      (line (adapter-finish-event 0))
                      '("off=NULL finish=0"))
@@ -526,10 +524,9 @@
         (check "not a number" (refuses? (lambda () (adapter-finish-event "0"))))))
     (harness-case "an unmapped code is refused, not defaulted"
       (lambda ()
-        ;; `paused` is llhttp's plain PAUSED, code 21, which belongs to the
-        ;; deferred pausing milestone. The example here has to be a code no
-        ;; milestone has reached yet, so it moves as the table grows -- it was
-        ;; `invalid-chunk-size` until M5 and `invalid-status` until M7.
+        ;; `paused` is llhttp's plain PAUSED, code 21, which the table does
+        ;; not map. The example has to be a code the table leaves out, so it
+        ;; moves if the table grows.
         (check "refused"
                (refuses? (lambda () (adapter-error-event 'paused "x" 0))))))
     (harness-case "the message type a parser was never told has no number either"
@@ -543,11 +540,11 @@
                                                          "x" 0))))))
     (harness-case "invalid-eof-state maps to llhttp's 14"
       (lambda ()
-        ;; The finish-from-unsafe error IS llhttp's now -- HPE_INVALID_EOF_STATE,
-        ;; code 14 (#42) -- so unlike the old numberless `unexpected-eof` it has
-        ;; a row. The row is inert, since the driver never finishes (decision
-        ;; 0016 item 1), but 0013 item 4 wants the table total over what the
-        ;; parser can produce, and a finish can produce this one.
+        ;; The finish-from-unsafe error is llhttp's HPE_INVALID_EOF_STATE,
+        ;; code 14. No fixture reaches the row, because llhttp's fixture
+        ;; harness never calls `llhttp_finish` and so neither does the driver;
+        ;; it is here because the table is total over the codes the parser can
+        ;; produce, and a finish can produce this one.
         (check-equal "code 14"
                      (line (adapter-error-event 'invalid-eof-state "Invalid EOF state" 3))
                      '("off=3 error code=14 reason=\"Invalid EOF state\""))))))

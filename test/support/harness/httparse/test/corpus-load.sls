@@ -12,7 +12,7 @@
 ;;; Rather than parse markdown headings, this pairs each input block with the
 ;;; next log block and REFUSES if that pattern ever breaks: two inputs before a
 ;;; log, a log with no pending input, or an unterminated fence. The alternation
-;;; holds in all 23 vendored files today; the refusal is what keeps a future
+;;; holds in all 23 vendored files; the refusal is what keeps a corpus
 ;;; refresh from being read wrongly instead of loudly.
 ;;;
 ;;; EXPECTATIONS. Upstream expands \t and \f in the expected text, splits on

@@ -17,10 +17,9 @@
 ;;; `adapter-bytes-allocated` counts everything since startup, so only a
 ;;; before-and-after pair means anything, and the region runs repeatedly so
 ;;; that one-off costs -- the parser record, the first feed's internal growth
-;;; -- are divided away. The first version of this lane read a LIVE-HEAP
-;;; counter instead and reported a region as allocating -33122 bytes, which
-;;; is what a collection inside the region looks like; the case at the bottom
-;;; is there so that a counter which stopped counting could not pass.
+;;; -- are divided away. A LIVE-HEAP counter will not do: a collection inside
+;;; the region makes its difference negative. The cases at the bottom are
+;;; there so that a counter which stopped counting could not pass.
 (import (rnrs)
         (httparse test harness)
         (generated httparse-message)
@@ -164,14 +163,14 @@
   (lambda ()
     (harness-case "a near-miss of transfer-encoding allocates what an ordinary name does"
       (lambda ()
-        ;; The generator's keyword walk once copied the prefix it had matched on
-        ;; every byte (upstream issue #139), so this parse cost 16 bytes more
-        ;; for each matched byte than the one before: about 2,900 more at k=16
-        ;; than at k=0, and a client repeating the field multiplied it. The
-        ;; claim is the shape: the per-parse figure does not depend on k. Within
-        ;; 32 bytes rather than exactly: at the old pin this average read 4 bytes
-        ;; apart between the source and AOT lanes for the same k, and 32 is half
-        ;; of what ONE matched byte cost under the defect, so k=1 still fails it.
+        ;; A keyword walk that copies the prefix it has matched on every byte
+        ;; makes this parse cost 16 bytes more for each matched byte than the
+        ;; one before: about 2,900 more at k=16 than at k=0, and a client
+        ;; repeating the field multiplies it. The claim is the shape: the
+        ;; per-parse figure does not depend on k. Within 32 bytes rather than
+        ;; exactly, because the source and AOT lanes have read up to 4 bytes
+        ;; apart for the same k, and 32 is half of what ONE matched byte costs
+        ;; under a copying walk, so k=1 still fails it.
         (let* ((ks '(0 1 2 4 8 12 16))
                (costs (map (lambda (k)
                              (let ((bv (request-with-near-miss k)))

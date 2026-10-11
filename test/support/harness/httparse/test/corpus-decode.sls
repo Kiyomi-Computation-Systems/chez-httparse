@@ -32,10 +32,10 @@
 ;;; produces four.
 ;;;
 ;;; WHAT IS REFUSED. The reference also evaluates ${...} as JavaScript. No
-;;; fixture in the vendored corpus uses it, so decision 0007 item 5 refuses it
-;;; rather than implementing it: if upstream adds one, this raises instead of
-;;; silently decoding the literal text. A code point that is a surrogate or out
-;;; of range is refused for the same reason -- guessing there would differ from
+;;; fixture in the vendored corpus uses it, so it is refused rather than
+;;; implemented: if upstream adds one, this raises instead of silently
+;;; decoding the literal text. A code point that is a surrogate or out of
+;;; range is refused for the same reason -- guessing there would differ from
 ;;; the reference invisibly.
 (library (httparse test corpus-decode)
   (export corpus-decode-input
@@ -189,7 +189,7 @@
   (define (corpus-decode-input text)
     (when (substring-present? text "${")
       (decode-refuse 'corpus-decode-input
-        "corpus fixture uses the ${...} JavaScript escape, which is refused (decision 0007 item 5)"))
+        "corpus fixture uses the ${...} JavaScript escape, which is not implemented"))
     (string->utf8
      (corpus-expand-octal-escapes
       (corpus-expand-hex-escapes

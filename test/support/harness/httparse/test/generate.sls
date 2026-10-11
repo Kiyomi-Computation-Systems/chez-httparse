@@ -4,8 +4,8 @@
 ;;; WHY A GENERATOR AT ALL. The vendored corpus is the conformance oracle and
 ;;; it is replayed at every chunk size, so resumability and the recorded traces
 ;;; are already covered. What no recorded trace can cover is an input nobody
-;;; wrote down -- decision 0010 is explicit that this is the one thing a live
-;;; llhttp adds. So this module exists to produce inputs the corpus does not
+;;; wrote down, and that is the one thing a live llhttp adds over the
+;;; corpus. So this module exists to produce inputs the corpus does not
 ;;; contain, reproducibly: a seed names a run, and a failing run replays byte
 ;;; for byte.
 ;;;
@@ -244,12 +244,11 @@
   ;; `spaces-after-chunk-size` and `header-value-relaxed` combined with
   ;; nothing, anywhere.
   ;;
-  ;; THE PAIRS ARE NOT A HYPOTHESIS. Decision 0020 found two cross-flag
-  ;; interactions the hard way, both by a fixture failing rather than by
-  ;; looking: an invalid-transfer-encoding refusal that EITHER
-  ;; `chunked-length` or `transfer-encoding` suppresses, in hand-written C
-  ;; where grepping the grammar cannot find it; and a chunk-size arm that
-  ;; needs BOTH `optional-cr-before-lf` and `optional-lf-after-cr`.
+  ;; THE PAIRS ARE NOT A HYPOTHESIS. Two cross-flag interactions are known:
+  ;; an invalid-transfer-encoding refusal that EITHER `chunked-length` or
+  ;; `transfer-encoding` suppresses, in hand-written C where grepping the
+  ;; grammar cannot find it; and a chunk-size arm that needs BOTH
+  ;; `optional-cr-before-lf` and `optional-lf-after-cr`.
   ;;
   ;; THE FLAG NAMES COME FROM `(httparse modes)`. A flag added to the parser
   ;; enters this schedule rather than being silently skipped, and the pair
@@ -289,8 +288,9 @@
 
   ;; `\f` is `request/lenient-headers.md`'s own byte; the C0 and DEL bytes are
   ;; what `header-value-relaxed` widens to. NUL is absent for the argv reason
-  ;; the module header gives, which is also why decision 0020's NUL divergence
-  ;; is reasoned rather than measured.
+  ;; the module header gives, which is also why the parser's handling of a NUL
+  ;; under `header-value-relaxed` alone (llhttp loops forever there) is
+  ;; reasoned rather than measured.
   (define lenient-values
     '("ok" "" "\x0c;" "a\x0c;b" "\x01;" "a\x7f;b" "  padded  "))
 
@@ -343,16 +343,15 @@
 
   ;; HALF THE CASES ARE MATCHED TO THEIR SUBSET AND HALF ARE NOT, and that is
   ;; a MEASURED correction rather than a flourish. Drawing the malformations
-  ;; freely produced inputs that die at the first thing their flags cannot
-  ;; excuse: 4 of 134 parsed without an error, so the fragmentation-invariance
-  ;; property -- which is about error-free parses -- had almost no lenient
-  ;; input to hold of.
+  ;; freely produces inputs that die at the first thing their flags cannot
+  ;; excuse -- in one measured run, 4 of 134 parsed without an error -- so the
+  ;; fragmentation-invariance property, which is about error-free parses, has
+  ;; almost no lenient input to hold of.
   ;;
   ;; In a MATCHED case a malformation is offered only when the subset contains
   ;; the flag that excuses it, so the lenient path is walked to the end. In a
   ;; FREE case they are drawn independently, which is where a flag that does
-  ;; not excuse what you thought turns up -- both of the interactions this
-  ;; producer found on its first run were free cases.
+  ;; not excuse what you thought turns up.
   ;;
   ;; The matched rule for a line ending wants BOTH lf flags, because a bare LF
   ;; after a request's version needs both. Over-conservative here costs a few
@@ -443,13 +442,13 @@
 
   ;; --- the url generator ----------------------------------------------------
   ;;
-  ;; WHY A SECOND PRODUCER AND NOT A WIDER TARGET POOL. Decision 0022 makes
-  ;; the url sub-parser a SECOND MACHINE and decision 0023 splices it into the
-  ;; request target, so `generate-structured` does reach it -- through one
-  ;; field out of ten, from a pool of ten fixed strings, always followed by a
-  ;; space and a version. Its entry edges are covered and its error arms are
-  ;; not, because a message whose target is rejected never gets to the rest of
-  ;; the message and the generator has no reason to keep producing them.
+  ;; WHY A SECOND PRODUCER AND NOT A WIDER TARGET POOL. The url sub-parser is
+  ;; a SECOND MACHINE, spliced into the request target, so
+  ;; `generate-structured` does reach it -- through one field out of ten,
+  ;; from a pool of ten fixed strings, always followed by a space and a
+  ;; version. Its entry edges are covered and its error arms are not, because
+  ;; a message whose target is rejected never gets to the rest of the message
+  ;; and the generator has no reason to keep producing them.
   ;;
   ;; THE ORACLE FOR THIS KIND IS A DIFFERENT BINARY. `test/md-test.ts`'s
   ;; `buildURL()` is `new llhttp.URL(p, true)` with BOTH EXITS LOOPED BACK TO

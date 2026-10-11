@@ -1,11 +1,8 @@
 ;;; The pinned generator is importable, emits the ABI this repository targets,
 ;;; and the machines it builds actually run.
 ;;;
-;;; Decision 0005 item 5: "The ABI number is re-read, never remembered. The
-;;; slice that wires the submodule asserts the version it finds against the
-;;; version it emits, as a check in the tree." This is that check. Decision
-;;; 0002's ABI clause went stale unnoticed for three weeks because it lived
-;;; only in prose; a lane cannot go stale unnoticed.
+;;; The ABI number is re-read from what the generator emits, never remembered.
+;;; A version that lives only in prose goes stale unnoticed; a lane cannot.
 ;;;
 ;;; The machine is the smallest one that exercises a byte dispatch, an accept,
 ;;; a reject and an EOF route. It is NOT the HTTP grammar -- this lane answers
@@ -19,28 +16,17 @@
         (byte-machine interpret)
         (byte-machine runtime))
 
-;; The generated-runtime ABI this repository targets (decision 0021, amending
-;; decision 0015, amending decision 0012 item 1, which amended decision 0005
-;; item 2). Upstream bumped 5 -> 6 for the keyword-table lowering, 6 -> 7 when
-;; a pause gained a reason -- the emitted paused-outcome's error slot goes from
-;; always-#f to `#f | ParserError` -- and 7 -> 8 for the OPTIONAL fourth
-;; metadata member, a `(name width)` settable table the generated `make-parser`
-;; range-checks an embedder's override against. This lane has named all three
-;; moves AT THE PIN rather than at load time in some later slice, which is what
-;; decision 0005 item 5 is for.
+;; The generated-runtime ABI this repository targets. It is named AT THE PIN,
+;; from the emitted text, rather than discovered at load time: a parser
+;; emitted at one ABI and a runtime at another disagree about how to read
+;; every callback, and this lane and the artifact lane turn an ABI move into
+;; a one-line expectation change.
 ;;
 ;; THE SMOKE MACHINE BELOW DECLARES NO FIELD AT ALL, so it emits no settable
-;; table and this number is the only thing about its text that ABI 8 changed.
-;; That is deliberate: the lane answers "what ABI does the pinned generator
-;; speak", and a machine with a settable field would conflate that with "does
-;; the feature work" -- which `unit.grammar` and the 253 fixtures answer.
-;;
-;; 9 since the pin moved to `df16902`: the generator's decision 0052 changed
-;; what the callback seam ANSWERS, from a list tagged with the outcome's name
-;; to the outcome object, so a parser emitted at 8 and a runtime at 9 would
-;; disagree about how to read every callback. This lane and the artifact lane
-;; are what made that a one-line expectation change rather than a discovery at
-;; run time.
+;; table. That is deliberate: the lane answers "what ABI does the pinned
+;; generator speak", and a machine with a settable field would conflate that
+;; with "does the feature work" -- which `unit.grammar` and the 253 fixtures
+;; answer.
 (define expected-abi 9)
 
 (define (substring-at? s i sub)
@@ -92,7 +78,7 @@
     (harness-case "the emitted library names the ABI this repository targets"
       (lambda ()
         ;; Read from the emitted text, not remembered. If upstream bumps the
-        ;; ABI, this fails here rather than at load time in some later slice.
+        ;; ABI, this fails here rather than at load time.
         (check-equal "abi version"
                      (integer-after (rendered) "(byte-machine-make-compiled-machine ")
                      expected-abi)))
@@ -105,9 +91,9 @@
           (check "does not import the verifier" (not (find-substring text "(byte-machine verify)"))))))
     (harness-case "the retired ABI constructors are not emitted"
       (lambda ()
-        ;; Decision 0002 targeted /v2, which upstream has since retired to a
-        ;; tombstone that refuses every version. Emitting either would mean the
-        ;; pin moved somewhere unexpected.
+        ;; Upstream keeps /v1 and /v2 only as retired constructors that refuse
+        ;; every version. Emitting either would mean the pin moved somewhere
+        ;; unexpected.
         (let ((text (rendered)))
           (check "no /v1" (not (find-substring text "byte-machine-make-compiled-machine/v1")))
           (check "no /v2" (not (find-substring text "byte-machine-make-compiled-machine/v2"))))))

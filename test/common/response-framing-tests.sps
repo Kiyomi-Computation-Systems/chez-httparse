@@ -6,8 +6,8 @@
 ;;;
 ;;; A REQUEST'S BODY IS ALWAYS COUNTED AND A RESPONSE'S NEED NOT BE. That is
 ;;; the whole of what this lane is about. llhttp's `message_needs_eof` returns
-;;; 0 unconditionally for a request, so through M6 the body decision had only
-;;; two answers -- a count, or nothing. A response adds a third: read until
+;;; 0 unconditionally for a request, so for a request the body decision has
+;;; only two answers -- a count, or nothing. A response adds a third: read until
 ;;; the connection closes. The function that decides is asked from two places
 ;;; and both are here, because the same answer decides whether there is a body
 ;;; AND whether there is a next message.
@@ -328,8 +328,8 @@
     ;; CHUNKED bit was cleared, and the body runs to end of connection.
     ;;
     ;; THE SECOND IS THE ONLY FIXTURE THAT REACHES `te-unset-chunked` WITH THE
-    ;; BIT SET. Until it did, that clear ran only when the bit was already
-    ;; clear and the mutation removing it survived both lanes.
+    ;; BIT SET. Without it, that clear runs only when the bit is already
+    ;; clear, and a mutation removing it survives both lanes.
     (harness-case "response/transfer-encoding.md#3"
       (lambda ()
         (check-equal "trace"

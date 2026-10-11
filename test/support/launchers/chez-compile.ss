@@ -18,22 +18,22 @@
 ;;; them are the same code chez-source.ss carries. The duplication is
 ;;; deliberate and it is not a candidate for extraction -- but not because a
 ;;; --script program has nowhere to `load` a shared file from. Measured
-;;; against Chez 10.4.1 on 2026-08-17: under --script, (car (command-line))
+;;; against Chez 10.4.1: under --script, (car (command-line))
 ;;; is this script's own path, so the absolute directory to `load` a sibling
 ;;; file from is derivable with no bootstrap argument. Chez's own defaults
 ;;; for both library-directories and source-directories are CWD-relative --
-;;; (("." . ".")) and (".") respectively, measured 2026-08-17 -- and a
+;;; (("." . ".")) and (".") respectively -- and a
 ;;; launcher must never inherit either, whatever directory a lane happens to
 ;;; launch from. Sharing this block would make every launcher's
 ;;; correctness depend on `load`ing another launcher file: a load-order
-;;; dependency between files that stand alone today, with its own new failure
+;;; dependency between files that stand alone, with its own new failure
 ;;; mode -- a `load` of the wrong file rather than a named refusal. That is
 ;;; not worth what sharing would save.
 ;;;
 ;;; The cost of the copy is that a flag-vocabulary decision fixed in one
 ;;; launcher is not fixed in the others: the copies are independent
 ;;; decisions, not one decision spelled three times. That independence is
-;;; now partially witnessed: SchemeMutationSuite.cmake mutates this file's
+;;; partially witnessed: SchemeMutationSuite.cmake mutates this file's
 ;;; own refusal -- pass 29, the unpaired-roots check. Passes 26-28 --
 ;;; chez-aot.ss's library-path pairing, source-directories, missing-program,
 ;;; and dirty-source-guard refusals -- mutate that file instead. The
@@ -139,16 +139,16 @@
 ;; Declined, not merely left at its default: whole-program optimisation would
 ;; add a second compiled-artifact shape (a .wpo file) for the fingerprint
 ;; binding mechanism to track, and a portability proof does not need the
-;; extra optimisation it buys. See "Explicitly deferred" in the slice
-;; design, upstream docs/plans/milestone-0-slice-5b-5c-compiled-lanes.md section 10.
+;; extra optimisation it buys.
 (generate-wpo-files #f)
 
 ;; Nothing includes, so nothing resolves through source-directories at all
-;; (upstream decision 0006; measured inert for the aot launcher as mutation C3b, and
-;; extended here by the absence of any include form). Emptied rather than
-;; left at Chez's CWD-containing default: it still narrows what a later
-;; top-level load or include added to this file could reach, and an empty
-;; list costs nothing to state.
+;; (measured inert for the aot launcher by SchemeMutationSuite.cmake's
+;; "source-directories is not emptied" mutation, and extended here by the
+;; absence of any include form).
+;; Emptied rather than left at Chez's CWD-containing default: it still
+;; narrows what a later top-level load or include added to this file could
+;; reach, and an empty list costs nothing to state.
 (source-directories '())
 (library-directories (map cons library-roots object-dirs))
 

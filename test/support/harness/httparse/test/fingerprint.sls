@@ -3,8 +3,7 @@
 ;;; A run reports the digest of the sources it executed so that a stale
 ;;; artifact or a copied variant is detectable rather than merely unlikely. A
 ;;; matching fingerprint means the declared text is unchanged -- not that the
-;;; run loaded exactly those files; the manifest is declared, not observed
-;;; (upstream decision 0004, unchanged by the include collapse).
+;;; run loaded exactly those files; the manifest is declared, not observed.
 ;;;
 ;;; This is a change detector, not a cryptographic digest. It is a polynomial
 ;;; rolling hash modulo the Mersenne prime 2^61-1. Do not use it for anything
@@ -16,7 +15,7 @@
 ;;; fingerprint-manifest.ss imports it to compute build-time expectations.
 ;;; That is why this is a library of its own rather than text inlined into
 ;;; the harness: the expectation and the runner share one implementation
-;;; through the module system, so they cannot drift apart (upstream decision 0006).
+;;; through the module system, so they cannot drift apart.
 ;;;
 ;;; The arithmetic is deliberately not bitwise: the algorithm needs nothing
 ;;; beyond exact integers of unbounded range, which R6RS guarantees.
@@ -52,9 +51,8 @@
 ;; an LF on a platform whose text ports would translate it.
 ;; get-bytevector-all returns the EOF object for an empty file rather than a
 ;; zero-length bytevector, so an empty file fingerprints as the seed instead
-;; of raising. This library reads files itself: the adapter-file-bytes
-;; indirection existed for the retired dialect ceiling, and (rnrs io ports)
-;; is all the reader ever needed.
+;; of raising. This library reads files itself rather than through
+;; adapter-file-bytes: (rnrs io ports) is all the reader needs.
 (define (harness-fingerprint-read-bytes path)
   (let* ((port (open-file-input-port path))
          (bytes (get-bytevector-all port)))
@@ -77,7 +75,7 @@
                       harness-fingerprint-modulus)))))
 
 ;; Lowercase hex from an explicit digit table, never number->string with a
-;; radix. Measured 2026-08-17: Chez yields "FF" for (number->string 255 16).
+;; radix. Chez yields "FF" for (number->string 255 16).
 ;; That is not wrong -- the standards do not fix the case -- so a radix
 ;; conversion would make the one claim this file exists to establish depend on
 ;; a detail an implementation is free to answer differently. Comparing

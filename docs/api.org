@@ -89,9 +89,11 @@ Statuses:
 : parser-error-offset    : ParserError -> Nat      ; stream offset
 : parser-error-node-name : ParserError -> Symbol   ; the grammar node that refused
 
-The code/reason pair is llhttp's, deliberately: decision 0013 makes an
-error's identity the pair rather than either half, so a caller can switch on
-the symbol and log the text and get the same answer llhttp would give.
+The code/reason pair is llhttp's, deliberately, and an error's identity is
+the pair rather than either half: llhttp gives several failures one code, and
+gives one reason, "Expected CRLF after version", two codes. So a caller can
+switch on the symbol and log the text and get the same answer llhttp would
+give.
 
 *** Mapping a Transfer-Encoding error to a response status
 
@@ -128,7 +130,7 @@ from the =Transfer-Encoding= value your header callbacks collected.
 
 *** Telling failures within one code apart
 
-=parser-error-code= is one-to-one with llhttp's error number (decision 0013).
+=parser-error-code= is one-to-one with llhttp's error number.
 llhttp gives several distinct failures one number, and so do we, so those
 failures share a code. Usually that is what you want. When it is not (a log
 line that says /which/ Transfer-Encoding failure it was, say), do not match
@@ -276,8 +278,8 @@ the corpus, feeding each chunk from a buffer of its own.
 Pausing is allowed there, because a resumed run re-enters the body decision
 exactly where an unpaused one would.
 
-It is the only one. =on-message-type= used to be the other, and is now the
-=type= mode below — see *Choosing the modes*.
+It is the only one. Whether a request or a response is coming is not a
+callback but the =type= mode below — see *Choosing the modes*.
 
 ** The full list
 
@@ -297,17 +299,16 @@ It is the only one. =on-message-type= used to be the other, and is now the
 Events with no span: =on-message-begin=, =on-headers-complete=,
 =on-chunk-header=, =on-chunk-complete=, =on-message-complete=, =on-reset=.
 
-That is the whole list — *twenty-five, all required*. There is no
-=on-message-type= and there are no =on-lenient-*=; both are modes now.
+That is the whole list — *twenty-five, all required*. Request-or-response
+and the lenient flags are modes, not callbacks.
 
 =on-reset= fires between pipelined messages on one parser, before
 =on-message-begin= of the next.
 
 ** The request target is checked, not just captured
 
-=on-url-data= still delivers the *whole* target as one span — that has not
-changed. What changed is that a target whose STRUCTURE llhttp rejects is now
-an error here too, where it used to parse:
+=on-url-data= delivers the *whole* target as one span, but a target whose
+STRUCTURE llhttp rejects is an error here too:
 
 #+begin_example
 OPTIONS a.com:443 HTTP/1.1
@@ -316,15 +317,13 @@ OPTIONS a.com:443 HTTP/1.1
 
 The parser runs llhttp's own URL machine over the target, entering it at the
 authority form for =CONNECT= and at the general form for everything else.
-*A message you used to parse may now be refused*, with one of llhttp's
-=invalid-url= reasons. No =on-url-data= fires before such an error: the span
-is open when the refusal happens, and an error abandons an open span rather
-than flushing it.
+*Such a message is refused*, with one of llhttp's =invalid-url= reasons. No
+=on-url-data= fires before such an error: the span is open when the refusal
+happens, and an error abandons an open span rather than flushing it.
 
 A target with *two userinfo =@= that are not adjacent* is accepted, because
 llhttp accepts it: =http://a@b@c/p= is a host of =a@b@c=. Only =@@= is
-=Double @ in url=. This parser refused the second =@= wherever it fell until
-the live differential said otherwise.
+=Double @ in url=.
 
 If you want the target broken into schema, host, path, query and fragment,
 that is the separate parser below.
@@ -358,11 +357,12 @@ connection it is on.
 
 *This one has no safe default.* Omit it and the parser starts at llhttp's
 =HTTP_BOTH=, which this parser does not implement — llhttp's third arm sniffs
-the first bytes and v0.1 does not — so the first feed returns
+the first bytes and this one does not — so the first feed returns
 ='unexpected-message-type= at offset 0 rather than guessing. That is a
-refusal, not a fallback, but it is a refusal *one feed later* than the
-missing-callback error it replaced. Decision 0021 records why that was
-accepted.
+refusal, not a fallback. It comes at the first feed rather than at
+=make-parser= because a field initial cannot be made mandatory, and a
+required callback kept only to fail earlier would be a second way to choose
+the mode.
 
 ** =lenient-flags= — llhttp's eleven leniencies
 
@@ -548,11 +548,10 @@ legal. It runs the machine with input exhausted, taking each state's
 end-of-input route, and returns ='finished=, ='error= or ='paused=.
 
 *The corpus never calls =parser-finish!=* — upstream's harness does not
-either, which took four milestones to notice — so a finish's outcome carries
-no bit-exact /corpus/ evidence, and =unit.finish= pins it instead: a finish
-from an unsafe (mid-message) state is llhttp's =invalid-eof-state= /
-"Invalid EOF state" (code 14), uniform across every such state, and a
-close-delimited body completes (below). A PAUSE FROM A FEED IS DIFFERENT: 24
+either — so a finish's outcome carries no bit-exact /corpus/ evidence, and
+=unit.finish= pins it instead: a finish from an unsafe (mid-message) state is
+llhttp's =invalid-eof-state= / "Invalid EOF state" (code 14), uniform across
+every such state, and a close-delimited body completes (below). A PAUSE FROM A FEED IS DIFFERENT: 24
 fixtures record one, and this parser matches all of them at every chunk size.
 See [[file:conformance.org][conformance.org]].
 

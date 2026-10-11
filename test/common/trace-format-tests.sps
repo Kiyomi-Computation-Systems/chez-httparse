@@ -1,7 +1,7 @@
 ;;; Tests for (httparse test trace-format): rendering events as llhttp's trace.
 ;;;
 ;;; Hand-built events in, exact trace lines out. This is the instrument the
-;;; parser will be measured with, so it is calibrated before the parser exists.
+;;; parser is measured with, so it is calibrated without the parser.
 (import (rnrs)
         (httparse test harness)
         (httparse test trace-format))

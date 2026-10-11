@@ -4,10 +4,10 @@
 # a missing library, or a failure to launch as proof that an assertion failed.
 # This module compares the exact status instead, which means it has to say what
 # the legal statuses even are -- and has to tell an out-of-vocabulary status
-# apart from a wrong one, because those are different defects. Measured
-# 2026-08-18 against Chez 10.4.1: `--script` naming a file that does not exist
-# exits 255; reporting that as "expected 1, got 255" would send a reader
-# looking for a failed assertion that never ran.
+# apart from a wrong one, because those are different defects. Under Chez
+# 10.4.1, `--script` naming a file that does not exist exits 255; reporting
+# that as "expected 1, got 255" would send a reader looking for a failed
+# assertion that never ran.
 
 cmake_minimum_required(VERSION 3.26)
 

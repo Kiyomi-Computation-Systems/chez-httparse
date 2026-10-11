@@ -2,10 +2,10 @@
 ;;;
 ;;; This is the only place in the harness where runtime-specific identifiers
 ;;; may appear. Its export list is checked by mutation: deleting a load-bearing
-;;; export here must make the self-tests fail (spec section 9.1).
+;;; export here must make the self-tests fail.
 ;;;
 ;;; The library contains its own text -- the adapter section first, the
-;;; runner inlined below it (upstream decision 0006) -- and imports (httparse test
+;;; runner below it, with no shared include body -- and imports (httparse test
 ;;; fingerprint). Nothing here resolves through source-directories.
 
 (library (httparse test harness)
@@ -186,9 +186,9 @@
   ;;
   ;; NOT THE OBVIOUS PROCEDURE. Chez's `bytes-allocated` reports what is
   ;; allocated RIGHT NOW, so a collection inside the measured region makes
-  ;; the difference NEGATIVE -- which is how this was found, a region
-  ;; reporting -33122 bytes. The statistics record's byte count is the
-  ;; running total and does not fall when memory is reclaimed.
+  ;; the difference NEGATIVE -- a region can report -33122 bytes. The
+  ;; statistics record's byte count is the running total and does not fall
+  ;; when memory is reclaimed.
   (define (adapter-bytes-allocated) (sstats-bytes (statistics)))
 
   ;; adapter-real-time : -> Nat
@@ -199,16 +199,13 @@
   (define (adapter-flush-output) (flush-output-port (current-output-port)))
 
 ;; ---------------------------------------------------------------------------
-;; The runner. Inlined here by the include collapse (upstream decision 0006); formerly
-;; test/support/harness/shared/harness-runner.scm, this library's sole
-;; included body. Everything below stays plain R6RS out of habit and
-;; stability, not law: records as tagged lists, no hash tables, no
-;; define-record-type -- nothing has needed to change since the portability
-;; era. Free identifiers used below and defined above (the adapter
-;; procedures) or imported (the fingerprint library, r5rs arithmetic) are
-;; bound by this library; a name bound nowhere kills the library at import.
+;; The runner. Everything below stays plain R6RS out of habit and stability,
+;; not law: records as tagged lists, no hash tables, no define-record-type.
+;; Free identifiers used below and defined above (the adapter procedures) or
+;; imported (the fingerprint library, r5rs arithmetic) are bound by this
+;; library; a name bound nowhere kills the library at import.
 ;;
-;; PROCESS STATUS (spec section 5.2)
+;; PROCESS STATUS
 ;;
 ;;   0  every selected case passed
 ;;   1  one or more assertions failed

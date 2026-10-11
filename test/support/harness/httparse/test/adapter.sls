@@ -1,22 +1,22 @@
 ;;; (httparse test adapter): rename this parser's callbacks and errors into
 ;;; llhttp's trace vocabulary.
 ;;;
-;;; Decision 0008 item 2: this layer may RENAME, never COMPUTE. Both tables
-;;; below are total over a closed set with NO DEFAULT -- a callback or an error
-;;; code with no row raises rather than falling back -- because a default is
-;;; precisely what would let a wrong parser render a right-looking trace. The
-;;; offsets, the span bytes and the reason string all arrive from the parser and
-;;; leave untouched; nothing here reconstructs any of them.
+;;; This layer may RENAME, never COMPUTE. Both tables below are total over a
+;;; closed set with NO DEFAULT -- a callback or an error code with no row
+;;; raises rather than falling back -- because a default is precisely what
+;;; would let a wrong parser render a right-looking trace. The offsets, the
+;;; span bytes and the reason string all arrive from the parser and leave
+;;; untouched; nothing here reconstructs any of them.
 ;;;
-;;; Decision 0013: an error's identity is the (code, reason) PAIR, because the
-;;; corpus has reasons sharing a code and one reason under two codes. Only the
-;;; code is renamed here -- to llhttp's integer -- and the reason passes through,
-;;; which is the least this layer can do and still be a rename.
+;;; An error's identity is the (code, reason) PAIR, because the corpus has
+;;; reasons sharing a code and one reason under two codes. Only the code is
+;;; renamed here -- to llhttp's integer -- and the reason passes through, which
+;;; is the least this layer can do and still be a rename.
 ;;;
 ;;; THE TWO HALVES ARE EXPORTED SEPARATELY. The tables are pure and are judged
 ;;; on hand-built input, before any parser runs; the recorder is the shell that
 ;;; drives them from the generated runtime's callback protocol. An uncalibrated
-;;; instrument cannot measure a parser (decision 0008 item 4).
+;;; instrument cannot measure a parser.
 (library (httparse test adapter)
   (export adapter-trace-names adapter-error-codes adapter-state-fields
           adapter-count-field adapter-finish-states adapter-finish-statuses
@@ -70,13 +70,13 @@
       ;; s->content_length` and nothing else, so reading the same five fields
       ;; off the parser is the closest correspondence there is -- and it keeps
       ;; this layer a rename, because not one of the numbers is reconstructed
-      ;; from the headers that produced them (decision 0014).
+      ;; from the headers that produced them.
       (on-headers-complete       state-line "headers complete")
       (on-body-data              span       "body")
       ;; A COUNT LINE: the second kind of callback whose text carries a parser
       ;; field. llhttp's `on_chunk_header` prints `s->content_length` and
       ;; nothing else, so this reads that one field off the parser the way a
-      ;; state line reads its five (decision 0014).
+      ;; state line reads its five.
       (on-chunk-header           count-line "chunk header")
       (on-chunk-extension-name-data      span  "chunk_extension_name")
       (on-chunk-extension-name-complete  event "chunk_extension_name complete")
@@ -108,7 +108,7 @@
   ;; `s->method` or `s->status_code` joins the three both kinds share. So all
   ;; six are read and the unused one is dropped by the renderer, which is what
   ;; keeps this a rename -- the alternative is to decide here which field
-  ;; matters, and deciding is what decision 0014 forbids.
+  ;; matters, and deciding is computing.
   (define adapter-state-fields
     '(type method status-code http-major http-minor flags content-length))
 
@@ -125,11 +125,11 @@
   (define adapter-count-field 'content-length)
 
   ;; Our error code symbols to llhttp's ERROR numbers, one to one. A symbol
-  ;; spanning two numbers, or absent here for a code the parser can produce, is
-  ;; what decision 0013 forbids. `invalid-eof-state` (14) is the unsafe-finish
-  ;; error (#42): inert, since the driver never finishes (decision 0016), but
-  ;; the parser CAN produce it, so 0013 item 4 keeps it in the table. A feed
-  ;; that runs dry still prints nothing, so no trace ever carries it.
+  ;; spanning two numbers would be unrenderable, and one absent here for a code
+  ;; the parser can produce would be a default. `invalid-eof-state` (14) is the
+  ;; unsafe-finish error: inert, since the driver never calls `parser-finish!`,
+  ;; but the parser CAN produce it, so the table stays total and keeps it. A
+  ;; feed that runs dry still prints nothing, so no trace ever carries it.
   (define adapter-error-codes
     '((strict                    . 2)
       (lf-expected               . 3)
@@ -445,7 +445,7 @@
   ;; two arms differ only in the value they answer with.
   (define (trace-recorder-bindings r init mode)
     ;; The init is still CHECKED here though nothing below reads it: the
-    ;; kind and the flags leave through `adapter-parser-inits` now, and a
+    ;; kind and the flags leave through `adapter-parser-inits`, and a
     ;; lane that built bindings from a malformed init and only then reached
     ;; the initials would refuse one call later, naming the wrong argument.
     (checked-init init)
@@ -496,7 +496,7 @@
   ;; through the same `adapter-event-for`, so the two machines cannot drift in
   ;; how an offset or a length is computed. That matters more here than it
   ;; looks: every one of `url.md`'s expectations is a span line, so the
-  ;; offset arithmetic IS the milestone.
+  ;; offset arithmetic is everything those fixtures check.
   (define (trace-recorder-url-bindings r)
     (map (lambda (row)
            (let ((callback (car row)))
@@ -528,7 +528,7 @@
 
   ;; trace-recorder-note-paused! : Recorder (Option ParserError) -> Void
   ;; A RENAME LIKE EVERY OTHER ROW. llhttp prints a
-  ;; pause the way it prints an error, and a pause now carries the same
+  ;; pause the way it prints an error, and a pause carries the same
   ;; (code, reason) an error does -- so this reads them off the parser's own
   ;; value and renames the code, exactly as `trace-recorder-note-error!` does.
   ;;

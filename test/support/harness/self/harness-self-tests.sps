@@ -1,5 +1,4 @@
-;;; The runner's self-tests, as a program. Merged from its .chez.sps wrapper
-;;; by the include collapse (upstream decision 0006).
+;;; The runner's self-tests, as a program.
 
 (import (rnrs) (httparse test harness))
 
@@ -13,16 +12,12 @@
 ;;; the log would teach readers to ignore FAIL lines.
 ;;;
 ;;; Every exported adapter name is referenced here, so a name missing from the
-;;; adapter's export list is a load failure, not a silent gap (spec section
-;;; 9.1).
+;;; adapter's export list is a load failure, not a silent gap.
 
 ;; Construct a bytevector from a length and a list of byte values, by hand
-;; rather than through u8-list->bytevector. The hand-rolled form is a holdover
-;; from the retired portability era, which avoided spellings not every dialect
-;; it targeted defined; under R6RS alone, which is all that remains,
-;; u8-list->bytevector would do the same job just as well. Kept as written
-;; because nothing depends on changing it, not because anything still forbids
-;; the alternative.
+;; rather than through u8-list->bytevector. Under R6RS the two do the same
+;; job; this form is kept because nothing depends on changing it, not because
+;; anything forbids the alternative.
 (define (harness-bytes length bytes)
   (let ((bv (make-bytevector length 0)))
     (let loop ((i 0) (rest bytes))
@@ -386,8 +381,9 @@
         ;; what it stages (its registration in test/CMakeLists.txt). A
         ;; name-versus-mode check here would be red on every baseline, not only
         ;; a broken one. The claim is carried instead by the lane's structure
-        ;; (an aot lane cannot expand source) and proved by mutation C4 against
-        ;; the registration's own mapping.
+        ;; (an aot lane cannot expand source) and proved by MutationSuite.cmake's
+        ;; "execution mode is the literal source again" mutation, against the
+        ;; registration's own mapping.
         (check "the mode is one the lane vocabulary defines"
                (harness-member? (adapter-execution-mode)
                                 (list "source" "aot")))))
@@ -406,12 +402,11 @@
         (check-equal "unmapped os"    (adapter-machine-type->os "zz99xx") "unknown")))
 
     ;; adapter-exit ends the process, so no assertion may call it. Naming it is
-    ;; still load-bearing: the parity argument in spec section 9.1 rests on this
-    ;; program referencing every adapter name, and until this case existed
-    ;; adapter-exit was the one name it missed -- its only other uses are inside
-    ;; the runner section of harness.sls, so they resolve whatever the export
-    ;; list says. Dropping it from the export list left this program loading
-    ;; and passing regardless.
+    ;; still load-bearing: a missing export is a load failure only because this
+    ;; program references every adapter name. adapter-exit's only other uses
+    ;; are inside the runner section of harness.sls, so they resolve whatever
+    ;; the export list says; without this case, dropping it from the export
+    ;; list would leave this program loading and passing.
     (harness-case "the adapter can end the process"
       (lambda ()
         (check "adapter-exit is reachable" (procedure? adapter-exit))))
@@ -511,7 +506,7 @@
 
 ;; --- the content fingerprint ------------------------------------------------
 ;;
-;; Every value below was measured on Chez 10.4.1 on 2026-08-17. They are
+;; Every value below was measured on Chez 10.4.1. They are
 ;; literals rather than recomputations because a test that recomputes the
 ;; thing under test with the thing under test asserts only that it is
 ;; deterministic.

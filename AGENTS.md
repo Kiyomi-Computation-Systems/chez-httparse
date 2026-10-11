@@ -14,10 +14,8 @@
 
 ### Layout, process & libraries
 
-* Plans live in `/.plans`, decision records in `/.plans/decisions`
-* The subagent-driven development ledger lives in `/.superpowers/sdd/` —
-  `progress.md` is the spine and `global-constraints.md` binds every task
-  brief. Read both before starting slice work; close-outs are recorded there.
+* Design decisions are recorded in `/.plans/decisions`, one numbered record
+  each. Plans and work-in-progress notes are not kept in the repository.
 * Add entries to `CHANGELOG.md` for each release
 * `Makefile` should have a `help` command which lists all of its commands
 * Libraries are R6RS `.sls`; libraries and programs contain their own code —
@@ -48,13 +46,13 @@ We run this when we're done and ready to merge the PR.
 
 A lane going red is not yet evidence. **Read the failure, not the exit status.**
 
-M2 ran mutations whose "caught" was a different thing than it looked. A
-mutation routing a span-close somewhere illegal made an error node unreachable,
+One round of mutations had a "caught" that was a different thing than it
+looked. A mutation routing a span-close somewhere illegal made an error node unreachable,
 so the machine was **refused at verification** — exit 255, no assertion, no
 summary line. A check that asked only whether `ctest` went red called that
 CAUGHT, and it nearly went into the record as a test witness. It is not one: it
-says the verifier would stop you, not that a test would notice. Three of Slice
-③'s ten mutations were structural refusals of exactly this kind, and they are
+says the verifier would stop you, not that a test would notice. Three of that
+round's ten mutations were structural refusals of exactly this kind, and they are
 recorded as structural.
 
 The distinction matters because the two failure modes recommend opposite
@@ -67,7 +65,7 @@ This is `assert the edit landed before believing the result` taken one step
 further: assert **why** it went red.
 
 **And then ask whether that check could have gone red for an unrelated
-reason.** M4 ran three mutations against the conformance lane without
+reason.** Three mutations were once run against the conformance lane without
 re-deriving the shipped artifact, and all three were caught by the *executor
 differential* — the check that the committed parser and the interpreter agree.
 It fires for **any** grammar edit at all, so it says nothing whatever about
@@ -83,12 +81,12 @@ An expectation you read off your own parser is not an expectation. It is a
 snapshot, and it will keep passing after the behaviour it describes turns out to
 be wrong.
 
-M2 Slice ① asserted that a bare LF after the version errors at offset 14. That
+A test once asserted that a bare LF after the version errors at offset 14. That
 number came from running the parser, not from a fixture, and it was wrong:
 `request/invalid.md#21` records the error one past the LF, because llhttp
 matches the LF into a lenient test strict mode refuses and a match consumes,
-while its `.otherwise` does not. The test passed for two slices and was found by
-the conformance driver on its first run.
+while its `.otherwise` does not. The test kept passing until the conformance
+driver found it on its first run.
 
 When the oracle has no row for the input you want to check, say so in the test —
 write the input the oracle *does* record beside it, or pick a different input.
@@ -98,7 +96,7 @@ write the input the oracle *does* record beside it, or pick a different input.
 
 Script it, then check the result's shape against something you already have.
 
-M2's method-versus-protocol matrix needed llhttp's three method classes out of
+A method-versus-protocol matrix needed llhttp's three method classes out of
 `constants.ts`. The extractor's key pattern matched bare identifiers and missed
 `'M-SEARCH': 24`, whose key is quoted because of the hyphen — producing a
 46-name union against our own 47-name table. The mismatch is the only reason it
@@ -111,7 +109,7 @@ partition that must cover it — and make that invariant a check in the tree, no
 a thing you eyeballed once.
 
 **And a count is an invariant over the SET, not over its ELEMENTS.** The same
-table was wrong again for six milestones in a way no count could see. Two of
+table was wrong again, for a long time, in a way no count could see. Two of
 the 47 names were spelled `GET-PARAMETER` and `SET-PARAMETER`; llhttp's map
 keys them `GET_PARAMETER` and `SET_PARAMETER`, with underscores, because they
 are TypeScript identifiers — only `'M-SEARCH'` is quoted, which is the very
@@ -135,34 +133,34 @@ the finding.
 Name the attribute you grouped on and the attribute you are predicting. When
 they differ, what you have is an **ordering**, not a count.
 
-Three milestones, three optimistic ceilings — M2's row read 17 against a real
-10, M3's read 44 cumulative against a real 29 — and the first two were treated
+Three rounds, three optimistic ceilings — one row read 17 against a real 10,
+the next read 44 cumulative against a real 29 — and the first two were treated
 as arithmetic to correct. The cause is structural. The ceilings table buckets
 each fixture by the **deepest event in its trace**, because that is the
-attribute a fixture wears on its face; the question the plan asks is which
+attribute a fixture wears on its face; the question being asked is which
 **capability** the error needs. Those are different attributes of the same
 fixture, and grouping on one says nothing reliable about the other.
 
 `Content-Length: 1000000000000000000000` is the case that shows it. The error
 falls inside the header section, so it buckets as header syntax — but llhttp's
 value span is 21 of the 22 digits, bounded by where the accumulator overflows.
-Only the accumulator can produce that span, so the fixture belongs to the
-framing milestone however shallow its trace looks.
+Only the accumulator can produce that span, so the fixture belongs with the
+framing work however shallow its trace looks.
 
 So an estimate of this kind is a starting order for the work, and it stops
 being an estimate the moment a measurement exists. The ratchet is the
 measurement: publish the number it reports, not the number the table implied.
 
-**And a measurement that names a capability still does not scope it.** M4's
-close measured two request fixtures as needing the url sub-parser, which is
-deferred past v0.1 — correctly: they do need it. What they needed *of* it was
+**And a measurement that names a capability still does not scope it.** Two
+request fixtures were once measured as needing the url sub-parser, which was
+then out of scope — correctly: they do need it. What they needed *of* it was
 eight nodes, against a 221-line sub-parser, because both are about the
-target's boundary and neither touches its structure. M6 met its exit criterion
-instead of amending it, and only because someone opened the fixtures to see
-which part they wanted.
+target's boundary and neither touches its structure. The work they gated met
+its exit criterion instead of amending it, and only because someone opened the
+fixtures to see which part they wanted.
 
-"Needs X" is not "needs all of X". A measurement tells you which milestone a
-fixture belongs behind; the size of the debt is a separate question, and it is
+"Needs X" is not "needs all of X". A measurement tells you which piece of work
+a fixture belongs behind; the size of the debt is a separate question, and it is
 answered by reading the fixture, not the attribution.
 
 ## What you cannot reproduce, refuse — and make the refusal a value
@@ -170,11 +168,11 @@ answered by reading the fixture, not the attribution.
 An instrument that fills a gap with a plausible value produces a comparison
 that is not one.
 
-Two rows of the trace adapter say so out loud. `unexpected-eof` has **no error
+Two rows of the trace adapter said so out loud. `unexpected-eof` has **no error
 number**, because llhttp prints nothing when input runs out mid-token and
-giving it one would invent a line the oracle never wrote. `headers complete` is
+giving it one would invent a line the oracle never wrote. `headers complete` was
 **unrenderable**, because its line carries `flags=` and `content_length=` and
-M3 has neither. The tempting alternatives — omit the line, or emit it with
+the parser did not yet track either. The tempting alternatives — omit the line, or emit it with
 zeros — both yield a fixture result shaped like a verdict.
 
 The second half is the one that is easy to miss: a refusal has to be an
@@ -183,7 +181,7 @@ declarations are `required?`, and refuses at render time; the driver catches
 the refusal per fixture and reports that fixture as failing; the executor
 differential captures it as a comparable value, so both executors must agree
 about refusing. Only then can a run tell **wrong** from **not yet** — which is
-what made M3's ceiling measurable at all.
+what made the ceiling measurable at all.
 
 This is the runtime half of *numbers in a test come from the oracle*. That
 standard governs which inputs you may assert on; this one governs what the
@@ -196,27 +194,27 @@ that path cannot be a test witness**, because the node then becomes unreachable
 and the verifier refuses the machine before a single assertion runs. It is a
 guaranteed structural refusal, every time.
 
-Six of M4's first-attempt mutations were exactly this — a `field-branch` whose
-two targets were collapsed onto one, so the error behind the other went
-unreachable. Two more in M3, three in M2, one in M6, where routing an
-illegal-byte arm to a span end left its error node with no path, and one in
-M7, where making a three-digit chain loop back to its first digit orphaned the
-state that followed it. Six milestones running. The habit is natural (removing
-a check is the obvious way to break it) and it is wasted every time.
+Six first-attempt mutations in one pass were exactly this — a `field-branch`
+whose two targets were collapsed onto one, so the error behind the other went
+unreachable. Seven more turned up in other passes, among them one where routing
+an illegal-byte arm to a span end left its error node with no path, and one
+where making a three-digit chain loop back to its first digit orphaned the
+state that followed it. The habit is natural (removing a check is the obvious
+way to break it) and it is wasted every time.
 
 **Point the branch the wrong way instead.** Swap the true and false targets, or
 send the arm to the node its neighbour uses. The machine stays well-formed, the
-behaviour becomes wrong, and a test gets the chance to say so. All six of M4's
-were caught the moment they were rewritten this way.
+behaviour becomes wrong, and a test gets the chance to say so. All six from
+that pass were caught the moment they were rewritten this way.
 
 The same applies to a mutation that is itself ill-formed for some other reason:
-one of M4's put a terminal somewhere the verifier refuses, so it never reached
+another in the same pass put a terminal somewhere the verifier refuses, so it never reached
 the comparison it was written to exercise. Before believing a mutation's
 result, check that the mutant is a machine that could have run.
 
 **And a caught inversion does not prove the branch DECIDES anything.** This is
-the rule above turning round on itself, so it is worth stating plainly. M7
-wired `should_keep_alive`'s call to `message_needs_eof` and then mutated it
+the rule above turning round on itself, so it is worth stating plainly. One
+change wired `should_keep_alive`'s call to `message_needs_eof` and then mutated it
 two ways. Inverting the answer — needs-eof now says yes where it said no —
 was caught at once by two lanes, because every keep-alive message suddenly
 closed. Skipping the call entirely, wiring straight past the subgraph to the
@@ -230,15 +228,15 @@ which is usually what you want to know. It does not say the test is load-bearing
 and when you are asking whether a condition earns its place, the mutation to
 write is the one that removes it. If that survives, "reached" was not
 "deciding", and the honest thing is to say where the answer stops being
-constant — for M7 that is the milestone which teaches the driver to finish a
-parse, because a message needing eof never completes without one.
+constant — there, a driver that finishes the parse, because a message needing
+eof never completes without one.
 
 **A survivor is a missing test, a statement about scope, or the finding
-itself — and which one is a measurement.** M4 had two mutations survive both
-lanes. Neither was argued from the graph: each was re-run against the unit
-lane *and* the conformance lane, and only then recorded as unobservable under
-this milestone's scope, with a comment at the code naming the slice that owes
-it a test. Four other survivors turned out to be real gaps and became checks.
+itself — and which one is a measurement.** One pass had two mutations survive
+both lanes. Neither was argued from the graph: each was re-run against the unit
+lane *and* the conformance lane, and only then recorded as unobservable within
+the current scope, with a comment at the code naming the input that would
+observe it. Four other survivors turned out to be real gaps and became checks.
 
 The third kind is rarer and worth recognising. Replacing the upgrade pause
 with an *error node* was CAUGHT by the unit lane and SURVIVED the conformance
@@ -252,7 +250,7 @@ from either.
 
 The fourth kind is its complement, and it points somewhere else entirely.
 **When a mutation survives in EVERY lane, suspect the oracle before the test
-set.** Three of M5's nineteen did, all in the chunk-extension machine, and the
+set.** Three of one pass's nineteen did, all in the chunk-extension machine, and the
 cause was not a missing test: of the eight reasons llhttp's extension states
 can emit, the vendored corpus records **two**. There was nothing to write a
 test against. A same-in-every-lane survivor is the shape that tells you so —
@@ -260,8 +258,8 @@ a difference between lanes is about your checks, an agreement across them is
 about your evidence.
 
 **What the oracle is missing may be a reason, or it may be an input shape that
-separates two conditions.** M7's three same-in-every-lane survivors were one
-finding with that second shape. llhttp asks two overlapping questions about a
+separates two conditions.** Three same-in-every-lane survivors in another pass
+were one finding with that second shape. llhttp asks two overlapping questions about a
 response — the body decision names 100, 102, 103, 204 and 304 exactly, and
 `message_needs_eof` names 1xx, 204 and 304 again — and on a message with no
 framing header the two agree, so either alone renders the right trace and a
@@ -279,7 +277,7 @@ apart, and when the oracle has not got one, pin that.
 Before asserting an invariant over generated input, ask the oracle whether it
 holds for the oracle.
 
-M8 wrote "the trace is the same however the bytes arrive" as a property test,
+A property test once asserted "the trace is the same however the bytes arrive",
 because that is what a resumable parser means and because the 190-fixture
 corpus passes at every chunk size. A third of the generated inputs failed
 it — and llhttp fails it identically. A span still open when the parse fails
@@ -307,10 +305,10 @@ asserts what the parser currently does there. **Do not.** That is
 one step further back, and this repo's `.match`/`.peek` trap has been wrong
 three times *precisely* where no fixture looked.
 
-Two things are worth doing instead, and M5 did both.
+Two things are worth doing instead, and the chunk-extension machine does both.
 
 **Name the idiom, not the arm.** An unmeasured arm is usually an instance of a
-pattern that *is* measured somewhere else. Each of M5's six unrecorded
+pattern that *is* measured somewhere else. Each of its six unrecorded
 extension errors is one of four llparse idioms — `end().skipTo(error)` one
 past the byte, `.otherwise(error)` at it, a bare-LF `.peek` at it, `.match`
 past it — and every one of those four is pinned by a fixture in some other
@@ -333,22 +331,22 @@ to the parser.
 A fixture deferred or blocked for one reason was probably holding down several.
 When it stops running, it stops holding **all** of them.
 
-M4's parser read ten bytes of body for `CONNECT foo.bar.com:443` with a
-`Content-Length: 10`. llhttp reads none. The fixture that records this is one
-of nine the upstream pause gap blocks, so the conformance lane was never going
-to notice — and the bug was found only because the milestone went on to build
+The parser once read ten bytes of body for `CONNECT foo.bar.com:443` with a
+`Content-Length: 10`. llhttp reads none. The fixture that records this was one
+of nine an upstream pause gap blocked, so the conformance lane was never going
+to notice — and the bug was found only because later work went on to build
 the decision that produces it. Nothing in the tree would have caught it
 otherwise, and it would have shipped.
 
 So when a fixture is blocked, do not just record *why* it is blocked. Ask what
 else its trace was pinning, and put that in a unit case built from the
-fixture's own numbers. M4 did this for the two upgrade arms — an upgrade with a
+fixture's own numbers. That was done for the two upgrade arms — an upgrade with a
 body reads it, one without does not — and the mutation that collapses them
 survives without that case. It was written because the survivor pointed at it.
 
 ## A generated parser has two halves, and only one of them greps
 
-M10 wired eleven lenient flags by finding every `testLenientFlags` in
+The eleven lenient flags were wired by finding every `testLenientFlags` in
 `src/llhttp/*.ts`. Four fixtures across two different flags then failed at the
 same line, on a site that grep cannot reach:
 
@@ -367,7 +365,7 @@ read, enumerate `src/native/*.c` too, and expect the C to state conditions the
 grammar cannot (this one is a conjunction over two flags; a branch key could
 not carry it).
 
-The same milestone found the other half of this: two different flags can meet
+The same work found the other half of this: two different flags can meet
 on ONE node under ONE reason. A request line ending in a bare LF and one
 ending in a lone CR are both `Expected CRLF after version`, from the same node
 — so a failure at that node looks like the fork already sitting there, and is
@@ -375,15 +373,15 @@ the other flag's arm. A shared reason is not evidence of a shared cause.
 
 ## Disable the feature and count the red lanes
 
-A fixture passing is not evidence that the code written for it ran. M9 and M10
-both used the same cheap check: point each new branch at a flag nothing sets,
-rebuild, and count the failing lanes. A site that breaks nothing is a site the
-corpus does not reach.
+A fixture passing is not evidence that the code written for it ran. Two pieces
+of work in a row used the same cheap check: point each new branch at a flag
+nothing sets, rebuild, and count the failing lanes. A site that
+breaks nothing is a site the corpus does not reach.
 
-M9 had one such site of six; M10 had two of thirty-two. In every case the gap
-was real and invisible any other way — the fixture that would have covered
-M9's was deferred behind a different flag, and M10's needed a byte no recorded
-trace contains. Both now carry cases measured against purpose-built oracle
+The first had one such site of six; the second had two of thirty-two. In every
+case the gap was real and invisible any other way — the fixture that would have
+covered the first was deferred behind a different flag, and the second's
+needed a byte no recorded trace contains. Both now carry cases measured against purpose-built oracle
 binaries, and re-disabling either fails its lane.
 
 Two cautions. The mutation has to leave a machine that could have RUN: moving
@@ -394,18 +392,18 @@ for the wrong reason.
 
 ## A dependency that shipped does not un-block anything by itself
 
-M4 measured nine request fixtures as blocked upstream: a generator pause
+Nine request fixtures were once measured as blocked upstream: a generator pause
 carried no code and no reason, so `error code=22 reason="Pause on
-CONNECT/Upgrade"` could not be rendered. The brief was written, upstream
-shipped it at `v0.4.0`, and this tree has been pinned there since before M5.
+CONNECT/Upgrade"` could not be rendered. The request went upstream, the
+generator shipped the fix, and this tree moved its pin past it soon after.
 
-M9 then found there was nothing left to build. Every event node already
-declared its pause continuation as the place an unpaused run would have gone,
-so all 24 `pausing` fixtures passed on the lane's FIRST run, at every chunk
-size, once the harness could say `off=N pause`. Four milestones ran with a
-capability the tree already had, recorded as absent.
+Much later, the work on pausing found there was nothing left to build. Every
+event node already declared its pause continuation as the place an unpaused
+run would have gone, so all 24 `pausing` fixtures passed on the lane's FIRST
+run, at every chunk size, once the harness could say `off=N pause`. The tree
+had carried the capability for a long time, recorded as absent.
 
-The ledger does not re-ask. A fixture deferred with a reason keeps the reason
+The record does not re-ask. A fixture deferred with a reason keeps the reason
 after the reason stops being true, and the two-way ratchet cannot help: a
 `deferred` entry is not run, so it cannot start passing loudly. So when a
 dependency lands, go back to what its absence was blocking and ASK WHAT IS
@@ -417,7 +415,7 @@ to promote the rows and run the lane — the answer takes one build.
 Moving the pin regenerates a 4000-line artifact. Nobody reviews that diff, and
 a reviewer who says they did is the weakest link in the chain.
 
-The pin move to the generator's `v0.5.0` did it differently: move the
+One pin move did it differently: move the
 submodule, change nothing else, regenerate, and check that the emitted text is
 byte-identical to its predecessor **but for the ABI literal** — and that the
 IR fingerprint the artifact carries is unchanged. The fingerprint is computed
@@ -563,12 +561,11 @@ so a reader can see which member is carrying it.
 
 ## Re-measure a number after the last change, not before it
 
-A milestone's headline figure -- `agreed=9603` -- was measured, correctly,
-and then the generator changed once more. The change was to the INPUTS, so
-it moved their lengths, so it moved how many chunk sizes the ladder gives
-them. Merged main measures 9557. The conclusion was unaffected;
-the number in the decision record, the plan, the changelog and the PR body
-was wrong in four places.
+A change's headline figure -- `agreed=9603` -- was measured, correctly,
+and then the input generator changed once more. The change was to the INPUTS,
+so it moved their lengths, so it moved how many chunk sizes the ladder gives
+them. The merged tree measures 9557. The conclusion was unaffected;
+the number was wrong in four places, every record that quoted it.
 
 The same slip, a few minutes earlier, put a table of per-mode counts into a
 comment that had been SCALED from a smaller run rather than measured. It
@@ -611,23 +608,27 @@ was right.
 
 ## Explain the behaviour in the code and the version in the changelog
 
-The rename audit has caught the same thing in four consecutive milestones, most
-recently in five places at once — and then **twice in one day**, in two
-unrelated pieces of work: a calibration comment in the benchmark lane, and the
-comment beside the ABI expectation explaining which pin moved it. It is never
-the code — it is a *comment*, explaining why something is the way it is, and
-the explanation names the dependency and the release it arrived in.
+The rename audit keeps catching the same thing — once in five places at once,
+and once **twice in one day**, in two unrelated pieces of work: a calibration
+comment in the benchmark lane, and the comment beside the ABI expectation
+explaining which pin moved it. It is never the code — it is a *comment*,
+explaining why something is the way it is, and the explanation names the
+dependency and the release it arrived in.
 
-That is the shape criterion 5 forbids in the build and test tree, and it is
-easy to write without noticing, because naming the version genuinely is the
+That is the shape the rename audit forbids in the build and test tree, and it
+is easy to write without noticing, because naming the version genuinely is the
 clearest way to explain a change. `CHANGELOG.md` is an exempt surface and is
 where the version narrative belongs; a decision record is where the reasoning
 belongs. A comment beside the code should say what the code does and why that
 is right — "the generator gives a pause its own reason", not "as of X v0.4.0".
 
+The same goes for the project's own timeline. A phase name, a PR number or a
+pointer to a plan says *when* something happened, not why it is right, and it
+means nothing to a reader who was not there.
+
 The audit catches it every time, so nothing ships wrong. What it costs is a
-red lane and a rewrite, every milestone, and the habit is worth breaking at
-the point of writing instead.
+red lane and a rewrite, and the habit is worth breaking at the point of
+writing instead.
 
 ## Traps this repo has already hit
 
@@ -653,7 +654,7 @@ None is obvious from reading the code.
   `harness.script-policy-floor` checks that as text.
 * Chez's `bytes-allocated` reports what is allocated **right now**, not what
   has been allocated in total, so a collection inside a measured region makes
-  the difference NEGATIVE. M8's allocation lane reported a region as
+  the difference NEGATIVE. The allocation lane once reported a region as
   allocating -33122 bytes before anyone noticed. The cumulative figure is
   `(sstats-bytes (statistics))`. The general form: when a counter can go
   down, a before-and-after difference is not a measurement.
@@ -665,8 +666,8 @@ None is obvious from reading the code.
   the aot compile, which is the first thing to read the program twice. The
   error is `symbol escape syntax is not allowed in #!r6rs mode`.
 * `(verify-machine m)` **returns a verdict; it does not raise one.** A script
-  that calls it and then prints "verified" has checked nothing — M7 wrote that
-  script, believed it, and was corrected by the emitter, which reads
+  that calls it and then prints "verified" has checked nothing — one was
+  written, believed, and corrected by the emitter, which reads
   `verification-ok?`. The general form: when an instrument ANSWERS rather than
   throws, not reading the answer is indistinguishable from a pass.
 * `make parser-refresh` **configures but does not build**, so the first
@@ -682,8 +683,8 @@ None is obvious from reading the code.
 ## Claims about other people's code
 
 A claim about a dependency's behaviour is **run before it enters a decision
-record**. Not read, not remembered — run. Gate 0 drafted three such claims and
-all three were wrong: a decision targeting an upstream constructor that had
+record**. Not read, not remembered — run. Three such claims were once drafted
+together and all three were wrong: a decision targeting an upstream constructor that had
 since become a tombstone refusing every version; "the case-folding workaround
 is semantically lossy", which is false because a trie disambiguates
 `close`/`closed` where `make-sequence-dispatch-node` rejects the pair; and a
@@ -696,15 +697,15 @@ differing from its documentation, or from what it did last month.
 
 **The rule is not only for decision records. A claim that shapes how a LANE
 WORKS is the same claim, and it is worth more.** The conformance driver
-carried this comment from M1:
+carried this comment from its first version:
 
 > llhttp's own harness calls `llhttp_finish` only for the `*-finish` fixture
 > types
 
 It does not. `llhttp__test_finish` is one line, it prints `s->finish`, and it
 never calls `llhttp_finish` at all. The claim was inferred from the fixture
-type's NAME, written into a comment, and built into the driver's model for
-four milestones — and reading it took two minutes once anyone looked.
+type's NAME, written into a comment, and built into the driver's model through
+everything that followed — and reading it took two minutes once anyone looked.
 
 **A correct check does not vouch for the theory that produced it.** What made
 this last so long is that the wrong model was *protected by a right refusal*:
@@ -714,7 +715,7 @@ fixtures stayed honestly red. Nothing shipped wrong. But the red had an
 explanation, and the explanation was true — so nobody went looking for a
 second one.
 
-So: when a fixture has been red for more than one milestone and you have an
+So: when a fixture has been red for a long time and you have an
 explanation for it, the explanation being true is not evidence that it is
 complete. Go and read the thing that produces the line.
 
@@ -745,7 +746,7 @@ registers `.chez.source` and `.chez.aot` lanes, and a gap analysis went out
 saying the cost lanes measured only source, so "the compiled figure — the one
 an embedder would actually get — is unmeasured." Every word of that is
 grammatical, plausible, and wrong. Chez compiles on load: measured against
-10.4.1 on 2026-09-17, one hot loop ran in 27 ms from source, 28 ms from a
+Chez 10.4.1, one hot loop ran in 27 ms from source, 28 ms from a
 `compile-program` object, and 455 ms from that same source with
 `(current-eval interpret)`. `source` names where the TEXT came from, not what
 the runtime does with it. The published figures had been compiled-code figures
@@ -769,7 +770,8 @@ the number.
 
 ## An experiment that swaps a library must prove which copy ran
 
-Decision 0027's central measurement was a permutation of the emitted parser's
+An experiment into where the parse's time goes rested on a permutation of the
+emitted parser's
 `case` arms — semantics-preserving, so any change in speed is dispatch cost and
 nothing else. The first run reported **no change at all**: 240.6 ns/byte against
 the original's 239.8, flat across every input.
@@ -803,7 +805,7 @@ the clock cannot resolve is a fabricated number — and the smaller the interval
 the larger and more flattering the fabrication. The floor was written against
 the risk of **a faster machine**.
 
-What it caught, one day later, was **a faster parser**. The pin bump that made
+What it caught was **a faster parser**. The pin bump that made
 the generated dispatch four times cheaper left the three repetition literals
 measuring 31 ms, 19 ms and 10 ms where they had measured 135, 70 and 23 — the
 byte-at-a-time case landing exactly on the floor, passing, one improvement from
@@ -820,18 +822,18 @@ tuned constant is a claim about the code as it was when someone tuned it*, and
 the failure mode is not a red lane but a plausible number — which is why the
 check had to exist before the improvement did.
 
-Worth noting what the guard cost to be right: it was added a day earlier for a
-reason that never materialised. That is the usual return on this kind of check,
+Worth noting what the guard cost to be right: it was added for a reason that
+never materialised. That is the usual return on this kind of check,
 and it is not a reason to skip the next one.
 
 ## A harness you decline to ship is only as good as the list that replaces it
 
-The FFI comparison in `docs/performance.org` needs a C toolchain, so decision
-0010 keeps it out of the tree. What went in instead was a section called
+The FFI comparison in `docs/performance.org` needs a C toolchain, so its
+harness is kept out of the tree. What went in instead was a section called
 *Taking these yourself*: four numbered steps, the clang flags, the struct size,
 the shape of the shim.
 
-**That list was cashed in a day later and it worked.** Four generator fixes
+**That list was cashed in, and it worked.** Four generator fixes
 made the Scheme row four times faster, which inverted the section's
 conclusion — a naive wrapper went from buying 3.7× to losing — so every row
 had to be re-taken. The harness was gone; the list rebuilt it, and the rebuilt
@@ -861,8 +863,8 @@ the rows beats one they have to trust.
 ## A number that measures how little something matters expires quietly
 
 That same section said this parser "barely notices" `optimize-level` — nine
-per cent — and cited byte-machine's decision 0049, which records the emitted
-dispatch as costing the same at levels 0, 2 and 3. Both halves were true.
+per cent — and cited the generator's own design record, which measures the
+emitted dispatch as costing the same at levels 0, 2 and 3. Both halves were true.
 
 It notices fifty-two per cent now, and nothing about `optimize-level` changed.
 The linear scans dominated the parse, a scan **is** level-insensitive, and the
@@ -899,13 +901,13 @@ the claim.
 "unreleased", "on `main`", "not yet shipped", "deferred to", "since the last
 release" — each of those is a version surface that stops being true the moment
 a tag exists, and none of them looks like one. The byte-machine side of this
-project makes the same point from the other direction: its release ledger
+project makes the same point from the other direction: its release checklist
 names its surfaces as a list *because* they cannot be found by searching.
 
 ## A byte-identical parser is not an unchanged one when the runtime moved
 
-The byte-machine `v0.6.1` bump (#53) regenerated both parsers byte for byte
-and left both IR fingerprints where they had been for four pins. Every signal
+One generator bump regenerated both parsers byte for byte and left both IR
+fingerprints where they had been for four pins. Every signal
 this repository reads at a bump said *nothing changed*. What had changed was
 the runtime the generated code calls: the keyword walk stopped copying its
 matched prefix on every byte, and a whole-buffer parse got 35–80% faster.
@@ -917,8 +919,8 @@ fingerprints it. So at a bump, read the upstream range's `src/` diff for
 `runtime.sls` as well as regenerating. If it moved, the parser's behaviour can
 have moved with byte-identical sources. Then write the test that would see it
 **before** moving the pin, and watch it fail at the old one: the near-miss
-allocation case in `allocation-tests.sps` read +2,944 bytes at k = 16 on
-`v0.6.0` and 0 on `v0.6.1`. That red run is the only evidence the case
+allocation case in `allocation-tests.sps` read +2,944 bytes at k = 16 at
+the old pin and 0 at the new one. That red run is the only evidence the case
 measures the fix and not something else.
 
 A corollary from the same bump: **a figure computed as a difference can move
@@ -930,14 +932,13 @@ regression, read the two numbers it is made of.
 
 ## A gate that has not run has not passed
 
-The Actions minutes had run out by 2026-09-07 and came back on 2026-10-01.
-In between, all 107 CI runs since the byte-machine submodule arrived were
-refused before a single step. Each was correctly read as billing, and the
+The Actions minutes ran out for several weeks. In that time, all 107 CI runs
+since the byte-machine submodule arrived were refused before a single step. Each was correctly read as billing, and the
 PRs were correctly merged over it. The first run that got a step in found two
 defects, and neither was new.
 
-The workflow had never been able to fetch the submodule. Decisions 0002 and
-0005 both say CI needs an org-scoped read token for it. The workflow never
+The workflow had never been able to fetch the submodule. Two decision records
+both say CI needs an org-scoped read token for it. The workflow never
 had one, because from the day the submodule landed nothing could fail
 without it. And a test script that every laptop passed was a syntax error on
 the runner. `CorpusProvenanceSpec` used `IN_LIST` without declaring a policy
@@ -1018,8 +1019,8 @@ compile against the corpus's own checkout: `build/c/llhttp.c` with
 The comments beside the old route said llhttp "flushes the identity-eof
 body at EOF". It does not. It delivers body bytes at the end of each
 execute, and its finish runs nothing but the completion. That sentence was
-inferred and never run, and it shipped beside the code it misdescribed in
-four releases.
+inferred and never run, and it shipped beside the code it misdescribed,
+release after release.
 
 So when a grammar crosses generators, ask what each primitive does when
 the input runs out (wait, act or refuse), because no trace that keeps
@@ -1029,8 +1030,8 @@ believing the comment.
 
 ## A rebase is a change, and the numbers ride along unmeasured
 
-Three PRs went in over one afternoon, #58, then #56, then #57, each rebased
-onto what had merged before it. Every rebase moved something a commit
+Three PRs went in over one afternoon, each rebased onto what had merged
+before it. Every rebase moved something a commit
 message or PR description stated as measured.
 - The pull-request selection grew from 95 lanes to 96 to 98, so "make test
   97/97, release 100/100" described a tree that no longer existed.
@@ -1046,7 +1047,7 @@ and only unit.finish still caught the old behaviour; both were now measured.
 None of them turned out wrong, and that is the trap. A rebase that changes no
 line of yours looks as if it cannot change your evidence, but it changes the
 tree the evidence is about. The same afternoon found the older form of this
-already in the record: the v0.4.3 changelog quoted a fingerprint from two
+already in the record: a changelog entry quoted a fingerprint from two
 grammar changes earlier, carried forward from the entries before it.
 
 So treat a rebase like an edit. Re-take every count, and re-run every "only
@@ -1056,7 +1057,7 @@ yesterday.
 
 ## When no API can see a runtime change, build the old pin beside the new one
 
-The byte-machine `v0.7.0` bump (#60) moved the runtime and nothing a test here
+One generator bump moved the runtime and nothing a test here
 can read: each `parser-feed!` makes one more call, each span delivery writes a
 slot, an error record grew by two, and this repository calls none of the new
 accessors. *Write the test that would see it before moving the pin* had
@@ -1064,7 +1065,8 @@ nothing to aim at. A baseline took its place: the working tree copied to the
 scratchpad while the submodule still sat at the old pin, built there, and its
 lanes run alternately with the new tree's for 40 rounds.
 
-The figures on file were not that baseline, since they predate v0.4.4 and
+The figures on file were not that baseline, since they predate the previous
+release and
 would have charged the pin with everything that changed since. One run is not
 a comparison either. The first run at the new pin read the one-byte row at
 23,529 msg/s against 45,070, which was one slow run; forty alternating rounds

@@ -1,22 +1,20 @@
 # Proof that the Scheme harness's self-tests are not vacuous.
 #
-# The harness is the instrument every later milestone is measured with. If
-# `check-equal` silently always returned true, the whole project would go green
-# and stay green, and no test written with `check-equal` could notice. So each
-# decision in the runner is broken in turn on a staged copy, and the self-tests
-# must fail.
+# The harness is the instrument every other test in this tree is measured
+# with. If `check-equal` silently always returned true, the whole project
+# would go green and stay green, and no test written with `check-equal` could
+# notice. So each decision in the runner is broken in turn on a staged copy,
+# and the self-tests must fail.
 #
 # PASSES NUMBERED 1 TO 31, BECAUSE EACH DECISION NEEDS ITS OWN WITNESS
 #
-# The numbering keeps the gaps its upstream left (passes 8, 18, and 19
-# retired with the placeholder libraries; the working-directory matrix
-# retired with the include mechanism), so the highest number is 31 while the
-# pass count is lower. EXPECTED_PASSES and EXPECTED_MUTATIONS are declared
+# The numbers are stable labels the comments below cross-reference, so they
+# keep their gaps (8, 18 and 19 are unused) and the highest number is 31 while
+# the pass count is lower. EXPECTED_PASSES and EXPECTED_MUTATIONS are declared
 # below and checked against httparse_mutation_totals' accumulated count once
-# every pass has run: that check is what a whole-branch review in the
-# upstream tree found nothing else could do -- deleting three passes by hand
-# left every individual specification green, with the mutation count silently
-# dropping and nothing anywhere noticing.
+# every pass has run, because nothing else can see a deleted pass: deleting
+# whole passes leaves every individual specification green, with the mutation
+# count silently dropping.
 #
 # Pass 1 runs the Chez self-tests lane against the runner.
 #
@@ -58,11 +56,9 @@
 # verify command fixed for the whole pass, the same constraint passes 4 to 5
 # already established -- generalised here from two decisions to nine.
 #
-# The three working-directory-matrix passes that used to sit between the
-# parse decisions and the consumer pass retired with the include mechanism
-# (upstream decision 0006): with library roots absolute and source-directories empty,
-# there is no resolution step left for a launch directory to change, so the
-# claim the matrix witnessed empirically is now structural.
+# No pass varies the launch directory: with library roots absolute and
+# source-directories empty, there is no resolution step for a launch directory
+# to change, so a lane's outcome cannot depend on where it starts.
 #
 # Pass 20 is the fingerprint algorithm's own decisions -- the +1 that keeps a
 # leading zero byte significant, the seed, the multiplier, the modulus, and
@@ -75,26 +71,26 @@
 # rather than deriving its expectation from fingerprint.sls.
 #
 # Passes 22 through 25 are the provenance check and the reachability guard
-# that closes over it (Task 8): 22 is the comparison, 23 the
+# that closes over it: 22 is the comparison, 23 the
 # missing-expectation branch, 24 the call site that reaches
 # harness-verify-provenance! at all, and 25 harness-provenance-reachability-
 # diagnosis itself, each witnessed through the exact-status helper so that
 # exit 3 -- the refusal -- is the green baseline, exactly as passes 4 and 5 do
 # for the launcher's guard-directory refusals. A third refusal -- a manifest
 # naming an unreadable source -- has no mutation; see the stated blind spot
-# recorded beside pass 23 below. Pass 24 was pass 22's second mutation until
-# Task 8: see the detail beside its declaration for why the reachability guard
-# made WRONG_FP_FILE's exit-3 baseline ambiguous for that one mutation and not
-# for pass 22's own.
+# recorded beside pass 23 below. Pass 24 needs a baseline of its own: see the
+# detail beside its declaration for why the reachability guard makes
+# WRONG_FP_FILE's exit-3 baseline ambiguous for that one mutation and not for
+# pass 22's own.
 #
-# Pass 26 is the aot launcher's own library-path pairing (C3) and its
-# source-directories narrowing (C3b) -- the mechanism that makes `mode=aot`
+# Pass 26 is the aot launcher's own library-path pairing and its
+# source-directories narrowing -- the mechanism that makes `mode=aot`
 # an honest claim, the same argument pass 7 already makes for `mode=source`.
 # The objects it exercises are compiled once, from the staged tree, into this
-# pass's own work directory, and reused by passes 27 to 29 below. C3 is
-# witnessed against a divergent library source planted where only an
-# unpaired object directory would read it; C3b is EXPECT_SURVIVES, for the
-# reason recorded beside it.
+# pass's own work directory, and reused by passes 27 to 29 below. The pairing
+# is witnessed against a divergent library source planted where only an
+# unpaired object directory would read it; the narrowing is EXPECT_SURVIVES,
+# for the reason recorded beside it.
 #
 # Passes 27 to 29 are the aot-side launchers' three genuinely new refusals --
 # chez-aot.ss's missing-program check, chez-aot.ss's dirty-source-guard
@@ -105,27 +101,25 @@
 # copies both files carry from chez-source.ss are deliberately not re-proven
 # here; each launcher's own header records what that leaves unwitnessed.
 #
-# Pass 30 is design W9's first half: the two decisions inside
-# harness-verify-provenance! that no one-source manifest can witness -- the
-# split character and the combining order. Passes 22 to 25 pack their verify
-# command through HTTPARSE_EXPECT_COMMAND, whose | packing forbids a
-# multi-source manifest, so this pass runs the lane command bare instead:
-# its baseline is a passing provenance run (exit 0), and each catchable
-# mutation turns that into the mismatch refusal (exit 3), with no wrapper
-# needed. Its manifest deliberately excludes harness.sls, the file both
-# mutations edit -- an earlier version included it, and an inert one-byte
-# edit nowhere near either decision was enough to trip the identical
-# refusal, which proved the catch was not discriminating anything.
+# Pass 30 covers the two decisions inside harness-verify-provenance! that no
+# one-source manifest can witness -- the split character and the combining
+# order. Passes 22 to 25 pack their verify command through
+# HTTPARSE_EXPECT_COMMAND, whose | packing forbids a multi-source manifest, so
+# this pass runs the lane command bare instead: its baseline is a passing
+# provenance run (exit 0), and each catchable mutation turns that into the
+# mismatch refusal (exit 3), with no wrapper needed. Its manifest deliberately
+# excludes harness.sls, the file both mutations edit: with it included, an
+# inert one-byte edit nowhere near either decision trips the identical
+# refusal, so the catch would discriminate nothing.
 #
-# Pass 31 is design W9's second half, and needs the opposite manifest.
+# Pass 31 needs the opposite manifest.
 # harness-provenance-failure!'s single shared exit line is reachable only
 # from a run whose own provenance has already failed, so witnessing it means
 # deliberately naming harness.sls -- the file this mutation edits -- in the
-# very manifest that checks it. What the plan first carried as a structural
-# survivor for this constant turned out to be witnessable once self-
-# reference was treated as the mechanism rather than the mistake pass 30 had
-# to avoid; AGENTS.md is explicit that a decision which can be witnessed
-# does not get an EXPECT_SURVIVES.
+# very manifest that checks it. Self-reference is the mechanism here rather
+# than the mistake pass 30 avoids, and it is what makes this constant
+# witnessable instead of a structural survivor; AGENTS.md is explicit that a
+# decision which can be witnessed does not get an EXPECT_SURVIVES.
 #
 # WHAT THIS SUITE NEEDS FROM ITS ENVIRONMENT
 #
@@ -145,16 +139,13 @@ cmake_minimum_required(VERSION 3.26)
 # bottom of this file is the same text a reader checks by eye at the top --
 # one number to keep in sync, not two that can quietly disagree.
 #
-# Measured on this tree when the harness was ported (Slice 1, 2026-08-28):
-# the sixteen top-level passes below, plus one pass per
-# httparse_slice3_launcher_pass call (nine: the source launcher's parse
-# decisions) and one per httparse_slice5b_launcher_pass call (three: the
+# Counted from this file: the sixteen top-level passes below, plus one pass
+# per httparse_launcher_pass call (nine: the source launcher's parse
+# decisions) and one per httparse_launcher_file_pass call (three: the
 # aot-side launchers' new refusals), is 28 passes. The mutation count is the
 # declarations inside those passes: 47 written out below plus the 12 the two
-# helpers declare, 59. The upstream passes that mutated a product source
-# tree did not port -- this repository has no product code yet -- and their
-# numbers left with them; the totals check at the bottom is what notices if
-# this paragraph ever stops being true.
+# helpers declare, 59. The totals check at the bottom is what notices if this
+# paragraph ever stops being true.
 set(EXPECTED_PASSES 28)
 set(EXPECTED_MUTATIONS 59)
 
@@ -196,9 +187,8 @@ if(NOT HTTPARSE_CHEZ_EXECUTABLE)
 endif()
 
 # Every directory a pass mutates or a verify command resolves libraries
-# through. The product source tree joins this list when the first parser
-# slice gives it something to stage; the engine refuses a listed directory
-# that stages nothing, so adding it early would fail every run.
+# through. The engine refuses a listed directory that stages nothing, so a
+# directory belongs here only when a pass needs something staged from it.
 set(HTTPARSE_MUTATION_STAGE_DIRS
   "cmake" "test/support/cmake" "test/support/harness" "test/support/launchers")
 
@@ -287,15 +277,12 @@ httparse_mutation(
 
 # harness-group and with-cleanup re-raise through identical text, so each of the
 # two mutations below anchors on the line above the `if` -- the group-stack pop
-# for one, the tail of the cleanup report for the other. They were one SITES 2
-# mutation until a review showed what that concealed: a multi-site mutation is
-# "caught" as soon as any one site is caught, and only the cleanup site was.
-# harness-group pops its name off the stack *before* it re-raises, so deleting
-# the re-raise still leaves every prefix correct; the group merely returns the
-# condition instead of throwing it, and the one self-test that raises inside a
-# group asserted only that no prefix was left behind. Split, each re-raise has
-# to be witnessed on its own, and the group one stayed uncaught until
-# "a group re-raises its body's condition" was added to the self-tests.
+# for one, the tail of the cleanup report for the other. They are two mutations
+# rather than one SITES 2 mutation because a multi-site mutation is "caught" as
+# soon as any one site is caught. harness-group pops its name off the stack
+# *before* it re-raises, so deleting the re-raise still leaves every prefix
+# correct; the group merely returns the condition instead of throwing it, and
+# only the self-test "a group re-raises its body's condition" can tell.
 httparse_mutation(
   FILE ${RUNNER} SPEC harness-self-tests.sps
   LABEL "runner: a group swallows its body's condition instead of re-raising it"
@@ -323,11 +310,10 @@ httparse_mutation(
                              (list 'value (cleanup)))))]]
   REPLACE [[    (let ((cleanup-outcome (list 'value #f)))]])
 
-# FIND used to open on `(cond (...` itself, back when the error clause was the
-# cond's first clause. Task 8 gave harness-exit-status a new first clause --
-# provenance outranking both -- which pushed the error and failure clauses one
-# line down, onto their own matching indentation; anchoring on those two lines
-# alone is what survives a further clause ever being added the same way again.
+# FIND anchors on the error and failure clauses alone, not on the `(cond` that
+# opens harness-exit-status: provenance is the cond's first clause and
+# outranks both, and anchoring on the pair is what survives a further clause
+# being added ahead of them.
 httparse_mutation(
   FILE ${RUNNER} SPEC harness-self-tests.sps
   LABEL "runner: a failure outranks a harness error in the exit status"
@@ -385,7 +371,7 @@ httparse_mutation(
   FIND [[(define (harness-quiet?) (> harness-probe-depth 0))]]
   REPLACE [[(define (harness-quiet?) #f)]]
   EXPECT_SURVIVES
-    "suppression changes only what is printed, never a counter or a status, so no assertion can observe it from inside the process; it is covered by the manual check in the implementation plan's Task 5 step 9, and its real cost -- a log that teaches readers to ignore FAIL lines -- is not machine-checkable")
+    "suppression changes only what is printed, never a counter or a status, so no assertion can observe it from inside the process; it is covered only by a manual reading of the log, and its real cost -- a log that teaches readers to ignore FAIL lines -- is not machine-checkable")
 
 # The other two print-only decisions, and the same argument. The adapter
 # protocol exposes no output-capture service, and the runner may not reach
@@ -396,14 +382,15 @@ httparse_mutation(
 # httparse.harness.verbose.chez.source closes the half that can be closed:
 # it runs a real program with the variable set, so the path is executed and a
 # break that raises is caught. What no layer checks is that the line was
-# printed. Spec section 5.3 records the manual check that does.
+# printed: that is a manual check, and the reason strings below say what it
+# looks for.
 httparse_mutation(
   FILE ${RUNNER} SPEC harness-self-tests.sps
   LABEL "runner: the value read for HTTPARSE_TEST_VERBOSE is discarded"
   FIND [[    (set! harness-verbose (if (and v (not (string=? v ""))) #t #f)))]]
   REPLACE [[    (set! harness-verbose #f))]]
   EXPECT_SURVIVES
-    "the verify command that judges this mutation does not set the variable, so both runs take the same branch -- harness-verbose ends up #f either way -- and the two are byte-identical, not merely indistinguishable by exit status. In a process that does set it the whole difference is one printed line per passing case: no counter, no case count, no status moves, and this suite judges by exit status. httparse.harness.verbose.chez.source proves the read happens and does not raise; that the value read is honoured is covered by the manual check recorded in spec section 5.3 -- either self-tests lane with HTTPARSE_TEST_VERBOSE=1 prints one pass line per case and none without it")
+    "the verify command that judges this mutation does not set the variable, so both runs take the same branch -- harness-verbose ends up #f either way -- and the two are byte-identical, not merely indistinguishable by exit status. In a process that does set it the whole difference is one printed line per passing case: no counter, no case count, no status moves, and this suite judges by exit status. httparse.harness.verbose.chez.source proves the read happens and does not raise; that the value read is honoured is covered by a manual check -- either self-tests lane with HTTPARSE_TEST_VERBOSE=1 prints one pass line per case and none without it")
 
 httparse_mutation(
   FILE ${RUNNER} SPEC harness-self-tests.sps
@@ -412,7 +399,7 @@ httparse_mutation(
                      (harness-say (string-append "httparse-harness: pass " id))))]]
   REPLACE [[                 #f)]]
   EXPECT_SURVIVES
-    "the pass line is the only thing this branch produces, and a line that is not printed changes no counter and no status; httparse.harness.verbose.chez.source still proves the branch is reached and does not raise, but only a reader of the log can see the line itself, which is the manual check recorded in spec section 5.3")
+    "the pass line is the only thing this branch produces, and a line that is not printed changes no counter and no status; httparse.harness.verbose.chez.source still proves the branch is reached and does not raise, but only a reader of the log can see the line itself, which is a manual check")
 
 # --- The Chez adapter's export list ----------------------------------------
 
@@ -425,13 +412,12 @@ httparse_mutation(
 # Not every export is load-bearing, and pretending otherwise would be the more
 # comfortable lie. harness-summary, harness-empty-selection-error, and
 # harness-failure-context are used only from the runner section of harness.sls
-# itself, inlined there by the include collapse (upstream decision 0006); an internal
-# reference resolves against the definition, never through the export list.
-# Dropping any of the three therefore changes nothing any lane can observe --
-# and with one adapter there is no second export list to keep in step with, so
-# the export is a tripwire, not a contract. Recorded here so the blind spot is
-# asserted rather than remembered, and so the day one of them acquires a
-# caller outside the library, this line fails.
+# itself; an internal reference resolves against the definition, never through
+# the export list. Dropping any of the three therefore changes nothing any
+# lane can observe -- and with one adapter there is no second export list to
+# keep in step with, so the export is a tripwire, not a contract. Recorded
+# here so the blind spot is asserted rather than remembered, and so the day
+# one of them acquires a caller outside the library, this line fails.
 httparse_mutation(
   FILE ${CHEZ_ADAPTER} SPEC harness-self-tests.sps
   LABEL "chez adapter: an export used only inside the runner section is dropped"
@@ -441,26 +427,24 @@ httparse_mutation(
     "harness-summary, harness-empty-selection-error, and harness-failure-context are referenced only from the runner section of harness.sls itself; an internal reference resolves inside the library whatever the export list says, so no lane imports the three and none can notice one going missing")
 
 # Load-bearing, unlike the three names in the survivor above: the fingerprint
-# library now reads files itself (httparse test fingerprint), so
-# harness-fingerprint-file no longer reaches adapter-file-bytes at all. The
+# library reads files itself (httparse test fingerprint), so
+# harness-fingerprint-file does not reach adapter-file-bytes at all. The
 # self-tests' own direct call -- reading the fingerprint sample fixture
-# through it -- is the only thing left that makes dropping this export
-# visible.
+# through it -- is the only thing that makes dropping this export visible.
 httparse_mutation(
   FILE ${CHEZ_ADAPTER} SPEC harness-self-tests.sps
   LABEL "chez adapter: adapter-file-bytes is dropped from the export list"
   FIND [[    adapter-value->string adapter-describe-condition adapter-file-bytes]]
   REPLACE [[    adapter-value->string adapter-describe-condition]])
 
-# The line these two retired mutations targeted is gone with the include
-# mechanism; what replaced it is deliberate narrowing, measured inert.
+# Emptying source-directories is deliberate narrowing, measured inert.
 httparse_mutation(
   FILE ${LAUNCHER} SPEC harness-self-tests.sps
   LABEL "launcher: source-directories is left at Chez's default instead of emptied"
   FIND [[(source-directories '())]]
   REPLACE [[;; deleted]]
   EXPECT_SURVIVES
-    "measured inert (upstream decision 0006, extending 5b's C3b): no include form exists anywhere, library resolution runs through library-directories, and no lane's outcome differs between an empty source path and Chez's default; the line is kept as narrowing, not as behavior")
+    "measured inert, like the aot launcher's matching line: no include form exists anywhere, library resolution runs through library-directories, and no lane's outcome differs between an empty source path and Chez's default; the line is kept as narrowing, not as behavior")
 
 # --- The adapter's os-table -------------------------------------------------
 
@@ -518,7 +502,7 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 
 # --- Third pass: the failure counter itself ---------------------------------
 #
-# Declared under the self-tests lane first, and observed UNCAUGHT there: with
+# Under the self-tests lane this mutation goes UNCAUGHT: with
 # harness-record-failure! no longer counting, a self-test that fails prints its
 # FAIL line, marks its case failed, and leaves the exit status at 0. The
 # mutation disarms the mechanism every assertion reports through as it commits
@@ -551,16 +535,11 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 # wrong command line of its own, run through the exact-status helper so that
 # exit 2 -- the refusal -- is what a healthy launcher scores.
 #
-# A third refusal used to live here: a missing required flag, witnessed by
-# invoking the launcher with no arguments at all (SPEC named after that
-# invocation's own ctest lane, httparse.harness.launcher-no-program.chez.source,
-# since there was no program on the command line to name). It is gone. Slice 3's
-# parse-decision passes below replace it with one mutation per required-flag
-# entry, each a strictly more precise witness of the same decision than a
-# zero-argument invocation was; keeping both would mean two mutations proving
-# the same line, one of them permanently coarser. The retired ctest lane
-# itself still runs, unchanged, as a real regression test -- it is just no
-# longer this suite's witness.
+# A missing required flag is not witnessed here. Passes 9 to 17 below give each
+# required-flag entry its own mutation, each a strictly more precise witness of
+# that decision than a zero-argument invocation would be; witnessing it here
+# too would mean two mutations proving the same line, one of them permanently
+# coarser.
 #
 # SPEC names the registered lane rather than a program basename, because the
 # witness is a whole invocation and not a program: "passing" means the named
@@ -586,7 +565,7 @@ set(HTTPARSE_MUTATION_VERIFY_COMMAND
 # directory-list on a path that does not exist, which Chez itself refuses --
 # a real, deterministic consequence of deleting exactly this check, not the
 # launcher's own die(). Verified against a real staged run, not guessed; see
-# httparse_slice3_launcher_pass's header comment below for why the wrapper's
+# httparse_launcher_pass's header comment below for why the wrapper's
 # own exit code (0 or 1) cannot make this distinction by itself.
 httparse_mutation(
   FILE ${LAUNCHER} SPEC httparse.harness.launcher-absent-guard.chez.source
@@ -663,11 +642,11 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 # The pairing is the launcher's central mechanism. Chez looks for a library's
 # compiled object only in the *object* half of a library-directories pair, so
 # pairing the library root with a directory the build keeps empty is the whole
-# reason this lane may call itself "source". Three places in the tree assert
-# that -- the launcher's own header, test/CMakeLists.txt, and spec section 7.1 --
-# and until this pass nothing checked it. `(library-directories (list
-# library-root))` left every test green, because no library root in this tree
-# has an object beside its source for Chez to prefer.
+# reason this lane may call itself "source". The launcher's own header and
+# test/CMakeLists.txt both say so, and without this pass nothing checks it:
+# `(library-directories (list library-root))` leaves every test green, because
+# no library root in this tree has an object beside its source for Chez to
+# prefer.
 #
 # So this pass builds one, in a library root of its own. A garbage `.so` is not
 # enough: Chez silently ignores a file it cannot read as a library, and both the
@@ -725,16 +704,14 @@ string(REPLACE "${POISON_FIND}" "${POISON_REPLACE}" POISON_MUTATED "${POISON_PRI
 #
 # The object is preferred only while it is not older than the .sls beside
 # it -- and, transitively, while its imported fingerprint library also
-# resolves to a non-stale object (the MEASURED note below). What died with
-# the include (upstream decision 0006) is the include-era caveat this paragraph used
-# to carry: no STAGED file's mtime participates any more, because the
-# library no longer re-resolves harness-runner.scm at load time.
+# resolves to a non-stale object (the MEASURED note below). No STAGED file's
+# mtime participates, because no file in the harness includes another, so
+# nothing is re-resolved at load time.
 file(WRITE "${POISON_ROOT}/httparse/test/harness.sls" "${POISON_PRISTINE}")
 file(WRITE "${POISON_SOURCE_DIR}/httparse/test/harness.sls" "${POISON_MUTATED}")
 
-# harness.sls now imports (httparse test fingerprint) (Task 3 of the
-# include collapse), so the object compiled below has a real library
-# dependency for the first time. MEASURED, not assumed: Chez's staleness
+# harness.sls imports (httparse test fingerprint), so the object compiled
+# below has a real library dependency. MEASURED, not assumed: Chez's staleness
 # check on a compiled library is transitive -- an object is trusted only if
 # every library it imports also resolves to a non-stale compiled object, not
 # bare source. A minimal two-library reproduction confirmed this directly: an
@@ -742,13 +719,11 @@ file(WRITE "${POISON_SOURCE_DIR}/httparse/test/harness.sls" "${POISON_MUTATED}")
 # own pristine source whenever the imported library resolved to source only,
 # even though the importer's own root was searched first and its object was
 # not stale by itself. Giving fingerprint no compiled object anywhere in this
-# pass's roots (the shape the plan called for, reasoning "the second root
-# exists only to resolve the fingerprint import") reproduces exactly that:
-# the poisoned harness object is silently rejected and the baseline's
-# pristine banner prints instead, so the mutation below goes UNCAUGHT. The
-# fix is to make POISON_ROOT self-sufficient: a real, non-stale fingerprint
-# object beside the poisoned harness object, compiled first so harness's
-# object is never older than a library it depends on.
+# pass's roots reproduces exactly that: the poisoned harness object is
+# silently rejected and the baseline's pristine banner prints instead, so the
+# mutation below goes UNCAUGHT. So POISON_ROOT is self-sufficient: a real,
+# non-stale fingerprint object beside the poisoned harness object, compiled
+# first so harness's object is never older than a library it depends on.
 #
 # One cross-copy invariant this relies on: the compile below resolves
 # fingerprint's import from ${SOURCE_ROOT}/test/support/harness (the
@@ -846,7 +821,7 @@ set(LAUNCHER_BASE_ARGS
   "--object-guard" "${GUARD_DIR}"
   "--program" "${STAGE_DIR}/test/support/harness/self/harness-bootstrap.sps")
 
-# httparse_slice3_launcher_pass(<lane> <label> <find> <replace>
+# httparse_launcher_pass(<lane> <label> <find> <replace>
 #                                   <expect_output_matches> <arg>...)
 #
 # One pass: point the verify command at a deliberately wrong invocation, declare
@@ -865,10 +840,10 @@ set(LAUNCHER_BASE_ARGS
 # out-of-vocabulary status (verified per pass -- see the call sites below).
 # Both are legitimate evidence that the deleted check mattered. What neither
 # looks like is a read error from a staged file that stopped being valid
-# Scheme, which is what this project measured exactly once: a REPLACE that
-# opened a line comment and swallowed a list's closing parens (recorded next to
-# the --library-root mutation below) caught the pass at exit 255 on
-# "Exception in read: ..." rather than on the refusal it names. Every value
+# Scheme: a REPLACE that opens a line comment can swallow a list's closing
+# parens (the hazard recorded next to the --library-root mutation below), and
+# the pass is then caught at exit 255 on "Exception in read: ..." rather than
+# on the refusal it names. Every value
 # passed here was captured from a real staged run of the mutation it guards,
 # not guessed.
 #
@@ -877,7 +852,7 @@ set(LAUNCHER_BASE_ARGS
 # counter with PARENT_SCOPE, so they agree only while they share a caller;
 # splitting them across this boundary would leave the run seeing a count from
 # somewhere else.
-function(httparse_slice3_launcher_pass lane label find replace expect_output_matches)
+function(httparse_launcher_pass lane label find replace expect_output_matches)
   httparse_mutation_reset()
 
   string(JOIN "|" packed
@@ -901,7 +876,7 @@ function(httparse_slice3_launcher_pass lane label find replace expect_output_mat
   httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 endfunction()
 
-httparse_slice3_launcher_pass(
+httparse_launcher_pass(
   httparse.harness.launcher-unknown-flag.chez.source
   "launcher: an unrecognised flag is accepted"
   [[        ((not (member (car rest) known-flags))]]
@@ -909,7 +884,7 @@ httparse_slice3_launcher_pass(
   "bootstrap: failures=0"
   "--librarie-root" "${STAGE_DIR}/test/support/harness" ${LAUNCHER_BASE_ARGS})
 
-httparse_slice3_launcher_pass(
+httparse_launcher_pass(
   httparse.harness.launcher-missing-value.chez.source
   "launcher: a flag with no value is accepted"
   [[        ((null? (cdr rest))]]
@@ -917,7 +892,7 @@ httparse_slice3_launcher_pass(
   "Exception in cddr"
   ${LAUNCHER_BASE_ARGS} "--library-root")
 
-httparse_slice3_launcher_pass(
+httparse_launcher_pass(
   httparse.harness.launcher-repeated-flag.chez.source
   "launcher: a single-valued flag may be given twice"
   [[   (if (> (length (flag-values flag)) 1)]]
@@ -933,19 +908,17 @@ httparse_slice3_launcher_pass(
 # entry-specific one below that drops --library-root from required-flags both
 # run the identical missing-library-root invocation, so both are witnessed by
 # the same registered lane, httparse.harness.launcher-no-library-root.chez.source.
-# An earlier revision renamed this pass's SPEC to
-# "httparse.harness.launcher-required-flag-unchecked.chez.source" to stop
-# the two mutations sharing one name in the transcript -- a real problem -- but
-# that traded it for a worse one: a unique SPEC value naming a lane that does
-# not exist. The disambiguation belongs in LABEL instead, which is free text
-# with no such constraint: this pass witnesses decision 2's own check (the
+# A unique SPEC would keep the two mutations apart in the transcript, but only
+# by naming a lane that does not exist. The disambiguation belongs in LABEL
+# instead, which is free text with no such constraint: this pass witnesses
+# the launcher's Decision 2 check itself (the
 # `if` that runs once per required flag, so it breaks identically no matter
 # which flag the invocation happened to omit -- library-root was picked only
 # because it made a convenient invocation to reuse), while the pass below
 # witnesses required-flags' library-root *entry* specifically, i.e. whether
-# the flag is still in the list decision 2 walks at all. Two different lines,
+# the flag is still in the list Decision 2 walks at all. Two different lines,
 # two different mutations, one shared witness.
-httparse_slice3_launcher_pass(
+httparse_launcher_pass(
   httparse.harness.launcher-no-library-root.chez.source
   "launcher: a missing required flag is not noticed (decision 2's own check, general across every entry; reuses the no-library-root invocation below only for convenience)"
   [[   (if (null? (flag-values flag))]]
@@ -958,7 +931,7 @@ httparse_slice3_launcher_pass(
 # but the list it walks is three, and an entry dropped from it is invisible to
 # every invocation except the one omitting that flag.
 
-httparse_slice3_launcher_pass(
+httparse_launcher_pass(
   httparse.harness.launcher-no-program.chez.source
   "launcher: --program is dropped from required-flags"
   [[  (list "--program"]]
@@ -967,7 +940,7 @@ httparse_slice3_launcher_pass(
   "--library-root" "${STAGE_DIR}/test/support/harness"
   "--object-guard" "${GUARD_DIR}")
 
-httparse_slice3_launcher_pass(
+httparse_launcher_pass(
   httparse.harness.launcher-no-object-guard.chez.source
   "launcher: --object-guard is dropped from required-flags"
   [[        "--object-guard"]]
@@ -986,7 +959,7 @@ httparse_slice3_launcher_pass(
 # below includes the trailing "))" so the REPLACE can close the list itself.
 # Whichever entry ends up last in required-flags after a reorder or a fourth
 # addition inherits this hazard and needs the same treatment.
-httparse_slice3_launcher_pass(
+httparse_launcher_pass(
   httparse.harness.launcher-no-library-root.chez.source
   "launcher: --library-root is dropped from required-flags"
   [[        "--library-root"))]]
@@ -1000,11 +973,11 @@ httparse_slice3_launcher_pass(
 # a repeated flag: the general check just above is witnessed only through
 # --program (LAUNCHER_BASE_ARGS already carries one --object-guard, so this
 # pass repeats it rather than adding a second fixture guard directory --
-# decision 3 counts occurrences, not distinct values). Dropping --object-guard
-# from single-valued-flags specifically, leaving the check itself and
-# --program's membership in the list untouched, is invisible to every
-# invocation but this one.
-httparse_slice3_launcher_pass(
+# the launcher's Decision 3 counts occurrences, not distinct values).
+# Dropping --object-guard from single-valued-flags specifically, leaving the
+# check itself and --program's membership in the list untouched, is invisible
+# to every invocation but this one.
+httparse_launcher_pass(
   httparse.harness.launcher-repeated-object-guard.chez.source
   "launcher: --object-guard is dropped from single-valued-flags"
   [[(define single-valued-flags
@@ -1031,7 +1004,7 @@ httparse_slice3_launcher_pass(
 # pass's own -- see the SPEC-must-name-a-real-lane comment above the
 # required-flag-unchecked pass for why that match matters and what happens
 # when it drifts.
-httparse_slice3_launcher_pass(
+httparse_launcher_pass(
   httparse.harness.launcher-repeated-flag.chez.source
   "launcher: --program is dropped from single-valued-flags (reuses the launcher-repeated-flag invocation, which already repeats --program)"
   [[(define single-valued-flags
@@ -1098,7 +1071,7 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 
 # --- Pass 21: the hex rendering table -----------------------------------------
 #
-# MEASURED 2026-08-17. No manifest is set, so provenance is skipped here
+# MEASURED. No manifest is set, so provenance is skipped here
 # exactly as it is for every other pass but 22 through 25 below:
 # HTTPARSE_FINGERPRINT_FILES is unset, harness-verify-provenance! returns
 # #t immediately, and the self-tests suite runs its own cases undisturbed. It
@@ -1180,18 +1153,18 @@ httparse_mutation(
 
 httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 
-# "provenance: harness-begin stops checking at all" used to live here, sharing
-# this pass's WRONG_FP_FILE verify command with EXPECT_EXIT 3. Task 8's
-# reachability guard (test/support/harness/httparse/test/harness.sls,
-# harness-provenance-reachability-diagnosis) made that ambiguous: with the call
-# removed, harness-provenance-checked never becomes #t, and the guard now
-# refuses with status 3 of its own accord -- the same number WRONG_FP_FILE's
-# mismatch was already producing, for an unrelated reason. HttparseExpectExit
-# compares only the number, so both baseline and this mutation satisfy
-# EXPECT_EXIT 3 and the wrapper reports "exited as expected" either way: not
-# caught, not because nothing noticed, but because two different refusals now
-# agree on the one status this vocabulary gives refusals. Moved to pass 24
-# below, which is what gives it a baseline the guard cannot also produce.
+# "provenance: harness-begin stops checking at all" cannot share this pass's
+# WRONG_FP_FILE verify command. The reachability guard
+# (test/support/harness/httparse/test/harness.sls,
+# harness-provenance-reachability-diagnosis) makes it ambiguous: with the call
+# removed, harness-provenance-checked never becomes #t, and the guard refuses
+# with status 3 of its own accord -- the same number WRONG_FP_FILE's mismatch
+# produces, for an unrelated reason. HttparseExpectExit compares only the
+# number, so both baseline and mutation would satisfy EXPECT_EXIT 3 and the
+# wrapper would report "exited as expected" either way: not caught, not
+# because nothing noticed, but because two different refusals agree on the
+# one status this vocabulary gives refusals. It is pass 24 below, which gives
+# it a baseline the guard cannot also produce.
 
 # Pass 23: the same wrapper, but the expectation file does not exist, so the
 # refusal under test is the missing-expectation branch rather than the
@@ -1201,7 +1174,7 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 # harness-verify-provenance! reads that #f as nothing to report and lets the
 # run proceed as though the missing expectation had been verified.
 #
-# Measured 2026-08-17: caught, but not by exiting 0. The self-tests' own
+# Measured: caught, but not by exiting 0. The self-tests' own
 # "a missing expectation is its own diagnosis" case calls
 # harness-provenance-diagnosis(#f, ...) directly and checks that a diagnosis
 # comes back; with the branch mutated that check fails outright -- an
@@ -1210,14 +1183,13 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 # declared EXPECT_EXIT of 3 and reports the mismatch. Both routes are a
 # failed comparison; neither is a raise.
 #
-# An earlier form mutated the guard instead of the branch: `(not expected)`
-# became `(and #f expected)`, which never matches, so control fell through to
+# The branch is mutated rather than the guard. Turning `(not expected)` into
+# `(and #f expected)`, which never matches, falls through to
 # `(string=? expected computed)` with expected still #f. string=? on a
-# non-string is a type violation, so that form was caught by Chez's top-level
+# non-string is a type violation, so that form is caught by Chez's top-level
 # handler killing the process at exit 255 -- outside the harness's own status
-# vocabulary, and before a single self-test case ran -- rather than by the
-# assertion naming this decision. Replaced once this comparison-based form
-# was found, per AGENTS.md's preference for a failed comparison over a raise.
+# vocabulary, and before a single self-test case runs -- rather than by the
+# assertion naming this decision. A failed comparison is the better witness.
 httparse_mutation_reset()
 
 string(JOIN "|" PROVENANCE_ABSENT_COMMAND
@@ -1261,16 +1233,16 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 #
 # Continues "provenance: harness-begin stops checking at all" from pass 22,
 # with a different baseline. WRONG_FP_FILE cannot be reused: it makes the
-# unmutated lane's correct behaviour exit 3, and after Task 8 this mutation's
-# broken behaviour *also* exits 3 (the reachability guard's own refusal), so a
+# unmutated lane's correct behaviour exit 3, and this mutation's broken
+# behaviour *also* exits 3 (the reachability guard's own refusal), so a
 # wrapper that only compares the exit number cannot tell them apart -- both
 # read as "exited 3 as expected." Giving the lane an expectation it actually
 # matches makes the unmutated baseline exit 0 instead, which the guard cannot
 # produce (harness-provenance-checked is #t by the time harness-summary reads
 # it, so the guard stays quiet and the self-tests' own pass/fail is what
 # decides). The mutation still removes the call, so harness-provenance-checked
-# stays #f, the guard still refuses, and the lane still exits 3 -- now cleanly
-# distinct from the 0 baseline instead of coinciding with the old one.
+# stays #f, the guard still refuses, and the lane still exits 3 -- cleanly
+# distinct from the 0 baseline.
 #
 # THE MANIFEST NAMES ONE SOURCE, AS ABOVE, AND ITS EXPECTATION IS COMPUTED, NOT
 # WRITTEN BY HAND
@@ -1332,7 +1304,7 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 # HTTPARSE_EXPECT_FINGERPRINT_FILE either, since nothing in this lane's
 # reachable code ever compares a fingerprint. Two mutations, because
 # harness-provenance-reachability-diagnosis's rule has two halves that fail
-# independently (V13's own comment: "manifest and not checked?"): the
+# independently ("manifest and not checked?"): the
 # diagnosis can stop firing, or checked? can stop meaning what its name says.
 # Either one drops the baseline's 3 to 0, which EXPECT_EXIT catches cleanly --
 # unlike pass 24, nothing else in this lane's execution can also produce 3, so
@@ -1373,17 +1345,15 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 
 # --- Pass 26: the aot launcher's library-path pairing ------------------------
 #
-# C3 and C3b, measured 2026-08-17 and re-measured against the shipped lane
-# (design section 5.3, remainder addendum). The objects are compiled once,
-# here, from the staged tree; the plant is a byte-divergent copy of the
-# harness library dropped at its library-relative path inside the object
-# directory, touched newer than the objects. Under the shipped pairing the
-# plant sits in a directory Chez consults only for objects and is never
-# read; under C3's unpaired shape every object directory is also a source
-# directory, Chez finds the newer source, re-expands it, and load-program
-# refuses the different compilation instance at 255 -- outside the status
-# vocabulary, reported as a process that died, which is the honest shape of
-# this defect.
+# Measured against the shipped lane. The objects are compiled once, here, from
+# the staged tree; the plant is a byte-divergent copy of the harness library
+# dropped at its library-relative path inside the object directory, touched
+# newer than the objects. Under the shipped pairing the plant sits in a
+# directory Chez consults only for objects and is never read; under an
+# unpaired shape every object directory is also a source directory, Chez finds
+# the newer source, re-expands it, and load-program refuses the different
+# compilation instance at 255 -- outside the status vocabulary, reported as a
+# process that died, which is the honest shape of this defect.
 httparse_mutation_reset()
 
 set(AOT_PASS_DIR "${WORK_DIR}/aot-pairing")
@@ -1440,16 +1410,15 @@ httparse_mutation(
   EXPECT_STATUS 255
   EXPECT_OUTPUT_MATCHES "different compilation instance")
 
-# FIND carries its own trailing newline, which the plan text's version of this
-# mutation did not: the bare pattern also opens the "WHY source-directories IS
-# ALSO EMPTIED" paragraph's own worked example above ("run once with
-# (source-directories '()) and once left at Chez's unset default"), so without
-# the newline the pattern matches twice -- code once, prose once -- and the
-# SITES-count guard in httparse_mutation refuses it (found 2, expected 1)
-# rather than silently mutating the comment along with the code. Confirmed
-# against the shipped file: the comment's occurrence is followed by " and",
-# never by end-of-line, so anchoring on the trailing newline is precise, not
-# merely convenient.
+# FIND carries its own trailing newline: the bare pattern also opens the "WHY
+# source-directories IS ALSO EMPTIED" paragraph's own worked example above
+# ("run once with (source-directories '()) and once left at Chez's unset
+# default"), so without the newline the pattern matches twice -- code once,
+# prose once -- and the SITES-count guard in httparse_mutation refuses it
+# (found 2, expected 1) rather than silently mutating the comment along with
+# the code. Confirmed against the shipped file: the comment's occurrence is
+# followed by " and", never by end-of-line, so anchoring on the trailing
+# newline is precise, not merely convenient.
 httparse_mutation(
   FILE test/support/launchers/chez-aot.ss SPEC httparse.harness.self.chez.aot
   LABEL "chez-aot launcher: source-directories is not emptied"
@@ -1458,7 +1427,7 @@ httparse_mutation(
   REPLACE [[(source-directories (list "."))
 ]]
   EXPECT_SURVIVES
-    "measured inert 2026-08-17 and re-measured through the shipped lane: library resolution runs through library-directories, no file in the inline tree includes another (upstream decision 0006), so this line narrows nothing reachable today; kept in the launcher because it costs one line and guards a future load or include added to the launcher itself. Reopening condition: a Chez that re-resolves a compiled library's sources at load time.")
+    "measured inert through the shipped lane: library resolution runs through library-directories, no file in the inline tree includes another, so this line narrows nothing reachable today; kept in the launcher because it costs one line and guards a future load or include added to the launcher itself. Reopening condition: a Chez that re-resolves a compiled library's sources at load time.")
 
 httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 
@@ -1471,7 +1440,7 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 # are deliberately not re-proven here; the launchers' own headers record
 # what is and is not witnessed per copy.
 #
-# Unlike httparse_slice3_launcher_pass above, EXPECT_STATUS and
+# Unlike httparse_launcher_pass above, EXPECT_STATUS and
 # EXPECT_OUTPUT_MATCHES are optional here rather than a fixed positional
 # parameter: passes 9-17 were each written with their narrowing already
 # known, but these three are narrowed only after being run once and read (see
@@ -1486,8 +1455,8 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 # silently, since CMP0174 does not warn about it before 3.31.
 #
 # The reset, the declaration and the run all happen inside this function on
-# purpose, the same reason httparse_slice3_launcher_pass's header gives.
-function(httparse_slice5b_launcher_pass launcher_file lane label find replace)
+# purpose, the same reason httparse_launcher_pass's header gives.
+function(httparse_launcher_file_pass launcher_file lane label find replace)
   cmake_parse_arguments(pass "" "EXPECT_STATUS;EXPECT_OUTPUT_MATCHES" "" ${ARGN})
 
   httparse_mutation_reset()
@@ -1521,9 +1490,9 @@ function(httparse_slice5b_launcher_pass launcher_file lane label find replace)
   httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 endfunction()
 
-# Run once and read before narrowing, the same discipline as C3 above.
+# Run once and read before narrowing, the same discipline as pass 26 above.
 # EXPECT_STATUS is not used: this pass runs through HttparseExpectExit.cmake,
-# same as every httparse_slice3_launcher_pass call above, and that
+# same as every httparse_launcher_pass call above, and that
 # wrapper's own message(FATAL_ERROR) always exits 1 on a non-matching real
 # status -- 255 included -- so EXPECT_STATUS could only ever see 0 or 1 here
 # and would narrow nothing; passes 9-17's header makes the identical point.
@@ -1532,7 +1501,7 @@ endfunction()
 # there and Chez's own file layer refuses it directly --
 # "Exception in load-program: failed for .../no-such-program.so: no such
 # file or directory", observed on the wrapper's echoed stdout.
-httparse_slice5b_launcher_pass(
+httparse_launcher_file_pass(
   test/support/launchers/chez-aot.ss
   httparse.harness.chez-aot-launcher-missing-program.chez.aot
   "chez-aot launcher: a missing compiled program is accepted"
@@ -1545,15 +1514,15 @@ httparse_slice5b_launcher_pass(
 
 # Run once and read, as above; no EXPECT_STATUS, for the same wrapper reason
 # given above the missing-program pass. Reusing the harness object directory
-# as the guard (see the rationale where this pass is called) reproduces C3's
-# own scenario by a different route: the guard is the harness's object
+# as the guard (see the rationale where this pass is called) reproduces pass
+# 26's scenario by a different route: the guard is the harness's object
 # directory, so once the emptiness check stops blocking it, that same
 # directory's library-directories pairing makes it a source directory too,
 # and Chez's load-program hits the identical "different compilation
-# instance" refusal C3 does -- two different deleted checks, coincident only
-# in this fixture because both ultimately leave the harness object directory
-# readable as a source directory.
-httparse_slice5b_launcher_pass(
+# instance" refusal pass 26's pairing mutation does -- two different deleted
+# checks, coincident only in this fixture because both ultimately leave the
+# harness object directory readable as a source directory.
+httparse_launcher_file_pass(
   test/support/launchers/chez-aot.ss
   httparse.harness.chez-aot-launcher-dirty-source-guard.chez.aot
   "chez-aot launcher: a dirty source guard is accepted"
@@ -1571,7 +1540,7 @@ httparse_slice5b_launcher_pass(
 # cons library-roots object-dirs) is handed a 2-element and a 1-element list
 # and Chez's own map refuses them directly, observed on the wrapper's echoed
 # stdout as "Exception in map: lists (...) and (...) differ in length".
-httparse_slice5b_launcher_pass(
+httparse_launcher_file_pass(
   test/support/launchers/chez-compile.ss
   httparse.harness.chez-compile-launcher-unpaired-roots.chez.aot
   "chez-compile launcher: unpaired roots are accepted"
@@ -1589,54 +1558,53 @@ httparse_slice5b_launcher_pass(
 # Passes 22-25 pack their verify commands through HTTPARSE_EXPECT_COMMAND,
 # whose | packing forbids a multi-source manifest -- their manifests name one
 # source on purpose, so the split character and the combining order have
-# never had a witness. This pass runs the lane command bare: its baseline is
+# no witness there. This pass runs the lane command bare: its baseline is
 # a PASSING provenance run (exit 0), and each catchable mutation turns that
 # into the mismatch refusal (exit 3), so no wrapper is needed and the
 # two-source manifest rides in an ordinary env entry.
 #
 # NEITHER MANIFEST FILE IS ONE THIS PASS MUTATES
 #
-# An earlier version of this pass fingerprinted fingerprint.sls and
-# harness.sls -- the file both mutations below edit, since
+# harness.sls is the file both mutations below edit, since
 # harness-verify-provenance! lives there. Measured against the shipped
 # suite: with harness.sls one of the two fingerprinted sources, editing it
 # at all fails the comparison before the mutated logic is even relevant, so
-# EXPECT_STATUS 3 was catching "harness.sls changed", not the decision each
-# mutation names. Proven with a control, not just argued: an inert trailing
-# space added to an unrelated comment at the top of the file, nowhere near
-# provenance, split, or combine, tripped the identical PROVENANCE-ERROR
-# refusal. A catch that catches anything discriminates nothing (AGENTS.md).
-# This pass fingerprints fingerprint.sls and harness-self-tests.sps instead
-# -- two real files a real lane's manifest would name, neither touched by
-# any mutation below -- so a mismatch can now only come from the split or
-# combine logic itself. Pass 31 needs the opposite choice for the one
-# decision this manifest shape cannot reach.
+# EXPECT_STATUS 3 catches "harness.sls changed", not the decision each
+# mutation names. A control proves it: an inert trailing space added to an
+# unrelated comment at the top of the file, nowhere near provenance, split,
+# or combine, trips the identical PROVENANCE-ERROR refusal. A catch that
+# catches anything discriminates nothing (AGENTS.md). This pass fingerprints
+# fingerprint.sls and harness-self-tests.sps instead -- two real files a real
+# lane's manifest would name, neither touched by any mutation below -- so a
+# mismatch can only come from the split or combine logic itself. Pass 31
+# needs the opposite choice for the one decision this manifest shape cannot
+# reach.
 httparse_mutation_reset()
 
-set(W9_MANIFEST
+set(FINGERPRINT_MANIFEST
   "${STAGE_DIR}/test/support/harness/httparse/test/fingerprint.sls|${STAGE_DIR}/test/support/harness/self/harness-self-tests.sps")
-set(W9_EXPECT_FILE "${WORK_DIR}/w9-split-combine.fingerprint")
+set(FINGERPRINT_EXPECT_FILE "${WORK_DIR}/fingerprint-split-combine.fingerprint")
 execute_process(
   COMMAND "${HTTPARSE_CHEZ_EXECUTABLE}" --script
           "${STAGE_DIR}/test/support/launchers/fingerprint-manifest.ss"
           "${STAGE_DIR}/test/support/harness"
           "${GUARD_DIR}"
-          "${W9_EXPECT_FILE}"
+          "${FINGERPRINT_EXPECT_FILE}"
           "${STAGE_DIR}/test/support/harness/httparse/test/fingerprint.sls"
           "${STAGE_DIR}/test/support/harness/self/harness-self-tests.sps"
-  RESULT_VARIABLE w9_expect_rc)
-if(NOT w9_expect_rc EQUAL 0)
+  RESULT_VARIABLE fingerprint_expect_rc)
+if(NOT fingerprint_expect_rc EQUAL 0)
   message(FATAL_ERROR
     "httparse-mutation: pass 30 could not compute its two-source "
-    "expectation (rc ${w9_expect_rc}). The expectation must come from the "
+    "expectation (rc ${fingerprint_expect_rc}). The expectation must come from the "
     "staged copies -- the stage is what the run reads -- so nothing this "
     "pass reports would mean anything without it.")
 endif()
 
 set(HTTPARSE_MUTATION_VERIFY_COMMAND
   "${CMAKE_COMMAND}" "-E" "env"
-  "HTTPARSE_FINGERPRINT_FILES=${W9_MANIFEST}"
-  "HTTPARSE_EXPECT_FINGERPRINT_FILE=${W9_EXPECT_FILE}"
+  "HTTPARSE_FINGERPRINT_FILES=${FINGERPRINT_MANIFEST}"
+  "HTTPARSE_EXPECT_FINGERPRINT_FILE=${FINGERPRINT_EXPECT_FILE}"
   "--"
   "${HTTPARSE_CHEZ_EXECUTABLE}"
   "--script" "${STAGE_DIR}/test/support/launchers/chez-source.ss"
@@ -1661,7 +1629,7 @@ httparse_mutation(
   EXPECT_STATUS 3
   EXPECT_OUTPUT_MATCHES "PROVENANCE-ERROR cannot read")
 
-# Combining is order-sensitive by design (slice 5a, mutation F5), so
+# Combining is order-sensitive by design, so
 # accumulating in reverse computes a different digest over the same two
 # fingerprints -- both individually unchanged, since neither manifest file
 # is edited by this mutation, so the mismatch below can only come from the
@@ -1694,8 +1662,8 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 #
 # The way to reach the line is the manifest pass 30 deliberately avoids: name
 # harness.sls itself -- the file this mutation, like both of pass 30's,
-# edits. That self-reference was pass 30's bug (its header records the
-# control that proved it); here it is the mechanism. Any edit to harness.sls
+# edits. That self-reference is what pass 30 avoids (its header records the
+# control that shows why); here it is the mechanism. Any edit to harness.sls
 # staled against a manifest that fingerprints harness.sls fails provenance
 # on its own -- exactly a run whose own text no longer matches what the
 # build measured, which is what a real stale artifact looks like, not a
@@ -1708,34 +1676,34 @@ httparse_mutation_run("${SOURCE_ROOT}" "${STAGE_DIR}")
 # indistinguishable-from-an-assertion-failure conclusion this constant
 # exists to prevent.
 #
-# This supersedes the plan's declared survivor for this line. AGENTS.md: a
-# decision that can be witnessed does not get an EXPECT_SURVIVES.
+# AGENTS.md: a decision that can be witnessed does not get an
+# EXPECT_SURVIVES.
 httparse_mutation_reset()
 
-set(W9_EXIT_MANIFEST
+set(FINGERPRINT_EXIT_MANIFEST
   "${STAGE_DIR}/test/support/harness/httparse/test/fingerprint.sls|${STAGE_DIR}/test/support/harness/httparse/test/harness.sls")
-set(W9_EXIT_EXPECT_FILE "${WORK_DIR}/w9-exit-constant.fingerprint")
+set(FINGERPRINT_EXIT_EXPECT_FILE "${WORK_DIR}/fingerprint-exit-constant.fingerprint")
 execute_process(
   COMMAND "${HTTPARSE_CHEZ_EXECUTABLE}" --script
           "${STAGE_DIR}/test/support/launchers/fingerprint-manifest.ss"
           "${STAGE_DIR}/test/support/harness"
           "${GUARD_DIR}"
-          "${W9_EXIT_EXPECT_FILE}"
+          "${FINGERPRINT_EXIT_EXPECT_FILE}"
           "${STAGE_DIR}/test/support/harness/httparse/test/fingerprint.sls"
           "${STAGE_DIR}/test/support/harness/httparse/test/harness.sls"
-  RESULT_VARIABLE w9_exit_expect_rc)
-if(NOT w9_exit_expect_rc EQUAL 0)
+  RESULT_VARIABLE fingerprint_exit_expect_rc)
+if(NOT fingerprint_exit_expect_rc EQUAL 0)
   message(FATAL_ERROR
     "httparse-mutation: pass 31 could not compute its two-source "
-    "expectation (rc ${w9_exit_expect_rc}). The expectation must come from "
+    "expectation (rc ${fingerprint_exit_expect_rc}). The expectation must come from "
     "the staged copies -- the stage is what the run reads -- so nothing "
     "this pass reports would mean anything without it.")
 endif()
 
 set(HTTPARSE_MUTATION_VERIFY_COMMAND
   "${CMAKE_COMMAND}" "-E" "env"
-  "HTTPARSE_FINGERPRINT_FILES=${W9_EXIT_MANIFEST}"
-  "HTTPARSE_EXPECT_FINGERPRINT_FILE=${W9_EXIT_EXPECT_FILE}"
+  "HTTPARSE_FINGERPRINT_FILES=${FINGERPRINT_EXIT_MANIFEST}"
+  "HTTPARSE_EXPECT_FINGERPRINT_FILE=${FINGERPRINT_EXIT_EXPECT_FILE}"
   "--"
   "${HTTPARSE_CHEZ_EXECUTABLE}"
   "--script" "${STAGE_DIR}/test/support/launchers/chez-source.ss"

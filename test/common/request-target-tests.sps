@@ -4,12 +4,11 @@
 ;;; so an expectation here is a block of lines copied out of a fixture rather
 ;;; than a transliteration of it.
 ;;;
-;;; THIS IS NOT THE URL SUB-PARSER. llhttp's `src/llhttp/url.ts` is a schema,
-;;; a server with its `@` rules, a path, a query and a fragment, each with its
-;;; own span -- 21 fixtures' worth, deferred past v0.1 by decision 0009 as
-;;; M11. What is here is only the two behaviours the 124 strict REQUEST
-;;; fixtures need from it, and both are about the target's boundary rather
-;;; than its structure:
+;;; THIS IS NOT THE URL SUB-PARSER'S LANE. llhttp's `src/llhttp/url.ts` is a
+;;; schema, a server with its `@` rules, a path, a query and a fragment, each
+;;; with its own span, and `unit.url` judges it against `url.md`. What is here
+;;; is the two behaviours the strict REQUEST fixtures need from it, and both
+;;; are about the target's boundary rather than its structure:
 ;;;
 ;;;   a byte that ends the target but cannot follow it is an error with the
 ;;;   span STILL OPEN, so no fragment is delivered
@@ -17,8 +16,9 @@
 ;;;   a target followed by CRLF instead of a version is HTTP/0.9, which has
 ;;;   no protocol span, no version span, and `v=0/9` on the headers line
 ;;;
-;;; The second is why the first matters: once CR and LF end a target legally,
-;;; the catch-all that used to swallow them can carry llhttp's own reason.
+;;; The second is why the first matters: because CR and LF end a target
+;;; legally, a byte that ends it illegally carries llhttp's own reason rather
+;;; than a catch-all's.
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)
@@ -70,8 +70,8 @@
                        "off=5 error code=7 reason=\"Invalid char in url path\""))))
     (harness-case "a space still ends it, and the protocol still follows"
       (lambda ()
-        ;; The arm every other request fixture takes, kept beside the two new
-        ;; ones because they are the same dispatch. `request/sample.md#1`
+        ;; The arm every other request fixture takes, kept beside the other
+        ;; two because they are the same dispatch. `request/sample.md#1`
         ;; records these offsets.
         (check-equal "trace"
                      (trace "OPTIONS /url HTTP/1.1\r\n\r\n")
@@ -138,8 +138,8 @@
 ;;; shared description is tested in the build that found it and NOT in the
 ;;; other one unless something says so, which is what this group is.
 ;;;
-;;; These two are the `@` rule, whose edges the live differential caught this
-;;; parser getting wrong. Both traces are the live request binary's, measured
+;;; These two are the `@` rule, whose edges no fixture separates and the live
+;;; differential does. Both traces are the live request binary's, measured
 ;;; through `tools/oracle/run-oracle.mjs` rather than read off this parser.
 (harness-group "the userinfo `@` rule, in the request target"
   (lambda ()

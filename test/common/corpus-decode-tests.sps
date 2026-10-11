@@ -22,7 +22,7 @@
         (check-equal "one" (corpus-strip-one-trailing-newline "a\n") "a")))
     (harness-case "leaves the second trailing newline alone"
       (lambda ()
-        ;; The regression this exists for: a regex whose $ also matches before a
+        ;; The trap this guards against: a regex whose $ also matches before a
         ;; trailing newline strips two, shortening nearly every fixture by a byte.
         (check-equal "two" (corpus-strip-one-trailing-newline "a\n\n") "a\n")))
     (harness-case "leaves a string with no trailing newline alone"

@@ -1,8 +1,8 @@
 // Build the two live llhttp oracle binaries from a checkout named at run time.
 //
-// Decision 0010 puts a live llhttp behind a local, opt-in lane: the checkout
-// is named by a variable, never hardcoded, and the lane is ABSENT rather than
-// failing when it is unset. This script is the part that needs the checkout.
+// The live llhttp oracle is a local, opt-in lane: the checkout is named by a
+// variable, never hardcoded, and the lane is ABSENT rather than failing when
+// it is unset. This script is the part that needs the checkout.
 //
 // IT DOES NOT REIMPLEMENT UPSTREAM'S HARNESS, IT CALLS IT. The binaries that
 // produced the vendored corpus are built by llhttp's own test/fixtures/index.ts
@@ -79,9 +79,9 @@ for (const ty of ['request', 'response']) {
 // environment, so one binary answers for any COMBINATION of lenient flags --
 // upstream's hooks are one per (kind, single flag) and are chosen by a `-D`
 // at compile time, so 55 pairs would be 55 binaries and no hook exists for
-// any of them. Decision 0026 records why that is inside decision 0010's rule
-// rather than an exception to it: the hook assigns two integer fields and
-// prints nothing, so every trace line still comes from upstream's `extra.c`.
+// any of them. That still calls upstream's harness rather than reimplementing
+// it: the hook assigns two integer fields and prints nothing, so every trace
+// line still comes from upstream's `extra.c`.
 //
 // IT IS BUILT FROM THE SAME GRAPH as `http-request-c`. Only the init differs,
 // which is what lets the differential hold it to upstream's own binaries at
@@ -117,7 +117,7 @@ for (const ty of ['request', 'response']) {
 }
 
 // THE THIRD BINARY IS A DIFFERENT PARSER, not a third mode of the first.
-// Decision 0022: llhttp's URL sub-parser is its own machine, and `url.md` was
+// llhttp's URL sub-parser is its own machine, and `url.md` was
 // recorded from THIS build of it -- `test/md-test.ts`'s `buildURL()`, copied
 // here line for line rather than approximated:
 //

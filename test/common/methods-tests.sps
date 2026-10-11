@@ -42,8 +42,8 @@
       (lambda ()
         ;; These three are the load-bearing punctuation: `M-SEARCH` is llhttp's
         ;; only quoted key, and `GET_PARAMETER` / `SET_PARAMETER` are RFC 2326's
-        ;; underscores. The table carried hyphens for the two _PARAMETER names
-        ;; for six milestones before a live llhttp said otherwise.
+        ;; underscores. No fixture uses either _PARAMETER name, so the
+        ;; plausible hyphenated spelling would pass every other check.
         (check "M-SEARCH" (member "M-SEARCH" httparse-method-names))
         (check "GET_PARAMETER" (member "GET_PARAMETER" httparse-method-names))
         (check "SET_PARAMETER" (member "SET_PARAMETER" httparse-method-names))))))

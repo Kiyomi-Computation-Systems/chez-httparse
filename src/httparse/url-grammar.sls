@@ -8,11 +8,10 @@
 ;;; `message begin` and no `headers complete` -- only five span names and
 ;;; errors.
 ;;;
-;;; THE HTTP PARSER DOES NOT USE THIS. Its request-target is ONE span,
-;;; `span[url]`, which is llhttp's `separateSpans = false` build and is
-;;; already what `(httparse grammar)`'s `url-open`/`url-loop` produce. The
-;;; five separate spans exist only in the URL binary, so this machine adds a
-;;; capability rather than refining one.
+;;; THE HTTP PARSER SPLICES IN THE SAME SUBGRAPH, built the other way. Its
+;;; request-target is ONE span, `span[url]`, which is llhttp's
+;;; `separateSpans = false` build. The five separate spans exist only in the
+;;; URL binary.
 ;;;
 ;;; WHAT `separateSpans` MEANS HERE. Upstream's span table then holds schema,
 ;;; host, path, query and fragment, and NOT `url` -- so its `spanStart('url')`
@@ -101,11 +100,11 @@
   ;; With separate spans that IS the part; with one whole-url span it is that
   ;; span throughout, because the part spans are stubs and open nothing.
   ;;
-  ;; `'outside` IS NOT `#f`, and conflating them is a real bug this caught.
-  ;; `#f` means "inside the url, between parts" -- where the whole-url span
-  ;; IS open if there is one. `'outside` means the entry nodes, which run
-  ;; BEFORE that span opens and after nothing has. With separate spans the
-  ;; two coincide; with one whole span they do not, and the verifier said so.
+  ;; `'outside` IS NOT `#f`. `#f` means "inside the url, between parts" --
+  ;; where the whole-url span IS open if there is one. `'outside` means the
+  ;; entry nodes, which run BEFORE that span opens and after nothing has.
+  ;; With separate spans the two coincide; with one whole span they do not,
+  ;; and a build that conflates them does not verify.
   (define (cfg-span c part)
     (cond ((eq? part 'outside) #f)
           ((cfg-parts-spanned? c) part)
@@ -205,9 +204,9 @@
 
   ;; url-error-declarations : -> (Listof ErrorDeclaration)
   ;; Every error the subgraph can reach. All but the EOF one are llhttp's
-  ;; INVALID_URL, code 7; the reason strings are its own, and decision 0013
-  ;; makes the (code, reason) PAIR the identity -- which is the whole of why
-  ;; eight reasons share one code rather than being collapsed.
+  ;; INVALID_URL, code 7; the reason strings are its own, and an error's
+  ;; identity is the (code, reason) PAIR -- which is the whole of why eight
+  ;; reasons share one code rather than being collapsed.
   ;;
   ;; A MACHINE THAT SPLICES THE SUBGRAPH IN MUST DECLARE THESE. The names are
   ;; part of the contract, not an implementation detail, which is why they
@@ -352,11 +351,11 @@
         ;; -- so any ordinary host byte sends the twin straight back here and
         ;; re-arms `@`. Only `@@` is `Double @ in url`; `a@b@c` is a host.
         ;;
-        ;; READING THAT LOOP AS "the same node twice, minus one edge" IS THE
-        ;; MISTAKE THIS CODE MADE, and `url.md`'s "Double `@`" fixture cannot
-        ;; catch it, because its two `@` are adjacent. The live differential
-        ;; found it over generated input at three of the five seeds tried --
-        ;; and not at the default one, which is why that lane now sweeps.
+        ;; READING THAT LOOP AS "the same node twice, minus one edge" IS
+        ;; WRONG, and `url.md`'s "Double `@`" fixture cannot tell the two
+        ;; readings apart, because its two `@` are adjacent. Only generated
+        ;; input in the live differential does, and not at every seed, which
+        ;; is why that lane sweeps several.
         (url-node c 'url-server 'host-span
           (append
            (list (bytes-case '(47) (part-span-end-target c 'url-server-path path-entry)

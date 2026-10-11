@@ -1,19 +1,16 @@
 ;;; (httparse test ratchet): which vendored fixtures this parser claims to pass.
 ;;;
-;;; Decision 0008 item 6 requires a TWO-WAY gate. A manifest that only fails
-;;; when a passing fixture breaks is a TODO list: it lets a fixture start
-;;; passing unnoticed, which is how a milestone's exit criterion stops being
-;;; falsifiable. So a `passing` entry that fails is an error AND a `not-yet`
-;;; entry that passes is an error.
+;;; THE GATE IS TWO-WAY. A manifest that only fails when a passing fixture
+;;; breaks is a to-do list: it lets a fixture start passing unnoticed, so the
+;;; passing count stops being falsifiable. So a `passing` entry that fails is
+;;; an error AND a `not-yet` entry that passes is an error.
 ;;;
-;;; THE STATUS CLASS IS DERIVED, NOT WRITTEN DOWN TWICE. Decision 0009 puts
-;;; lenient modes and the URL sub-parser outside v0.1 -- pausing and skipBody
-;;; were there too until M9 brought them in, which is two lines removed from
-;;; the predicate below and 26 rows re-classed in one reviewed diff. Rather
-;;; than trusting the manifest to say so, the class is computed from each
-;;; fixture's own meta and the manifest must agree. A refresh that adds a
-;;; lenient fixture therefore cannot be silently marked `not-yet` and counted
-;;; against v0.1's bar.
+;;; THE STATUS CLASS IS DERIVED, NOT WRITTEN DOWN TWICE. A fixture is out of
+;;; scope when its init hook sets a lenient flag this parser does not
+;;; implement. Rather than trusting the manifest to say so, the class is
+;;; computed from each fixture's own meta and the manifest must agree. A
+;;; refresh that adds such a fixture therefore cannot be silently marked
+;;; `not-yet` and counted against the in-scope bar.
 (library (httparse test ratchet)
   (export ratchet-parse
           ratchet-entry? ratchet-entry-status ratchet-entry-id ratchet-entry-note
@@ -38,20 +35,20 @@
     (string-append relative-path "#" (number->string ordinal)))
 
   ;; ratchet-fixture-class : Fixture -> Symbol
-  ;; 'deferred when decision 0009 puts the fixture outside v0.1, else 'in-scope.
-  ;; THE LENIENT FLAGS THIS PARSER IMPLEMENTS. M10 lands them a slice at a
-  ;; time, and a fixture is in scope exactly when the flag its init hook sets
-  ;; is on this list -- so a slice is one name added here and its fixtures
-  ;; re-classed in the same reviewed diff, and no fixture can drift in ahead
-  ;; of the behaviour it needs. `all` is the hook that sets nine at once, so
-  ;; it arrives only when all nine do.
+  ;; 'deferred when the fixture needs a lenient flag this parser does not
+  ;; implement, else 'in-scope.
+  ;; THE LENIENT FLAGS THIS PARSER IMPLEMENTS. A fixture is in scope exactly
+  ;; when every flag its init hook sets is on this list -- so a new flag is
+  ;; one name added here and its fixtures re-classed in the same reviewed
+  ;; diff, and no fixture can drift in ahead of the behaviour it needs. `all`
+  ;; is the hook that sets nine at once, so it is in scope only when all nine
+  ;; are.
   (define ratchet-implemented-lenient '(version headers optional-lf-after-cr optional-crlf-after-chunk
       header-value-relaxed keep-alive chunked-length transfer-encoding
       data-after-close spaces-after-chunk-size optional-cr-before-lf))
 
-  ;; M11 brought the url sub-parser in, so a url fixture is judged like any
-  ;; other. The kind still decides WHICH machine runs it -- that is the
-  ;; driver's business -- but it no longer decides whether it is gated.
+  ;; A url fixture is judged like any other. The kind decides WHICH machine
+  ;; runs it -- that is the driver's business -- but not whether it is gated.
   (define (ratchet-fixture-class f)
     (if (for-all (lambda (flag) (memq flag ratchet-implemented-lenient))
                  (fixture-lenient-flags f))

@@ -86,8 +86,8 @@
           (check "not the interpreter" (not (find-substring s "(byte-machine interpret)"))))))
     (harness-case "it names the generated ABI this repository targets"
       (lambda ()
-        ;; Read out of the committed text, not remembered -- the same rule
-        ;; decision 0005 item 5 puts on the generator lane, applied to the
+        ;; Read out of the committed text, not remembered -- the same check
+        ;; `unit.generator-abi` makes of the pinned generator, applied to the
         ;; artifact that actually ships.
         (check-equal "abi"
                      (integer-after (text) "(byte-machine-make-compiled-machine ")

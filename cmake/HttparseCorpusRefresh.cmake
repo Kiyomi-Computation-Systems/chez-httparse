@@ -2,20 +2,16 @@
 #
 #   cmake -DLLHTTP_ROOT=/path/to/llhttp -P cmake/HttparseCorpusRefresh.cmake
 #
-# Decision 0007 vendors the corpus as DATA: upstream's bytes, verbatim, with a
+# The corpus is vendored as DATA: upstream's bytes, verbatim, with a
 # PROVENANCE file recording where they came from and a SHA-256 per file that a
 # registered spec checks. This script is the only way those bytes are written,
 # so the initial vendor and every later refresh run identical code -- a refresh
 # cannot drift from however the first copy happened to be made.
 #
-# WHY THE SOURCE IS A VARIABLE, NEVER A PATH IN THIS FILE. Decision 0002 ruled
-# out in-tree references to a sibling developer checkout for the generator
-# dependency, and 0007 item 3 extends that rule to the corpus. The checkout is
-# named at invocation or the script refuses.
-#
-# (The dependency is deliberately not named here in prose: the rename audit
-# forbids that token anywhere in the build/test tree, and it caught this file
-# on its first run for exactly that.)
+# WHY THE SOURCE IS A VARIABLE, NEVER A PATH IN THIS FILE. A path to a sibling
+# developer checkout is true on one machine only; the tree never names one, for
+# the generator or for the corpus. The checkout is named at invocation or the
+# script refuses.
 #
 # WHY THE DESTINATION IS EMPTIED FIRST. A refresh that only copies would leave
 # a fixture upstream deleted sitting in the tree, still checksummed, still

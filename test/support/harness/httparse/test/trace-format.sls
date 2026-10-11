@@ -1,9 +1,9 @@
 ;;; (httparse test trace-format): render parser events as llhttp's trace text.
 ;;;
-;;; Decision 0008 makes conformance bit-exact textual equality against the
-;;; vendored expected blocks, so this is the instrument the parser is measured
-;;; with. It may RENAME, never COMPUTE: everything it emits comes from the event
-;;; it was handed. It is tested on hand-built events, before any parser exists,
+;;; Conformance is bit-exact textual equality against the vendored expected
+;;; blocks, so this is the instrument the parser is measured with. It may
+;;; RENAME, never COMPUTE: everything it emits comes from the event it was
+;;; handed. It is tested on hand-built events, before any parser exists,
 ;;; because an uncalibrated instrument cannot measure anything.
 ;;;
 ;;; TWO UPSTREAM BEHAVIOURS ARE REPRODUCED EXACTLY. Neither is obvious and both

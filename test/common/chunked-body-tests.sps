@@ -15,8 +15,8 @@
 ;;; THE CHUNK SIZE IS `content_length`. llhttp accumulates it into the same
 ;;; field a Content-Length body uses and its `on_chunk_header` prints that
 ;;; field, so `chunk header len=` is read off the parser exactly as the four
-;;; numbers on `headers complete` are (decision 0014) -- never recomputed from
-;;; the digits this lane fed in.
+;;; numbers on `headers complete` are -- never recomputed from the digits this
+;;; lane fed in.
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)

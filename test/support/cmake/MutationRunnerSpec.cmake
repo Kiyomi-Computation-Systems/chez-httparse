@@ -4,18 +4,17 @@
 # Every specification in this repository is trusted through one decision it
 # never made for itself: whether a verify command's result counts as catching
 # a mutation, and whether it caught it for the declared reason
-# (httparse_mutation_verdict). That decision had no specification of its
-# own -- only the suites whose own mutations it was judging, which is exactly
-# the blind spot SpecSupportSpec.cmake exists to close for the two assertion
-# helpers every other specification depends on. This file closes the same
-# blind spot one layer down, for the runner underneath SpecSupport and every
+# (httparse_mutation_verdict). The suites whose mutations it judges cannot
+# also specify it -- the same blind spot SpecSupportSpec.cmake closes for the
+# two assertion helpers every other specification depends on. This file
+# closes it one layer down, for the runner underneath SpecSupport and every
 # specification alike.
 #
-# A prior review deleted the branch that turns a caught-for-the-wrong-reason
-# result into a failure and ran the whole CMake-layer mutation suite: 89/89,
-# unaffected, because nothing mutated the mechanism that reads EXPECT_STATUS
-# and EXPECT_OUTPUT_MATCHES in the first place. This file, and the mutations
-# in MutationSuite.cmake that target it, are what closes that gap.
+# Without it, deleting the branch that turns a caught-for-the-wrong-reason
+# result into a failure leaves the whole CMake-layer mutation suite green,
+# because nothing else mutates the mechanism that reads EXPECT_STATUS and
+# EXPECT_OUTPUT_MATCHES. This file, and the mutations in MutationSuite.cmake
+# that target it, are what close that gap.
 
 cmake_minimum_required(VERSION 3.26)
 
@@ -48,9 +47,9 @@ if(DEFINED HTTPARSE_SPEC_CASE)
     # no execute_process, no filesystem. What it cannot reach is whether
     # httparse_mutation_run's imperative shell actually *acts* on a
     # `wrong-reason` verdict by failing, rather than computing it correctly
-    # and discarding the answer -- which is exactly the branch a re-review
-    # found could be deleted by hand with the real CMake-layer suite staying
-    # green, because nothing declared here mutated it. Closing that means
+    # and discarding the answer -- a branch that can be deleted with the real
+    # CMake-layer suite staying green, because nothing declared there is
+    # genuinely caught for the wrong reason. Closing that means
     # running the real thing: a real staged mutation, a real spec, and a
     # deliberately unsatisfiable EXPECT_OUTPUT_MATCHES, so whatever this
     # mutation is caught by, it is caught for the wrong reason by
@@ -108,7 +107,7 @@ httparse_mutation_verdict("0" "irrelevant output" "1" "irrelevant" verdict reaso
 spec_check_equal("${verdict}" "not-caught"
   "rc 0 is not-caught even when EXPECT_STATUS and EXPECT_OUTPUT_MATCHES are both declared")
 
-# Neither declared: plain nonzero-means-caught, the pre-slice-3 rule.
+# Neither declared: plain nonzero-means-caught, the default rule.
 httparse_mutation_verdict("1" "" "" "" verdict reason)
 spec_check_equal("${verdict}" "caught" "nonzero with neither declared is caught")
 
@@ -180,9 +179,8 @@ spec_expect_all_rejected("${SPEC_SELF}"
 # httparse_mutation_verdict computing `wrong-reason` correctly, checked
 # directly above, is only half of what makes EXPECT_STATUS and
 # EXPECT_OUTPUT_MATCHES mean anything: httparse_mutation_run has to act on
-# that verdict by failing. This is the branch a re-review found undetectable
-# by hand-deleting it and running the real CMake-layer suite: 89/89,
-# unaffected, because nothing declared anywhere is genuinely caught for a
+# that verdict by failing. Deleting that branch leaves the real CMake-layer
+# suite green, because nothing declared there is genuinely caught for a
 # different reason than the one it names. The case dispatched to above is
 # built to be exactly that on purpose, so this is a real staged run, not a
 # direct call: httparse_mutation_run is the imperative shell under test,

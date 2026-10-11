@@ -3,7 +3,7 @@
 
 Two lanes measure this, and they answer different kinds of question. Each is
 registered twice — once running from source, once from ahead-of-time compiled
-objects — for the reason at the bottom of this page.
+objects — for the reason in /Source and compiled cost the same/.
 
 * Allocation: a shape, asserted
 
@@ -25,20 +25,17 @@ bytevector. Nothing is copied, so a large body costs what a small one does.
 A thousandfold more body, 1.6% more allocation. A parser that copied spans
 would show a thousandfold difference.
 
-These were 6,112 and 6,160 at byte-machine =v0.6.0=. The 3,200 bytes that went
-away were the generator's keyword walk copying the prefix it had matched on
-every byte — =POST=, =HTTP/1.1= and =Content-Length= are each read by a keyword
-table — which is the next section's subject. Before that they were 6,592 and 6,640. The 480 bytes that went away
-are fifteen consed callback outcomes: the generator's callback seam used to
-answer =(goto TARGET)= rather than the target, and its own allocation audit
-could not see the cost because its slope varies a header *value's* length and
-so holds the header *count* fixed. This lane could not see it either, and for
-the same reason — both messages above carry the same headers.
+Both messages carry the same headers, so this lane holds the header *count*
+fixed: a cost paid once per header is in both figures equally and invisible in
+their difference. The generator keeps one such cost out of the parse — a
+callback answers with its target rather than a consed =(goto TARGET)=. And
+=POST=, =HTTP/1.1= and =Content-Length= are each read by a keyword table
+whose walk reads the prefix it has matched in place rather than copying it on
+every byte, which is the next section's subject.
 
-Byte-machine =v0.7.0= left every allocation figure the lane prints where
-=v0.6.1= put it, in the compiled lane, on all 40 runs taken at each pin. In the
-source lane the two =POST= figures read a few bytes high; that is the last
-paragraph of /Source and compiled cost the same/.
+These are the compiled lane's figures, the same on all 40 runs measured. In
+the source lane the two =POST= figures can read a few bytes high; that is the
+last paragraph of /Source and compiled cost the same/.
 
 ** A feed costs the same whatever came before it
 
@@ -54,44 +51,43 @@ or re-copying consumed input.
 
 Flat, across a message two hundred times longer.
 
-The short message's figure *rose* at byte-machine =v0.6.1=, from 404, and
-nothing got worse. The figure is the difference between a byte-at-a-time parse
-and a whole-buffer one, divided by the length. The whole-buffer parse lost the
-keyword walk's per-byte copying. The byte-at-a-time parse keeps part of it: a
+The figure is the difference between a byte-at-a-time parse and a
+whole-buffer one, divided by the length, so it is not a cost either parse pays
+alone. A byte-at-a-time parse pays one the whole-buffer parse never does: a
 keyword split across feeds is parked between them as a list, rebuilt at each
-feed — the one cost upstream's decision 0054 names and leaves. So the
-difference grew while both parses got cheaper.
+feed — the one copy the generator's keyword walk still makes. A change that
+makes only the whole-buffer parse cheaper therefore *raises* this figure.
 
 ** A header name costs the same however much of a keyword it matches
 
 The header-name keyword table decides which of five names llhttp reads by
 name — =connection=, =content-length=, =proxy-connection=,
-=transfer-encoding=, =upgrade= — a header is. Until byte-machine =v0.6.1= its
-walk copied the prefix it had matched on every byte it consumed, so a name
-matching k bytes of a keyword cost about k²/2 pairs, and a client choosing its
-header names chose the parser's allocation: upstream measured 97
-=Transfer-Encodinx= fields at 138 times the request's own size. The lane now
-asserts the shape, on a request whose 17-byte field name begins with the
-first k bytes of =Transfer-Encoding= (compiled lane shown):
+=transfer-encoding=, =upgrade= — a header is. Its walk reads the prefix it has
+matched in place. A walk that copied that prefix on every byte would cost
+about k²/2 pairs for a name matching k bytes of a keyword, and a client
+choosing its header names would choose the parser's allocation: the
+generator's own measurement put 97 =Transfer-Encodinx= fields at 138 times the
+request's own size. The lane asserts the shape, on a request whose 17-byte
+field name begins with the first k bytes of =Transfer-Encoding= (compiled lane
+shown):
 
-| k matched                    |   0 |   1 |   4 |    8 |    16 |
-|------------------------------+-----+-----+-----+------+-------|
-| extra per parse, at =v0.6.0= | 0 B | 64 B | 356 B | 960 B | 2,944 B |
-| extra per parse, at =v0.6.1= | 0 B | 0 B |  0 B |  0 B |   0 B |
+| k matched       |   0 |   1 |   4 |   8 |  16 |
+|-----------------+-----+-----+-----+-----+-----|
+| extra per parse | 0 B | 0 B | 0 B | 0 B | 0 B |
 
-The whole parse is 2,928 bytes at every k at =v0.6.1=. At =v0.6.0= it was 3,712
-at k = 0 and 6,656 at k = 16. The assertion allows 32 bytes of drift, half of
-what one matched byte cost, because the average read 4 bytes apart between the
-source and compiled lanes at the old pin.
+The whole parse is 2,928 bytes at every k. The assertion allows 32 bytes of
+drift — half the 64 bytes a single matched byte costs a walk that copies its
+prefix — because the source and compiled lanes' averages can differ by a few
+bytes.
 
 ** The instrument
 
 Chez's =bytes-allocated= reports what is allocated *right now*, so a
-collection inside a measured region makes the difference negative — which is
-how the first version of this lane reported a region as allocating −33,122
-bytes. The reading is taken from the statistics record's cumulative byte
-count instead, and the lane carries a case asserting that the counter never
-goes backwards, so a counter that stopped counting could not pass.
+collection inside a measured region makes the difference negative, and a
+region can read as allocating −33,122 bytes. The reading is taken from the
+statistics record's cumulative byte count instead, and the lane carries a case
+asserting that the counter never goes backwards, so a counter that stopped
+counting could not pass.
 
 * Throughput: numbers, printed
 
@@ -102,8 +98,8 @@ reasons which are not about this code. The lane prints its figures and
 asserts only a floor loose enough that only a change of *kind* crosses it —
 an accidental quadratic, a per-byte allocation, a rescan.
 
-On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, on 2026-10-01,
-at byte-machine =v0.7.0=:
+On an Apple M-series laptop, Chez Scheme 10.4.1, =tarm64osx=, with the
+generator pinned at =v0.7.0=:
 
 | what                                         |           msg/s |    MB/s |
 |----------------------------------------------+-----------------+---------|
@@ -111,59 +107,42 @@ at byte-machine =v0.7.0=:
 | 1,166-byte response, 1 KB body, whole buffer | 350,684–360,563 | 390–401 |
 | the same request, fed one byte at a time     |   43,835–44,444 |      13 |
 
-At =v0.6.1=, built beside it and run alternately in the same sitting, they
-read 275,268–278,260, 350,684–360,563 and 45,070. The whole-buffer rows did not
-move by more than a tick of the millisecond clock. The byte-at-a-time row is
-2.7% lower, in the source lane and the compiled lane alike: =v0.7.0= makes one
-more call on every =parser-feed!=, which writes nothing unless the parse ended
-in an error with a span open, and this row makes 308 of them per message, about
-2 ns each. In scratch copies of the runtime, taking that call out restores the
-old rate and taking out the mark write each span delivery now makes does not.
-Upstream recorded the per-call cost as reasoned and not benchmarked, and named
-feeding one byte per call as the case that would show it. This is that case.
-
-At =v0.6.0= (2026-09-18) the three rows read 170,666–180,281, 196,923 and
-43,835–45,714. The two whole-buffer rows are the keyword walk's fix, made at
-=v0.6.1=: it compares each keyword once instead of re-comparing the whole prefix
-at every byte. The byte-at-a-time row stood still then because a keyword split
-across feeds is walked a byte per feed either way.
+The byte-at-a-time row pays the runtime's per-feed costs 308 times for this
+message where the whole-buffer rows pay them once. One of them is a call on
+every =parser-feed!= that writes nothing unless the parse ended in an error
+with a span open, at about 2 ns. A whole-buffer parse cannot see it; feeding
+one byte per call is the case that does. The keyword walk compares each
+keyword once rather than re-comparing the whole prefix at every byte, which
+matters to the whole-buffer rows and not to the byte-at-a-time row, because a
+keyword split across feeds is walked a byte per feed either way.
 
 The ranges are the interquartile range over 80 runs, 40 of each mode, taken
-alternately with the previous pin so that a slow drift in the machine lands on
-both. The full spread is wider, because single runs stall: the slowest read
-17,021 msg/s on the one-byte row, and a range over a handful of runs would have
-reported that as the figure. Read them as an order of magnitude, not a
+alternately with a second build in the same sitting so that a slow drift in
+the machine lands on both. The full spread is wider, because single runs
+stall: the slowest read 17,021 msg/s on the one-byte row, and a range over a
+handful of runs would have reported that as the figure. Read them as an order of magnitude, not a
 specification. They are here so that a later change can be compared against
 something, and so the cost of the worst case a resumable parser can be asked
 for — a byte at a time — is on the record rather than guessed at.
 
-These are twelve times what this page carried three days earlier — 14,925
-msg/s, 28,169 and 8,695 — and the byte-at-a-time row is **five times** what it
-was. **None of the change is in this repository.** Every one of the five steps
-was a dispatch in the generator, and *Against llhttp* below is where they are
-described.
-
-The byte-at-a-time row moving furthest is the point rather than a curiosity.
-A parser fed one byte at a time re-enters the generated executor once per
-byte, so it pays the generator's *entry* dispatch 308 times for this message
-where the whole-buffer row pays it once. For four rounds of this work that row
-stood still or slipped a few percent while the others improved, and each time
-it was recorded as unexplained. It was the only row measuring the last linear
-scan.
+These rates are most sensitive to the generator's emitted dispatch, not to
+anything in this repository; *Against llhttp* below says how it is emitted.
+The byte-at-a-time row is
+the one that measures the *entry* dispatch: a parser fed one byte at a time
+re-enters the generated executor once per byte, so it pays that dispatch 308
+times for this message where the whole-buffer row pays it once.
 
 A rate is a quotient, and the denominator is a clock. =adapter-real-time=
 reads whole milliseconds, so a region that finishes in a handful of them is
 mostly quantisation — and the smaller the interval, the *larger* and more
 impressive the fabricated rate, which would sail over every floor above.
 
-**So the repetition count is calibrated rather than chosen.** It used to be
-three literals, and they were right for one parser on one machine: when the
-dispatch changed, those same counts measured 31 ms, 19 ms and 10 ms where they
-had measured 135, 70 and 23 — the byte-at-a-time case landing exactly on the
-10 ms floor, one improvement from failing. Each case now doubles its
-repetitions until the region clears 50 ms and prints the count it arrived at,
-so two runs of this lane need not agree on repetitions and were never meant
-to. The floor still exists; what it catches now is calibration giving up.
+**So the repetition count is calibrated rather than chosen.** A fixed count
+is right for one parser on one machine, and a faster parser shrinks the region
+it times towards the 10 ms floor without failing anything. Each case doubles
+its repetitions until the region clears 50 ms and prints the count it arrived
+at, so two runs of this lane need not agree on repetitions and are not meant
+to. The floor still exists; what it catches is calibration giving up.
 
 To take your own:
 
@@ -173,12 +152,12 @@ ctest --preset release -R benchmark
 
 * Source and compiled cost the same, and that is a measurement
 
-Every cost lane runs twice, =.chez.source= and =.chez.aot=. These were added
-expecting the compiled figures to beat the source ones — on the assumption,
-never checked, that a lane named "source" interprets.
+Every cost lane runs twice, =.chez.source= and =.chez.aot=. It is natural to
+expect the compiled figures to beat the source ones, on the assumption that a
+lane named "source" interprets.
 
-It does not. Measured on 2026-09-17 against Chez 10.4.1, a hot loop of
-20,000,000 iterations:
+It does not. Measured against Chez 10.4.1, a hot loop of 20,000,000
+iterations:
 
 | how the same code ran                         | steady state |
 |-----------------------------------------------+--------------|
@@ -189,8 +168,8 @@ It does not. Measured on 2026-09-17 against Chez 10.4.1, a hot loop of
 Chez compiles on load. A =.chez.source= lane is not an interpreted lane; it
 is a compiled lane that pays for the compile at startup. What ahead-of-time
 compilation buys is that startup — the allocation lane takes 0.63 s from
-source and 0.16 s compiled — while the measured region inside it is identical
-to the byte: =6,592= / =6,640= and =398= / =384= in both, on every run.
+source and 0.16 s compiled — while the measured region inside it is the same
+in both, with the one exception below.
 
 So the compiled half does not publish a faster number. What it publishes is
 that these costs hold in the configuration this project ships, as an
@@ -200,19 +179,16 @@ that they agree, because no cross-lane comparison exists in this tree and the
 failure it would catch — a parser whose cost depends on when it was compiled
 — is not worth inventing one for.
 
-They agreed on every figure at byte-machine =v0.6.1=, to the byte, on 40 runs
-taken on 2026-10-01. At =v0.7.0= they agree on four of the six and differ on the
-two =POST= figures. The source lane's 10-byte =POST= read 2,917 or 2,918 B on 26
-of 40 runs, where the compiled lane read 2,912 on all 40, and its 10,000-byte
-one read 2,965 once against 2,960. The runtime's new =abandon-span!= is
-involved: with its body emptied, or cut to either of its two reads, the source
-lane reads 2,912 again. A collection forced just before the measured region
-removes the difference, and so does reading each of the 200 parses separately,
-which finds both pins allocating the same, parse by parse. Padding the heap
-before the region, or deepening the stack under it, neither removes the
-difference nor brings it to the old pin. The cause is not known. It is 0.2%,
-nothing the lane asserts is near it, and the compiled lane, which is what
-ships, does not show it.
+The two lanes agree on four of the six allocation figures and differ on the
+two =POST= ones. Over 40 runs of each, the source lane's 10-byte =POST= read
+2,917 or 2,918 B on 26, where the compiled lane read 2,912 on all 40, and its
+10,000-byte one read 2,965 once against 2,960. The runtime's =abandon-span!=
+is involved: with its body emptied, or cut to either of its two reads, the
+source lane reads 2,912. A collection forced just before the measured region
+removes the difference, and so does reading each of the 200 parses
+separately. Padding the heap before the region, or deepening the stack under
+it, does not. The cause is not known. It is 0.2%, nothing the lane asserts is
+near it, and the compiled lane, which is what ships, does not show it.
 
 * Against llhttp, on llhttp's own benchmark
 
@@ -235,19 +211,18 @@ the parse and the dispatch, with the I/O removed. That is the same shape as
 this project's benchmark bindings, which are bound, called, and do nothing.
 
 Upstream sizes its loop by a fixed total of *bytes* — =kBytes= is 8 GiB, and
-the iteration count is derived from the input length. That is a better
-instrument than the fixed repetition count in =benchmark-tests.sps=, because
-it holds the measured interval steady as the input changes rather than
-letting a short input shrink it.
+the iteration count is derived from the input length. That holds the
+measured interval steady as the input changes rather than letting a short
+input shrink it; =benchmark-tests.sps= gets the same effect by calibrating its
+repetitions.
 
 ** The figures
 
-Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-17, at
-byte-machine =v0.6.0=. Upstream's own three bench inputs, their binary and
-ours on the same bytes. *Not re-taken at =v0.6.1= or =v0.7.0=*. The first made
-this project's own whole-buffer rows 35–80% faster, and the second left them
-where they were to within a clock tick. The ratios below are therefore an upper
-bound until they are measured again against a built llhttp checkout:
+Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3. Upstream's own three
+bench inputs, their binary and ours on the same bytes. *These were taken with
+the generator at =v0.6.0=, not at the current pin*, whose runtime parses this
+project's own whole-buffer rows 35–80% faster. So the ratios below are an
+upper bound until they are measured again against a built llhttp checkout:
 
 | input                                |     llhttp | chez-httparse | ratio |
 |--------------------------------------+------------+---------------+-------|
@@ -259,81 +234,42 @@ Computed from operations per second instead of bytes per second the same
 three ratios come back within a point — the two readings agree, as they must,
 and neither is doing any work the other is not.
 
-** What the spread said, and what closing it was worth
+** Why the ratio is what it is
 
-These ratios were **485×, 365× and 89×** when first taken, and the spread
-between them is the only reason this page has anything useful on it. A uniform
-cost of being Scheme would have been one number in all three rows and would
-have closed the question. It was not: llhttp's URL and message parsers are
-within 1.5× of each other per byte, while ours differed by **4.5×** — 23.6
-MB/s for the URL machine against 5.4 for the message machine.
+What these ratios measure is a cost difference between the two parsers, not
+an artifact of where a generator happens to number its states — and that
+depends on how the generator emits dispatch.
 
-It was chased, and it was *state numbering*. Chez compiles =(case st ...)= over
-integer keys as a linear scan — about 0.31 ns per arm skipped, with the total
-number of arms irrelevant and only the matching arm's position counting, at
-every optimize level. The emitted message machine had 530 states with its hot
-scanning states numbered late (=url-path= 468, =value-loop= 235,
-=header-field-loop= 170); the standalone url machine runs the same url grammar
-at =url-path= 15 because it has only 75 states.
+Chez compiles =(case st ...)= over integer keys as a linear scan — about 0.31
+ns per arm skipped, with the total number of arms irrelevant and only the
+matching arm's position counting, at every optimize level. The message machine
+has 530 states, so a parser dispatching through one =case= pays for wherever
+its hot scanning states happen to be numbered. The generator emits its hot
+paths another way:
 
-Permuting the emitted =case= arms — which changes no semantics — moved the cost
-exactly as that model predicts: the request-target figure went from 239.8 to
-42.4 ns/byte, with the url machine unmoved as a control. Nothing in this
-project's grammar, artifact or runtime was at fault; the dispatch is emitted by
-byte-machine's =render-machine=, and the fix landed there as that project's
-decisions 0048 and 0049 — every state is now a procedure, and a transition to
-a target known at emit time is a direct tail call: **0.80 ns against 185.85 ns**
-for the same state, and independent of its id.
-[[file:../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md][Decision 0027]] records the diagnosis and why no number
-here became a gate.
+- *Every state is a procedure*, and a transition to a target known at emit
+  time is a direct tail call: **0.80 ns against 185.85 ns** for the same state
+  through the scan, independent of its id.
+- *A byte class is a range test*, not one arm per byte: 1.25 ns for a
+  lowercase letter, which is what HTTP is mostly made of, against 21.60.
+- *A callback answers with its target*, which is always one of the literals
+  the emitter wrote, rather than a freshly consed =(goto TARGET)= — 128 bytes
+  of garbage per header.
+- *The entry dispatch is a search.* Its target cannot be a literal, because
+  the state comes from the parser; a balanced binary search over 530 state ids
+  is ten comparisons where a scan averages 265.
 
-That was the first of five, and the same defect turned out to be four levels
-deep. The **byte** dispatch inside each state was a linear scan too, over one
-arm per byte of a character class: 21.60 ns for a lowercase letter, which is
-what HTTP is mostly made of, against 1.25 for the range test that replaces it
-(their decision 0050). Then the three arms that call *application* code
-answered a callback's =goto= through the one dispatch still standing, four
-times per header at ~34 ns each — although the target is always one of the
-literals the emitter wrote two lines above (0051). The callback seam answered
-a freshly consed =(goto TARGET)= where it could answer the target, 128 bytes
-of garbage per header (0052). And finally the entry dispatch itself, the one
-target that genuinely *cannot* be a literal because the state comes from the
-parser — which turned out not to need to be one: a balanced binary search over
-530 state ids is ten comparisons where the scan averaged 265 (0053).
-
-**Three of those five were dismissed in writing before they were measured.** A
-comment beside the byte dispatch called a grouped datum list a "deliberately
-deferred optimization" — and when finally measured it is *worse* than what it
-would have replaced, 57.40 ns, because =memv= over 94 elements loses to the
-nested-=if= expansion =case= already gets. A comment beside the state dispatch
-said its remaining uses "happen once per callback and never once per byte, so
-a linear case here costs nothing the per-byte path can see" — a true premise
-and a false conclusion. And the record that fixed *that* wrote of the entry
-dispatch that it "genuinely cannot be a literal", which is true and was never
-the whole question. None was wrong about the mechanism; every one was wrong
-about the size, and none had a number.
-
-The ratios in the table are what remains, and **the spread has collapsed with
-them** — 25.5×, 29.3×, 19.9× where it was 485×, 365×, 89×. The position term
-is gone, and so is most of what was behind it. What is left is a genuine cost
-difference rather than an artifact of where a generator happened to number
-things.
-
-Two things it was *not*, both measured before the cause was found. It was not
-the header section: the message machine scanning a request target and the url
-machine scanning a url were the same work 8× apart. And it was not
-construction, which is 2.5% of a parse — measured by reusing one parser across
-repetitions instead of building a fresh one, which moved the rate from 5.2
-MB/s to 5.4. Body bytes were cheap throughout at ~17 ns/byte, because a
-=Content-Length= body consumes in bulk rather than one dispatch per byte, and
-~6.4 by the pin after the state dispatch was fixed. They have not been
-re-measured since; the per-byte figures in this paragraph are the diagnosis's
-own, not the current pin's.
+Permuting the arms of such a =case=, which changes no semantics, shows the
+position term directly: in a scanning build of the message machine the
+request-target cost moves from 239.8 to 42.4 ns/byte, with the url machine
+unmoved as a control.
+[[file:../.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md][Decision
+0027]] has the measurements, and why no number here is a gate.
 
 ** Taking these yourself
 
 The =bench= mode needs a built llhttp checkout, named the same way the
-differential names one (decision 0010):
+differential names one:
 
 #+begin_src sh
 cmake --preset dev -DHTTPARSE_LLHTTP_ROOT=/path/to/llhttp
@@ -343,9 +279,10 @@ build/dev/llhttp-oracle/http-request-c bench "$(printf 'GET / HTTP/1.1\r\nHost: 
 
 These figures are recorded rather than gated. A ratio is stable enough to
 gate on, which an absolute rate is not — but taking one needs a live llhttp,
-and decision 0010 keeps that local and opt-in. No runner is in a position to
-measure this, and a gate only a developer machine can reproduce is the thing
-that record rules out.
+and that stays local and opt-in, because a live llhttp in CI means Node, a C
+toolchain and an llhttp build on every pull request. No runner is in a
+position to measure this, and a gate only a developer machine can reproduce
+stops meaning anything.
 
 * Against llhttp, through the FFI
 
@@ -354,14 +291,6 @@ faster on the same bytes, Chez has a foreign-function interface, and llhttp
 builds a =.so= — so why is this a Scheme parser at all? The answer is that
 **the ratio does not transfer**, and this section is here so the question can
 be settled without taking the measurement again.
-
-It transferred even less well than it looked. This section was written when
-the ratio was 104× and concluded that a naive wrapper would buy 3.7×. Every
-row has since been re-taken on a rebuilt harness, one day and four generator
-fixes later: **the same naive wrapper now loses to the parser it would
-replace**, and the batched one buys 2.4× rather than 36×. The three llhttp
-rows moved a few per cent; the Scheme row moved fourfold. The question is the
-same question and the answer is further from "wrap llhttp" than it was.
 
 ** What 25.5× is a ratio between
 
@@ -380,9 +309,7 @@ wrapper's time is the boundary and not the parse**.
 
 And that 7.0 µs is the number to hold onto, because **this parser reads the
 whole 703-byte request in 6.6 µs**. A naive wrapper's boundary crossings alone
-cost more than the entire Scheme parse. The two figures were 6.6 µs against
-28 µs when this section was first written; the parse got four times faster and
-the crossings did not move.
+cost more than the entire Scheme parse.
 
 The same 47 callbacks into C stay in the noise. One C program, two loops: the
 shim with all 25 bound and recording every event runs at 1,934 MB/s against
@@ -391,9 +318,10 @@ event**, against 150 for a crossing into Scheme. Eighty-three times.
 
 ** The figures
 
-Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, 2026-09-18, on the same
-two upstream bench inputs the table above uses. **Every row was re-taken in one
-sitting on one rebuilt harness**; medians of three runs.
+Apple M-series, Chez 10.4.1 =tarm64osx=, llhttp 9.4.3, with the generator at
+the same pin as the table above, on the same two upstream bench inputs it
+uses. **Every row was taken in one sitting on one harness**; medians of three
+runs.
 
 | what runs                             |  703 B safe | 703 B unsafe | 520 B safe | 520 B unsafe |
 |---------------------------------------+-------------+--------------+------------+--------------|
@@ -413,17 +341,9 @@ around the boundary buys **2.4–2.6× safe and 8.8–9.4× unsafe**. And the 25
 is not reachable from Scheme at all — the bottom row is the speed of llhttp
 talking to nobody.
 
-Those three numbers were **3.7×, 36× and 104×** when this section was first
-written, against a Scheme row of 24.3 MB/s. The llhttp rows came back within a
-few per cent of themselves on the rebuilt harness — 96.7 against 91.8, 2,837
-against 2,574 — except the batched row, which is 240 against 132 because this
-harness's decode delivers one call per event where the first one summed
-fields. The whole change in the *conclusions* is in the top row.
-
 **The crossing cost falls out of the table rather than being asserted.** 703
 bytes at 96.7 MB/s is 7.27 µs; the same parse with nothing bound is 0.24 µs;
-the difference over 47 callbacks is **150 ns a crossing**, the top of the 133
-to 150 range this section first reported.
+the difference over 47 callbacks is **150 ns a crossing**.
 
 ** The design is the whole variable, and so is =optimize-level=
 
@@ -445,29 +365,19 @@ ns unsafe**, about 54 ns an event against 5.4. =foreign-ref= pays a check per
 field and the delivery pays a call per event; level 3 drops the first. The
 entire distance between 240 MB/s and 1,356 MB/s is that one switch.
 
-*This parser barely notices the same switch* is what this paragraph said a day
-ago, on 24.3 → 26.5 MB/s, nine per cent — and it cited byte-machine's
-[[file:../vendor/byte-machine/.decisions/0049-a-state-is-a-procedure-not-a-case-arm.md][decision
-0049]], which records the emitted dispatch as costing the same at
-optimize-level 0, 2 and 3.
-
-**It notices now: 101.7 → 154.4 MB/s, fifty-two per cent.** Nothing about
-=optimize-level= changed. What changed is what the parse is *made of*. When
-the dispatches were linear scans they dominated, and 0049 is right that a scan
-costs the same at every level — so the parser inherited that insensitivity
-from its slowest part. Four fixes later the scans are gone, and what is left
-is bounds-checked memory access: =bytevector-u8-ref= and the =fx= operations
-around it, which are exactly what level 3 stops checking.
-
-So the nine per cent was never a property of this parser. It was a property of
-the thing that was wrong with it, and it went away with the cause. **A number
-that measures how little something matters stops being true when something
-else stops mattering more.**
+**This parser notices the same switch: 101.7 → 154.4 MB/s, fifty-two per
+cent.** What decides that is what the parse is *made of*. With no linear
+scan in the hot dispatch, what remains is bounds-checked memory access:
+=bytevector-u8-ref= and the =fx= operations around it, which are exactly what
+level 3 stops checking. A scan costs the same at every level, so a parser
+dominated by one would barely notice the switch. **A measurement of how little
+something matters is a ratio against whatever dominates**, and it changes when
+that does.
 
 The headline 8.8× is therefore really *8.8× if the decode runs unsafe*, and
 unsafe Scheme reading a C-written array is a different proposition on bytes
 off a socket than it is in a benchmark. Safe against safe it is 2.4×. The
-pure-Scheme path now asks the same question of itself, and answers it with a
+pure-Scheme path asks the same question of itself, and answers it with a
 53% figure it cannot spend without giving up the bounds checks on
 attacker-controlled offsets — which is the same trade, one layer down.
 
@@ -476,12 +386,10 @@ attacker-controlled offsets — which is the same trade, one layer down.
 - **Both endpoints reproduce this page.** The pure-Scheme row lands on the
   102.2 MB/s in the llhttp table above, and the no-callbacks row on its 2,607.
   A harness that could not recover both figures would not be measuring the
-  same thing they measured. The Scheme row is the stronger of the two checks
-  now: it was written to reproduce 25.3 MB/s and tracked that row through a
-  fourfold change without being adjusted.
+  same thing they measured.
 - **The event count reproduces too, from the C side.** The shim records **47
-  triples** for the 703-byte request, which is the callback count this section
-  reasoned from before any of it was rebuilt.
+  triples** for the 703-byte request, which is the callback count the crossing
+  arithmetic above reasons from.
 - **The handoff is free, and was not assumed to be.** The rows keep their
   input in foreign memory, which an embedder holding a Scheme bytevector does
   not have. Passing the bytevector straight to C as =u8*= measures 2,821 MB/s
@@ -498,7 +406,7 @@ attacker-controlled offsets — which is the same trade, one layer down.
   because it has no callback to count.
 - **Medians of three runs at each level.** Read the ratios, not the rates —
   and read 0.96× and 0.99× as "the same" rather than as an ordering. What the
-  table carries is that a naive wrapper is no longer ahead; it cannot carry
+  table carries is that a naive wrapper is not ahead; it cannot carry
   which of two figures three per cent apart is larger.
 
 ** What it does not measure
@@ -508,9 +416,8 @@ a shared object per platform, and an =llhttp_t= layout transcribed into an
 =ftype= — a *generated* struct with no ABI promise, pinned to the version it
 was generated from. And it would not retire the oracle: an FFI binding yields
 callbacks, not trace lines, so the comparison would be against a trace printer
-of our own, which is the circularity
-[[file:../.plans/decisions/0026-the-lenient-flags-are-combined-and-the-init-hook-is-ours.md][decision
-0026]] exists to prevent.
+of our own — a second implementation of the very format the comparison
+depends on, which makes it circular.
 
 ** Taking these yourself
 
@@ -522,10 +429,10 @@ and size the loop by a fixed total of bytes the way upstream's =bench= mode
 does. Count =on-message-complete= against the repetition count or the figure
 is meaningless.
 
-The FFI harness is not in this tree, and that is deliberate: decision 0010
-keeps llhttp tooling local and opt-in, and a benchmark needing a C toolchain
-is the thing this parser exists not to need. It is about two hundred lines,
-it has been rebuilt from this list once already, and the shape is all of it —
+The FFI harness is not in this tree, and that is deliberate: llhttp tooling
+stays local and opt-in, and a benchmark needing a C toolchain is the thing
+this parser exists not to need. It is about two hundred lines, and the shape
+is all of it —
 
 1. =npm run build= in an llhttp checkout, then =clang -O3 -dynamiclib= over
    =build/c/llhttp.c=, =src/native/{api,http}.c= and the shim below.

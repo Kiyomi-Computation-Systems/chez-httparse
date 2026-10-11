@@ -9,13 +9,14 @@
 ;;; `on_message_complete` for SAFE_WITH_CB, propagates a non-OK return from it,
 ;;; and only then answers OK.
 ;;;
-;;; THE CORPUS IS BLIND HERE. Its driver never calls `parser-finish!` (decision
-;;; 0016), so `response/finish.md#1` records `off=NULL finish=1` and stops --
-;;; the FIELD that promises the callback, not the callback. That fixture is the
-;;; mutation witness for the state; this lane is the witness for the callback
-;;; the state promises. It drives the COMMITTED parser -- the one an embedder
-;;; loads -- so a grammar edit that dropped the completion from the finish path
-;;; reddens here even though every recorded trace stays green.
+;;; THE CORPUS IS BLIND HERE. llhttp's fixture harness never calls
+;;; `llhttp_finish`, so neither does the driver, and `response/finish.md#1`
+;;; records `off=NULL finish=1` and stops -- the FIELD that promises the
+;;; callback, not the callback. That fixture is the mutation witness for the
+;;; state; this lane is the witness for the callback the state promises. It
+;;; drives the COMMITTED parser -- the one an embedder loads -- so a grammar
+;;; edit that dropped the completion from the finish path reddens here even
+;;; though every recorded trace stays green.
 (import (rnrs)
         (httparse test harness)
         (generated httparse-message)
@@ -264,7 +265,7 @@
       (lambda ()
         ;; `parser-finish!` on a parser that has seen no bytes runs the EOF
         ;; chain from `start`, which reaches `clean-eof` -- a bare finish. No
-        ;; message began, so none completes: the new callback is on the
+        ;; message began, so none completes: the callback is on the
         ;; close-delimited path alone, not on every finish.
         (let-values (((p get-body get-count get-at)
                       (make-parser-of-type 'response callback-continue)))
@@ -276,11 +277,11 @@
   (lambda ()
     ;; `parser-finish!` from a state that is not a clean boundary is llhttp's
     ;; HTTP_FINISH_UNSAFE: `llhttp_finish` answers HPE_INVALID_EOF_STATE (code
-    ;; 14, `api.c:152`), reason "Invalid EOF state" verbatim -- see #42. The
-    ;; corpus cannot witness it (its driver never finishes, decision 0016), so
-    ;; this lane pins it. llhttp switches on the `finish` FIELD, not the open
-    ;; span, so EVERY unsafe state answers the ONE identity -- the four below
-    ;; span method, header field, header value and body to hold that uniform.
+    ;; 14, `api.c:152`), reason "Invalid EOF state" verbatim. The corpus
+    ;; cannot witness it (its driver never finishes), so this lane pins it.
+    ;; llhttp switches on the `finish` FIELD, not the open span, so EVERY
+    ;; unsafe state answers the ONE identity -- the four below span method,
+    ;; header field, header value and body to hold that uniform.
     (harness-case "mid-header-value -- request/finish.md#2 (off=NULL finish=2)"
       (lambda ()
         (let ((e (unsafe-finish-error "PUT / HTTP/1.1\r\nContent-Length: 100")))

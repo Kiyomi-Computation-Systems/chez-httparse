@@ -1,6 +1,6 @@
 ;;; Tests for (httparse test ratchet) and the checked-in ratchet manifest.
 ;;;
-;;; The manifest is the milestone exit criterion in file form, so this lane
+;;; The manifest is the conformance claim in file form, so this lane
 ;;; judges it against the corpus itself rather than against a written-down
 ;;; count: every fixture appears exactly once, every entry names a fixture that
 ;;; exists, and every entry's in-scope/deferred class matches the one derived
@@ -98,8 +98,8 @@
         (check-equal "fixtures" (length (corpus-index)) 274)))
     (harness-case "every entry's class matches the one derived from the fixture"
       (lambda ()
-        ;; Decision 0009's split is computed from each fixture's own meta, so a
-        ;; refresh cannot smuggle a lenient fixture in as `not-yet`.
+        ;; The in-scope/deferred split is computed from each fixture's own
+        ;; meta, so a refresh cannot smuggle a lenient fixture in as `not-yet`.
         (let ((index (corpus-index)))
           (check-equal "class disagreements"
                        (length
@@ -113,12 +113,11 @@
                        0))))
     (harness-case "every fixture the corpus ships is in scope, and none is deferred"
       (lambda ()
-        ;; Decision 0009's bar was 84 deferred and 190 in scope. M9 moved the
-        ;; 24 `pausing` and 2 `skipBody` fixtures across, M10 moved the 37
-        ;; lenient ones a FLAG at a time, and M11 moved the last 21 -- the url
-        ;; sub-parser, which is a second machine rather than more of the
-        ;; first. So the deferral list is now EMPTY, and this case says so as
-        ;; a number rather than by not existing.
+        ;; Every class is in scope: the 24 `pausing` and 2 `skipBody`
+        ;; fixtures, the 37 lenient ones, and the 21 of the url sub-parser,
+        ;; which is a second machine rather than more of the first. So the
+        ;; deferral list is EMPTY, and this case says so as a number rather
+        ;; than by not existing.
         ;;
         ;; A REFRESH THAT ADDED A FIXTURE WOULD FAIL HERE, which is the point
         ;; of keeping the total written down: upstream growing its corpus is

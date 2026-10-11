@@ -1,10 +1,10 @@
 # chez-httparse test tree.
 #
-# Slice 1 registers the harness and build-layer surface only: the CMake-layer
+# The harness and build-layer surface comes first: the CMake-layer
 # specifications (the build's own discovery and registration logic, which
 # decides what every later lane can even see), the Scheme harness self lanes,
-# the launcher refusals, provenance, and the two mutation suites. Parser lanes
-# arrive with the first grammar slice.
+# the launcher refusals, provenance, and the two mutation suites. The parser's
+# own lanes follow.
 
 # The registration helper decides which tests exist at all, so its functional
 # core is specified before anything relies on it.
@@ -87,11 +87,11 @@ httparse_add_test(
   TIMEOUT 120
   LABELS unit)
 
-# This harness was ported from another repository under a mechanical rename
-# (decision 0001); Slice 1's exit criteria require zero upstream-name
-# references in the build/test tree (decision 0003). The audit is a
-# registered check rather than a review rule so that the next file copied
-# from upstream fails the build, not a review.
+# This harness was ported from another repository under a mechanical rename,
+# and the build/test tree carries no reference to the upstream name outside
+# the declared dependency forms. The audit is a registered check rather than a
+# review rule so that the next file copied from upstream fails the build, not
+# a review.
 httparse_add_test(
   NAME httparse.harness.rename-audit.cmake.direct
   COMMAND "${CMAKE_COMMAND}" -P
@@ -99,10 +99,10 @@ httparse_add_test(
   TIMEOUT 120
   LABELS unit)
 
-# The vendored llhttp corpus is upstream's bytes and is never edited
-# (decision 0007 item 6). This lane is what makes that true rather than
-# merely stated; it needs no Scheme runtime, so it also holds under the
-# no-scheme preset.
+# The vendored llhttp corpus is upstream's bytes and is never edited: a
+# fixture believed wrong becomes a ratchet entry, not a change to the bytes.
+# This lane is what makes that true rather than merely stated; it needs no
+# Scheme runtime, so it also holds under the no-scheme preset.
 httparse_add_test(
   NAME httparse.harness.corpus-provenance.cmake.direct
   COMMAND "${CMAKE_COMMAND}" -P
@@ -110,24 +110,11 @@ httparse_add_test(
   TIMEOUT 120
   LABELS unit)
 
-# A plan's header summarises which decisions govern it and which milestones are
-# still ahead of it, and both went stale twice -- most recently when M9 marked
-# its own heading DONE and left the header calling it deferred. A third hand
-# correction would buy one pull request of accuracy, so the contradiction is a
-# registered check. It needs no Scheme runtime, so it also holds under the
-# no-scheme preset.
-httparse_add_test(
-  NAME httparse.harness.plan-header-audit.cmake.direct
-  COMMAND "${CMAKE_COMMAND}" -P
-          "${CMAKE_CURRENT_LIST_DIR}/support/cmake/PlanHeaderAuditSpec.cmake"
-  TIMEOUT 120
-  LABELS unit)
-
 # A script run with `cmake -P` inherits none of this project's policies, so
-# each one declares the floor itself. CorpusProvenanceSpec did not, and CMake 3
-# read its IN_LIST as a syntax error the first time CI ran it -- while every
-# CMake 4 machine passed it, because CMake 4 no longer has the old behaviour.
-# Running the scripts cannot see this on CMake 4, so this checks it as text.
+# each one declares the floor itself. Without it, CMake 3 leaves CMP0057 unset
+# and reads `IN_LIST` as a syntax error, while CMake 4, which has no old
+# behaviour left for that policy, passes the same script. Running the scripts
+# cannot see this on CMake 4, so this checks it as text.
 # It needs no Scheme runtime, so it also holds under the no-scheme preset.
 httparse_add_test(
   NAME httparse.harness.script-policy-floor.cmake.direct
@@ -138,10 +125,10 @@ httparse_add_test(
 
 # --- Harness paths ---------------------------------------------------------
 
-# The generator arrives as a submodule pinned by gitlink (decisions 0002, 0005).
-# Both paths are spelled out once here and referred to by variable everywhere
-# else, so the dependency's own name appears in this file twice rather than a
-# dozen times -- the two shapes the rename audit declares legitimate (0011).
+# The generator arrives as a submodule pinned by gitlink. Both paths are
+# spelled out once here and referred to by variable everywhere else, so the
+# dependency's own name appears in this file twice rather than a dozen times,
+# and only in the path form the rename audit accepts.
 set(HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT "${CMAKE_SOURCE_DIR}/vendor/byte-machine/src")
 set(HTTPARSE_GENERATOR_COLLECTION "${CMAKE_SOURCE_DIR}/vendor/byte-machine/src/byte-machine")
 set(HTTPARSE_GENERATOR_SOURCES
@@ -169,7 +156,7 @@ set(HTTPARSE_CHEZ_OBJECT_ROOT
 # version and every machine type would share one object root, a `.so` built by
 # a different Chez could be loaded as though it were current, and every AOT
 # lane would stay green while proving nothing about the runtime that actually
-# ran it -- the exact defect this slice exists to prevent. No task in its plan
+# ran it -- the exact defect the per-runtime keying exists to prevent. No lane
 # re-derives HTTPARSE_CHEZ_VERSION or HTTPARSE_CHEZ_MACHINE_TYPE to
 # catch a regression here, so this is the one place that can. Guarded on
 # HTTPARSE_CHEZ_EXECUTABLE: on a host with no Chez neither variable is
@@ -204,8 +191,7 @@ file(MAKE_DIRECTORY "${HTTPARSE_HARNESS_OBJECT_GUARD_DIR}")
 #
 # Read by httparse_scheme_lane_command. src/ holds the product libraries;
 # the harness above is test infrastructure. A lane imports from both, which is
-# why the launcher takes repeatable roots. src/ is empty until the first
-# parser slice lands; the lane machinery requires the directory to exist.
+# why the launcher takes repeatable roots.
 set(HTTPARSE_SRC_CHEZ_LIBRARY_ROOT "${CMAKE_SOURCE_DIR}/src")
 
 # The sources every harness lane executes -- the two libraries; each lane
@@ -389,12 +375,10 @@ httparse_add_scheme_lane(
 # --- The Chez launcher's refusals ------------------------------------------
 #
 # The launcher decides whether a lane runs at all, and its object guard is the
-# sole mechanism that makes `mode=source` an honest claim. Three places in this
-# tree say so -- the spec's section 7.1, HttparseSchemeLane.cmake, and the
-# Chez adapter -- and until these lanes existed none of them checked it: every
-# decision in the launcher could be deleted, and a file dropped into the guard
-# directory, with all twenty tests still green, because a healthy lane never
-# reaches a refusal.
+# sole mechanism that makes `mode=source` an honest claim. A healthy lane never
+# reaches a refusal, so without these lanes every decision in the launcher
+# could be deleted, and a file dropped into the guard directory, with every
+# other lane still green.
 #
 # One lane per `die` path, each asserting status 2 exactly. Registered through
 # the exact-status helper directly rather than through
@@ -421,9 +405,8 @@ if(HTTPARSE_CHEZ_EXECUTABLE)
   set(HTTPARSE_HARNESS_ABSENT_GUARD_DIR
       "${CMAKE_BINARY_DIR}/chez-object-guard-absent")
 
-  # A launcher invoked with nothing at all. Replaces the exact-arity refusal the
-  # positional protocol had; with flags, "no arguments" is the natural form of
-  # the same mistake.
+  # A launcher invoked with nothing at all: with flags, "no arguments" is the
+  # natural form of a launcher invoked wrongly.
   httparse_add_exit_code_test(
     NAME httparse.harness.launcher-no-program.chez.source
     COMMAND "${HTTPARSE_CHEZ_EXECUTABLE}"
@@ -624,7 +607,7 @@ httparse_add_scheme_lane(
 
 # --- Mutation proof for the harness ----------------------------------------
 
-# The harness is the instrument every later milestone is measured with, so a
+# The harness is the instrument every parser lane is measured with, so a
 # passing self-test suite is not evidence until something has proved it can
 # fail. This breaks each decision in the runner on a staged copy and requires
 # the self-tests to notice. Registered only when a Chez was discovered: it runs
@@ -649,9 +632,9 @@ endif()
 #
 # Every lane above checks the fingerprint of the text it ran against the value
 # the build computed. These prove that check can fail. Without them the
-# mechanism would be a claim: protium recorded two occasions where two of its
-# lanes printed different digests for text both said they ran, and the suite
-# stayed green, because nothing read the values back.
+# mechanism would be a claim: two lanes can print different digests for text
+# both say they ran, and the suite stays green, because nothing reads the
+# values back.
 #
 # Status 3 is what makes them falsifiable. Several lanes in this tree
 # legitimately expect 1 or 2, so a provenance failure sharing either status
@@ -701,11 +684,11 @@ httparse_add_scheme_lane(
   ENVIRONMENT "HTTPARSE_FINGERPRINT_FILES=${CMAKE_BINARY_DIR}/fingerprints/no-such-body.scm")
 
 # Provenance configured and never performed. SOURCES guarantees the
-# environment carries a manifest; nothing until now guaranteed anything read
-# it. This program reaches harness-summary without ever reaching
+# environment carries a manifest; this lane guarantees something reads it.
+# This program reaches harness-summary without ever reaching
 # harness-verify-provenance!, which is precisely the shape harness-bootstrap
-# would have had if its hand-placed call had been forgotten -- and that would
-# have run un-provenanced with nothing failing.
+# would have if its hand-placed call were forgotten -- and that would run
+# un-provenanced with nothing failing.
 #
 # A real manifest, deliberately: with none, the run is a process no lane
 # registration started, and skipping is correct rather than a defect.
@@ -730,8 +713,7 @@ httparse_add_scheme_lane(
 # exits 3. This is the only lane in the tree that can fail when a compiled
 # lane's fingerprint stops describing its artifact -- a lane rather than a
 # mutation because the Scheme mutation suite stages one already-mutated
-# tree per pass and cannot express "built before the edit, run after it"
-# (design W12, slice 5a task 6).
+# tree per pass and cannot express "built before the edit, run after it".
 httparse_add_scheme_lane(
   NAME httparse.harness.stale-artifact.chez.aot
   BACKEND chez
@@ -743,12 +725,12 @@ httparse_add_scheme_lane(
   TIMEOUT 120
   LABELS expected-red)
 
-# --- The corpus harness (M1) ------------------------------------------------
+# --- The corpus harness -----------------------------------------------------
 #
-# Decision 0008 makes the vendored corpus the oracle, which puts the reading of
-# it on the critical path: a decoder that is one byte off makes every offset in
-# a fixture wrong, and the failure reads as a parser defect. These lanes judge
-# the reading machinery on hand-built inputs, before any HTTP byte is parsed.
+# The vendored corpus is the oracle, which puts the reading of it on the
+# critical path: a decoder that is one byte off makes every offset in a fixture
+# wrong, and the failure reads as a parser defect. These lanes judge the
+# reading machinery on hand-built inputs, before any HTTP byte is parsed.
 
 set(HTTPARSE_CORPUS_DECODE
     "${HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT}/httparse/test/corpus-decode.sls")
@@ -909,17 +891,16 @@ httparse_add_scheme_lane(
   TIMEOUT 120
   LABELS unit)
 
-# Decision 0005 item 5: the ABI number is re-read, never remembered. Decision
-# 0002's ABI clause went stale unnoticed for three weeks because it lived only
-# in prose; a lane cannot.
+# The generated ABI number is re-read, never remembered: an ABI stated only in
+# prose goes stale without anyone noticing, and a lane cannot.
 #
 # SOURCE ONLY, DELIBERATELY. Every other Scheme lane here is registered twice,
 # source and aot, because the pair proves a grammar behaves identically either
 # way. This lane asserts nothing about a grammar -- it asks whether the pinned
 # dependency is wired up and speaking the ABI this repository targets, which is
 # the same question in both modes. The aot twin would compile the whole
-# generator per lane to re-answer it. The source/aot pair returns with the
-# first real grammar, where it has something to prove.
+# generator per lane to re-answer it. The source/aot pair belongs to the
+# grammar lanes, where it has something to prove.
 httparse_add_scheme_lane(
   NAME httparse.unit.generator-abi.chez.source
   BACKEND chez
@@ -989,7 +970,7 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- The grammar (M2) -------------------------------------------------------
+# --- The grammar ------------------------------------------------------------
 
 # The grammar imports (httparse modes), (httparse methods) and (httparse
 # decisions), so a lane that has the grammar but not all three pure libraries
@@ -1014,11 +995,9 @@ httparse_add_scheme_lane(
   TIMEOUT 180
   LABELS unit)
 
-# The source/aot pair the generator-abi lane's comment promised "returns with
-# the first real grammar, where it has something to prove". This is it: the
-# grammar is a datum built at load time and handed to the verifier, and a lane
-# that only ever ran it from source would not notice a compiled twin behaving
-# differently.
+# The compiled twin of the lane above. The grammar is a datum built at load
+# time and handed to the verifier, and a lane that only ever ran it from source
+# would not notice a compiled twin behaving differently.
 httparse_add_scheme_lane(
   NAME httparse.unit.request-line.chez.aot
   BACKEND chez
@@ -1030,7 +1009,7 @@ httparse_add_scheme_lane(
   TIMEOUT 180
   LABELS unit)
 
-# --- The header section (M3) ------------------------------------------------
+# --- The header section -----------------------------------------------------
 #
 # Asserted in llhttp's own trace text, through the same adapter the conformance
 # driver uses, so an expectation is a block of lines copied out of a fixture.
@@ -1049,7 +1028,7 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- Chunked bodies (M5) ----------------------------------------------------
+# --- Chunked bodies ---------------------------------------------------------
 #
 # One case per distinct chunk shape, in llhttp's own trace text. The ratchet
 # runs every chunked fixture at every chunk size; this lane is the literal
@@ -1069,7 +1048,7 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- The message loop (M6) --------------------------------------------------
+# --- The message loop -------------------------------------------------------
 #
 # What a message leaves behind for the next one: whether it restarts, what it
 # forgets when it does, and what it refuses when it does not.
@@ -1088,10 +1067,10 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- The request target's two ends (M6) -------------------------------------
+# --- The request target's two ends ------------------------------------------
 #
-# Where the target stops and what follows it: the two behaviours the strict
-# request corpus needs from llhttp's url sub-parser, which is otherwise M11's.
+# Where the target stops and what follows it: the target's boundary, as
+# distinct from its structure, which is the url sub-parser's.
 foreach(mode source aot)
   httparse_add_scheme_lane(
     NAME httparse.unit.request-target.chez.${mode}
@@ -1107,7 +1086,7 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- The response start line (M7) -------------------------------------------
+# --- The response start line ------------------------------------------------
 #
 # The two things a response does not share with a request: where the protocol
 # span opens, and the status. The last group is the shared half -- one keyword
@@ -1127,7 +1106,7 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- What a response's framing decides (M7) ---------------------------------
+# --- What a response's framing decides --------------------------------------
 #
 # `message_needs_eof` and the five status codes, which is the whole of what a
 # response's body decision has that a request's does not -- including the one
@@ -1147,13 +1126,13 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- The checked-in generated parser (M2 Slice 4) ---------------------------
+# --- The checked-in generated parser ----------------------------------------
 #
 # A derived artifact, committed so that what this project ships is reviewable as
 # a diff and loadable without a generator. The lane re-emits and compares bytes,
 # so a grammar edit not followed by `make parser-refresh` reddens rather than
 # shipping an artifact that no longer describes its source.
-# TWO artifacts since M11: the message parser and the url sub-parser. Both are
+# TWO artifacts: the message parser and the url sub-parser. Both are
 # emitted by one script and both are checked by one lane, so neither can be
 # refreshed while the other silently goes stale.
 set(HTTPARSE_GENERATED_MESSAGE_PARSER
@@ -1177,10 +1156,10 @@ httparse_add_scheme_lane(
   TIMEOUT 180
   LABELS determinism)
 
-# --- The conformance adapter and driver (M2 Slice 4) ------------------------
+# --- The conformance adapter and driver -------------------------------------
 
-# The instrument, judged on hand-built events before any parser runs
-# (decision 0008 item 4).
+# The instrument, judged on hand-built events before any parser runs: an
+# uncalibrated trace formatter cannot measure the parser.
 httparse_add_scheme_lane(
   NAME httparse.unit.adapter.chez.source
   BACKEND chez
@@ -1207,9 +1186,8 @@ httparse_add_scheme_lane(
   TIMEOUT 180
   LABELS unit)
 
-# The two-way ratchet, driven over the corpus. Decision 0008 item 5 splits the
-# chunk-size coverage across the presets, so this is registered TWICE with two
-# selections rather than once with a knob: `extremes` (chunk size 1 and the
+# The two-way ratchet, driven over the corpus. Chunk-size coverage is split
+# across the presets, so this is registered TWICE with two selections rather than once with a knob: `extremes` (chunk size 1 and the
 # whole buffer) runs on every pull request, and `full` (every size from 1 to the
 # input length) is a release cost. The full lane carries a `full-scan` label the
 # pr preset excludes; a selection chosen from the configure-time environment
@@ -1316,7 +1294,7 @@ httparse_add_scheme_lane(
   TIMEOUT 600
   LABELS property)
 
-# --- Pausing (M9) -----------------------------------------------------------
+# --- Pausing ----------------------------------------------------------------
 #
 # Registered here rather than beside the other unit lanes because it needs
 # HTTPARSE_DRIVE, and a CMake variable read before its `set` expands to
@@ -1339,9 +1317,9 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- Lenient modes (M10) ----------------------------------------------------
+# --- Lenient modes ----------------------------------------------------------
 #
-# The eleven questions the embedder is asked once, ahead of `start`.
+# The eleven lenient flags: a bitset the embedder writes before the first byte.
 foreach(mode source aot)
   httparse_add_scheme_lane(
     NAME httparse.unit.lenient.chez.${mode}
@@ -1359,7 +1337,7 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- Skip body (M9) ---------------------------------------------------------
+# --- Skip body --------------------------------------------------------------
 #
 # The one callback whose return value upstream reads. Needs HTTPARSE_DRIVE for
 # the same reason the pausing lane does.
@@ -1380,7 +1358,7 @@ foreach(mode source aot)
     LABELS unit)
 endforeach()
 
-# --- The url sub-parser (M11) -----------------------------------------------
+# --- The url sub-parser -----------------------------------------------------
 #
 # One case per distinct SHAPE, plus the exits `url.md` cannot reach: none of
 # its 21 inputs holds a space, a CR or an LF, and upstream gives every node
@@ -1503,7 +1481,7 @@ endforeach()
 # event, and the end of a span's fragment. Every other lane that reads the
 # offset inside a span callback feeds one buffer from index 0, where the
 # fragment's end and `to` are the same number, so a runtime that handed the
-# callback `to` instead passed all of them. This lane feeds each chunk from a
+# callback `to` instead would pass all of them. This lane feeds each chunk from a
 # buffer of its own, drives the COMMITTED parser over every fixture in the
 # corpus, and holds each event to its log's `off=` and each fragment to the
 # driver's own arithmetic.
@@ -1534,15 +1512,13 @@ endforeach()
 # for reasons which are not about this code.
 #
 # BOTH MODES, AND THEY AGREE -- WHICH IS THE POINT, NOT A DISAPPOINTMENT.
-# These lanes were added expecting the compiled figures to beat the source
-# ones, on the assumption that a "source" lane interprets. It does not.
-# Measured against Chez 10.4.1 on 2026-09-17, a hot loop of 20,000,000
-# iterations: 27ms under `--script` from source, 28ms under `--program` from
-# a compile-program object, and 455ms from that same source with
-# `(current-eval interpret)`. Chez compiles on load; what ahead-of-time
-# compilation buys is STARTUP, not throughput -- visible here as the
-# allocation lane's wall time, 0.72s from source against 0.17s compiled,
-# while the measured region inside it is identical to the byte.
+# A "source" lane does not interpret. Measured against Chez 10.4.1, a hot
+# loop of 20,000,000 iterations: 27ms under `--script` from source, 28ms
+# under `--program` from a compile-program object, and 455ms from that same
+# source with `(current-eval interpret)`. Chez compiles on load; what
+# ahead-of-time compilation buys is STARTUP, not throughput -- visible here
+# as the allocation lane's wall time, 0.72s from source against 0.17s
+# compiled, while the measured region inside it is identical to the byte.
 #
 # So what the aot half adds is not a faster number. It is the observation
 # that the cost claims hold in the configuration this project actually ships,
@@ -1578,7 +1554,9 @@ endforeach()
 
 # --- The live llhttp differential: local, opt-in, never a merge gate --------
 #
-# Decision 0010. The checkout is named by a variable and the lane is ABSENT
+# The vendored corpus is the oracle CI runs; this one needs Node and a C
+# toolchain, so it stays local. Its job is generated input, where no recorded
+# trace can exist. The checkout is named by a variable and the lane is ABSENT
 # when it is unset -- not skipped, not failing, not registered at all. Point
 # it at a built llhttp checkout to turn the lane on:
 #

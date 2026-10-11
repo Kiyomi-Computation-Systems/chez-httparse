@@ -118,10 +118,9 @@ set(HTTPARSE_HARNESS_CHEZ_COMPILE_LAUNCHER "/launchers/chez-compile.ss")
 set(HTTPARSE_HARNESS_CHEZ_LIBRARY_ROOT "/h/chez")
 set(HTTPARSE_HARNESS_OBJECT_GUARD_DIR "/b/guard")
 set(HTTPARSE_SRC_CHEZ_LIBRARY_ROOT "/s/chez")
-# The generator's library root (decision 0005). A lane names one root per
+# The generator's library root. A lane names one root per
 # library family it imports, so the source command line grows by one flag
-# pair when the dependency is wired -- which is what the expectation below
-# now asserts.
+# pair for the generator -- which is what the expectation below asserts.
 set(HTTPARSE_GENERATOR_CHEZ_LIBRARY_ROOT "/g/chez")
 
 # --- Chez ------------------------------------------------------------------
@@ -155,8 +154,7 @@ spec_check_equal("${dups}" "x.sls" "a repeated basename is reported once, howeve
 # CMake resolves an unset local through the calling scope, so if the
 # detector ever loses its own accumulator initialization, it inherits
 # whatever `duplicates` the caller has lying around. Seeded here so that
-# hazard has a witness -- the same assertion the retired repository-wide
-# guard's specification carried for the same two lines.
+# hazard has a witness.
 set(duplicates "stale-from-caller")
 httparse_lane_duplicate_basenames(dups "/a/x.sls" "/b/y.sls")
 spec_check_equal("${dups}" "" "the detector does not inherit the caller's ambient duplicates")
@@ -215,8 +213,9 @@ spec_check_equal("${measured}" "/h/shared/a.scm;/h/shared/b.scm"
 
 # The aot half of the same rule, over two sources, because a one-source
 # manifest cannot witness order: the measured list must be the fingerprint/
-# copies, in the declared order. This is the assertion mutations C1 (measured
-# collapses to declared) and C2 (measured built in reverse) break.
+# copies, in the declared order. This is the assertion MutationSuite.cmake's
+# "a compiled lane measures the repository originals" and "the measured list
+# is built in reverse" mutations break.
 set(HTTPARSE_CHEZ_EXECUTABLE "/opt/chez")
 httparse_scheme_lane_command(httparse.harness.example-two.chez.aot
   chez aot "/h/self/p.sps"
@@ -291,7 +290,7 @@ endfunction()
 # scriptable under cmake -P), so it is stubbed the same way the two
 # registrars are: recorded, not run. What the spec can see is the routing
 # decision -- an aot registration must reach it, a source registration must
-# not -- and the arguments it was reached with, which is where Task 3's
+# not -- and the arguments it was reached with, which is where the
 # stale-root forwarding becomes assertable with no Scheme present.
 function(httparse_lane_chez_aot_artifacts name program stale_library_root)
   set_property(GLOBAL PROPERTY HTTPARSE_SPEC_AOT_BUILDER_NAME "${name}")
@@ -299,7 +298,7 @@ function(httparse_lane_chez_aot_artifacts name program stale_library_root)
 endfunction()
 
 # httparse_expected_fingerprint and httparse_wrong_fingerprint are
-# defined in test/CMakeLists.txt (Task 3, M0 slice 5a), which this standalone
+# defined in test/CMakeLists.txt, which this standalone
 # script does not include, so they are stubbed for the same reason the two
 # registrars above are: every direct registration below sets
 # HTTPARSE_CHEZ_EXECUTABLE, which is exactly what makes
@@ -358,7 +357,7 @@ spec_check_equal("${environment}"
 
 # --- The mode is the name's, not a literal ---------------------------------
 #
-# A lane that declares a mode it is not running is the defect this whole slice
+# A lane that declares a mode it is not running is the defect this section
 # exists to prevent, and the declaration is what every other lane's evidence
 # is labelled with. Asserted over a name that is not `source`, because the
 # literal it replaced was `source`: a mutation restoring the literal passes

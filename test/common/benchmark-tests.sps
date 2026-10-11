@@ -116,15 +116,13 @@
 ;; milliseconds, so a region that finishes in a handful of them is mostly
 ;; quantisation.
 ;;
-;; THE REPETITION COUNT IS CALIBRATED, NOT CHOSEN. It used to be three
-;; literals, and they were right for one parser on one machine: when the
-;; generated parser's state dispatch changed underneath them, the same counts
-;; measured 31ms, 19ms and 10ms where they had measured 135, 70 and 23 -- the
-;; byte-at-a-time case landing exactly on the floor below, one improvement from
-;; failing. A number that has to be re-tuned whenever the code gets faster is a
-;; number that will be re-tuned late, and the symptom of re-tuning it late is a
-;; flattering rate rather than a red lane. So each case doubles its repetitions
-;; until the region is worth timing, and reports the count it arrived at.
+;; THE REPETITION COUNT IS CALIBRATED, NOT CHOSEN. A literal count is right
+;; for one parser on one machine: when the parser gets faster, the same count
+;; measures a shorter region, until it lands on the floor below. A number that
+;; has to be re-tuned whenever the code gets faster is a number that will be
+;; re-tuned late, and the symptom of re-tuning it late is a flattering rate
+;; rather than a red lane. So each case doubles its repetitions until the
+;; region is worth timing, and reports the count it arrived at.
 (define target-ms 50)
 (define calibration-cap 4000000)
 
@@ -138,9 +136,9 @@
           (values reps ms)
           (loop (* reps 2))))))
 
-;; The floor still exists, and it is no longer a statement about the literals
-;; above -- it is what fires if calibration hit its cap without ever clearing
-;; the clock, which is the one way this lane can still print a fabricated rate.
+;; The floor is not a statement about a chosen count -- it is what fires if
+;; calibration hit its cap without ever clearing the clock, which is the one
+;; way this lane can still print a fabricated rate.
 (define minimum-measurable-ms 10)
 
 (define (check-measurable label ms)
@@ -151,9 +149,8 @@
 
 ;; Every figure carries the execution mode, because this lane is registered in
 ;; BOTH and one release log holds both runs' lines. Without it the six lines
-;; below are six plausible numbers with no way to tell the interpreted ones
-;; from the compiled ones -- which is the reading that matters, since the
-;; compiled figure is the one an embedder gets.
+;; below are six plausible numbers with no way to tell which run printed
+;; which.
 (define (report label bytes reps raw-ms)
   (let* ((ms (max 1 raw-ms))
          (per-sec (div (* 1000 reps) ms))

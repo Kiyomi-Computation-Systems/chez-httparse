@@ -1,19 +1,19 @@
 # Specification: no upstream project token survives in the build/test tree.
 #
-# This harness was ported from another repository under a mechanical rename
-# (decision 0001 in .plans/decisions/), and Slice 1's exit criteria (decision
-# 0003) require zero upstream-name references outside the documentation and
-# attribution surfaces. A rule like that decays the moment it lives only in a
-# review checklist -- the next file copied from upstream reintroduces the name
-# and nothing fails -- so it is a registered check instead (AGENTS.md: prefer
-# a check to a comment).
+# This harness was ported from another repository under a mechanical rename,
+# and the rename only holds if no ported name survives outside the
+# documentation and attribution surfaces. A rule like that decays the moment it
+# lives only in a review checklist -- the next file copied from upstream
+# reintroduces the name and nothing fails -- so it is a registered check
+# instead (AGENTS.md: prefer a check to a comment).
 #
 # WHAT IS SCANNED. The build/test tree: the top-level build files, cmake/,
-# test/, and .github/. The documentation and attribution surfaces (.plans/,
-# README.org, CHANGELOG.md, AGENTS.md, LICENSE, .superpowers/) are exempt by
-# decision 0003 and are not walked. A scan root that does not exist is
-# skipped, not an error: under the mutation engine's staged tree only cmake/
-# and test/support/cmake/ are present, and the audit must still judge those.
+# test/, and .github/. The documentation and attribution surfaces
+# (.plans/decisions/, README.org, docs/, CHANGELOG.md, AGENTS.md, LICENSE) name
+# the upstream project by design and are not walked. A scan root that does not
+# exist is skipped, not an error: under the mutation engine's staged tree only
+# cmake/ and test/support/cmake/ are present, and the audit must still judge
+# those.
 #
 # WHY THE PATTERNS ARE ASSEMBLED AT RUN TIME. This file must never contain
 # the forbidden text it hunts, or it would convict itself; string(CONCAT)
@@ -34,15 +34,16 @@ get_filename_component(_audit_root "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE
 string(CONCAT _audit_separated "byte" "[_-]" "machine")
 string(CONCAT _audit_fused "byte" "machine")
 
-# THE TWO LEGITIMATE FORMS (decision 0011). The audit no longer asks whether
-# the token occurs; it asks whether every occurrence is one of these. They are
-# stripped from a lowercased copy before the scan, so anything the stems still
-# match afterwards is a leak.
+# THE TWO LEGITIMATE FORMS. The audit does not ask whether the token occurs;
+# it asks whether every occurrence is one of these. They are stripped from a
+# lowercased copy before the scan, so anything the stems still match afterwards
+# is a leak.
 #
-#   vendor/<dep>            the submodule path (decision 0005), which the build
-#                           must name to put the generator on Chez's library path
+#   vendor/<dep>            the submodule path, which the build must name to
+#                           put the generator on Chez's library path
 #   (<dep> <name>)          an R6RS library reference, imported by its real name
-#                           because decision 0001 item 4 never renames it
+#                           because a dependency's identifiers are its contract
+#                           and are never renamed
 #
 # Every other shape still fails: a function prefix, a cache variable, a
 # CamelCase filename, or a bare hyphenated token in a test name, diagnostic
@@ -95,11 +96,11 @@ foreach(_audit_file IN LISTS _audit_files)
     message(SEND_ERROR
       "httparse-spec: upstream project token leaked into '${_audit_rel}'. "
       "The build/test tree must carry no reference to the repository this "
-      "harness was ported from (decision 0003); rename it per the decision "
-      "0001 map, or, if this file is genuinely attribution, move the mention "
-      "to an exempt surface. Only the submodule path and an R6RS library "
-      "reference are legitimate here (decision 0011); a new form is added by "
-      "amending that record, not by widening this one quietly.")
+      "harness was ported from; rename it to this project's httparse stem, "
+      "or, if this file is genuinely attribution, move the mention to an "
+      "exempt surface. Only the submodule path and an R6RS library reference "
+      "are legitimate here; a new form is added deliberately, with a reason, "
+      "not by widening the allowlist quietly.")
   endif()
 endforeach()
 

@@ -9,20 +9,16 @@
 ;;;     s->lenient_flags |= LENIENT_VERSION;
 ;;;   }
 ;;;
-;;; SO DOES THIS PARSER, SINCE THE GENERATOR GREW SETTABLE FIELDS at the pin
-;;; this tree targets: `lenient-flags` is a settable field and
+;;; SO DOES THIS PARSER: `lenient-flags` is a settable field and
 ;;; `make-parser`'s fourth argument writes it, which is the same one-integer
-;;; surface llhttp has. It was eleven optional decision callbacks and a
-;;; twenty-two-node ask chain ahead of `start` until the runtime could start
-;;; a parser in a mode -- the subject of this project's fourth upstream
-;;; brief, now answered.
+;;; surface llhttp has.
 ;;;
-;;; THE MODE IS SET ONCE PER PARSER, NOT ONCE PER MESSAGE, and that is now
-;;; structural rather than positional: a field initial is written at
-;;; CONSTRUCTION, so there is no chain for a restart to re-enter or skip. The
-;;; restart stores zero over `flags` and `lenient-flags` is a separate field,
-;;; which is why the mode survives it. No fixture pipelines a lenient message,
-;;; so the case that says so is here rather than in the corpus.
+;;; THE MODE IS SET ONCE PER PARSER, NOT ONCE PER MESSAGE, and that is
+;;; structural: a field initial is written at CONSTRUCTION, so there is
+;;; nothing for a restart to re-enter or skip. The restart stores zero over
+;;; `flags` and `lenient-flags` is a separate field, which is why the mode
+;;; survives it. No fixture pipelines a lenient message, so the case that says
+;;; so is here rather than in the corpus.
 (import (rnrs)
         (httparse test harness)
         (httparse test adapter)
@@ -102,8 +98,9 @@
                      '("off=19 headers complete status=200 v=5/6 flags=0 content_length=0"))))
     (harness-case "another flag does not turn this one on"
       (lambda ()
-        ;; THE CASE THAT STOPS ONE ASK ANSWERING FOR ALL ELEVEN. A chain that
-        ;; set every bit, or read the wrong one, would pass both cases above.
+        ;; THE CASE THAT STOPS ONE FLAG ANSWERING FOR ALL ELEVEN. An initial
+        ;; that set every bit, or a test that read the wrong one, would pass
+        ;; both cases above.
         (check-equal "still the strict error"
                      (list-tail (trace '(request headers) "GET / HTTP/5.6\r\n") 8)
                      '("off=14 error code=9 reason=\"Invalid HTTP version\""))))))
@@ -112,11 +109,9 @@
   (lambda ()
     (harness-case "the flag survives the restart between two messages"
       (lambda ()
-        ;; NO FIXTURE PIPELINES A LENIENT MESSAGE. If the ask chain sat inside
-        ;; the message loop the embedder would be asked again; if the flag
-        ;; lived in `flags` the restart would store zero over it. Either way
-        ;; the SECOND message would be strict, and this is what says it is
-        ;; not.
+        ;; NO FIXTURE PIPELINES A LENIENT MESSAGE. If the flag lived in
+        ;; `flags` the restart would store zero over it and the SECOND message
+        ;; would be strict; this is what says it is not.
         (let ((ls (trace '(request version)
                          (string-append "GET / HTTP/5.6\r\n\r\n"
                                         "GET / HTTP/5.6\r\n\r\n"))))
@@ -130,16 +125,11 @@
                          "off=36 message complete")))))
     (harness-case "the mode outlives every restart on one parser"
       (lambda ()
-        ;; THE CLAIM THE FOURTH UPSTREAM BRIEF MADE, kept as a measurement now
-        ;; that the brief is answered. Under the ask chain this was a COUNT --
-        ;; the asks were idempotent, so a chain that ran per message produced
-        ;; an identical trace and only a counting binding could see the
-        ;; difference. There is no callback to count any more, and the
-        ;; property is read straight off the field instead: three messages on
-        ;; one parser, two restarts between them, and the bitset the embedder
-        ;; wrote is still there at the end.
+        ;; Read straight off the field: three messages on one parser, two
+        ;; restarts between them, and the bitset the embedder wrote is still
+        ;; there at the end.
         ;;
-        ;; It can still regress. The restart stores zero over `flags`, and
+        ;; The restart stores zero over `flags`, and
         ;; `lenient-flags` is a SEPARATE field for exactly this reason; a
         ;; grammar that folded the two together would clear the mode on the
         ;; first restart and this case is what would say so.
@@ -181,14 +171,12 @@
                      '("off=14 error code=9 reason=\"Invalid HTTP version\""))))
     (harness-case "and a parser told nothing at all refuses at the first byte"
       (lambda ()
-        ;; THE ONE THING THIS CHANGE MADE LATER RATHER THAN EARLIER, kept as
-        ;; a case so the trade is visible. `on-message-type` was a REQUIRED
-        ;; callback and an omitted binding was refused by `make-parser`; a
-        ;; field initial cannot be made mandatory, so a parser built with no
-        ;; `type` starts at the declared TYPE-BOTH and refuses at offset 0
-        ;; instead. Same refusal, same reason string llhttp's `type` gap
-        ;; produces here -- one feed later. Decision 0021 records why that
-        ;; was accepted.
+        ;; A field initial cannot be made mandatory, so a parser built with
+        ;; no `type` starts at the declared TYPE-BOTH -- llhttp's HTTP_BOTH,
+        ;; whose `start_req_or_res` arm this parser does not implement -- and
+        ;; refuses at offset 0, with the reason string llhttp's `type` gap
+        ;; produces here. The refusal comes at the first feed rather than at
+        ;; construction, and it is still a refusal rather than a guess.
         (let* ((r (make-trace-recorder))
                (p (make-parser machine (trace-recorder-bindings r '(request) #f) #f))
                (bv (string->utf8 "GET / HTTP/1.1\r\n\r\n")))
@@ -202,12 +190,12 @@
 
 (harness-group "LENIENT_HEADERS, at the one site no fixture reaches"
   (lambda ()
-    ;; FIVE OF THE SIX SITES ARE COVERED BY THE CORPUS and were found to be
-    ;; by disabling each in turn: only this one broke nothing. The fixture
-    ;; that would reach it -- request/invalid.md#22, "Spaces before headers"
-    ;; -- is typed `request-lenient-all` and stays deferred until all nine of
-    ;; those flags land. So both halves below were measured against a LIVE
-    ;; llhttp at `v9.4.3-1-gee51043`: the strict one from the plain
+    ;; FIVE OF THE SIX SITES ARE REACHED BY A SINGLE-FLAG FIXTURE, as
+    ;; disabling each in turn shows. The sixth is reached only by
+    ;; request/invalid.md#22, "Spaces before headers", which is typed
+    ;; `request-lenient-all` and so sets nine flags at once. Both halves below
+    ;; isolate the one flag, measured against a LIVE llhttp at
+    ;; `v9.4.3-1-gee51043`: the strict one from the plain
     ;; `http-request-c`, the lenient one from a binary built with
     ;; `-DLLPARSE__TEST_INIT=llhttp__test_init_request_lenient_headers`, both
     ;; at scan size 28.
@@ -242,9 +230,9 @@
 
 (harness-group "OPTIONAL_CR_BEFORE_LF, at the one site no fixture reaches"
   (lambda ()
-    ;; Ten sites, and the same sweep that found LENIENT_HEADERS' gap found
-    ;; this one: nine broke two lanes each when disabled, and this broke
-    ;; nothing. Measured against a live llhttp at `v9.4.3-1-gee51043` -- the
+    ;; Ten sites, and the same disable sweep separates this one: each of the
+    ;; other nine breaks two lanes when disabled, and this breaks nothing.
+    ;; Measured against a live llhttp at `v9.4.3-1-gee51043` -- the
     ;; strict half from the plain `http-request-c`, the lenient half from a
     ;; build carrying
     ;; `-DLLPARSE__TEST_INIT=llhttp__test_init_request_lenient_optional_cr_before_lf`
@@ -269,20 +257,17 @@
                        "off=24 headers complete method=1 v=1/1 flags=0 content_length=0"
                        "off=24 message complete"))))))
 
-;;; This one is not about a trace. It is the property the fourth upstream
-;;; brief asked for, measured now that the brief is answered -- and it is
-;;; STRONGER than what the ask chain gave. Under the chain the field was zero
-;;; until the first byte arrived, a reset really did clear it, and the mode
-;;; came back only because the next feed re-entered the chain and asked again.
-;;; A settable field is never unset and never cleared.
+;;; This one is not about a trace. A settable field reads the embedder's value
+;;; before any byte arrives and still reads it after a reset: it is never
+;;; unset and never cleared.
 (harness-group "a reset restores the embedder's mode, not the declared one"
   (lambda ()
     (harness-case "the mode is there before the first byte and after a reset"
       (lambda ()
         ;; `parser-reset!` restores each field to the initial the PARSER was
         ;; built with -- the embedder's where one was given, the machine's
-        ;; otherwise. That distinction is the whole of the generator's
-        ;; decision 0047, and this is the case that would catch it reverting.
+        ;; otherwise. This is the case that would catch a reset restoring the
+        ;; machine's declared initial instead.
         (let* ((r (make-trace-recorder))
                (p (make-parser machine
                                (trace-recorder-bindings r '(request) #f) #f
@@ -301,10 +286,10 @@
                    (not (eq? (parser-result-status res) 'error)))))))))
 
 ;;; A BARE LF AFTER THE VERSION NEEDS TWO FLAGS, AND ONE OF THEM ALONE MOVES
-;;; ONLY THE ERROR CODE. Found by the live differential's lenient kind on its
-;;; first run, and invisible to every fixture upstream ships: the corpus
-;;; tests one flag at a time, where this needs a pair, and its only
-;;; combination fixtures are `*-lenient-all`, which set both.
+;;; ONLY THE ERROR CODE. The live differential's lenient kind reaches it, and
+;;; no fixture upstream ships does: the corpus tests one flag at a time, where
+;;; this needs a pair, and its only combination fixtures are
+;;; `*-lenient-all`, which set both.
 ;;;
 ;;; Upstream's two nodes, and the whole of the behaviour:
 ;;;
@@ -325,10 +310,13 @@
 ;;; an LF the input has already spent. With `optional-cr-before-lf` alone the
 ;;; parse still fails -- at the SAME OFFSET and with the SAME REASON as
 ;;; strict, and a different code. Reading the reason alone cannot tell the
-;;; two apart, which is how this parser came to jump straight to the headers.
+;;; two apart; only the code does.
 ;;;
-;;; THIS IS THE THIRD INTERACTION OF ITS SHAPE. Decision 0020 records the
-;;; other two.
+;;; THIS IS ONE OF THREE CROSS-FLAG INTERACTIONS. A bare LF after a chunk size
+;;; needs the same two flags, and a request's invalid Transfer-Encoding is
+;;; accepted under EITHER of LENIENT_CHUNKED_LENGTH and
+;;; LENIENT_TRANSFER_ENCODING -- a condition stated in llhttp's hand-written C,
+;;; not its grammar.
 (define (after-version flags input)
   ;; The last two lines: the version event and what follows it. The nine
   ;; before are the same in every case here and say nothing.
@@ -367,11 +355,10 @@
                      '("off=24 headers complete method=4 v=1/1 flags=0 content_length=0"
                        "off=24 message complete"))))))
 
-;;; AND A STATUS LINE WITH NO REASON PHRASE HAS A SITE M10 NEVER FOUND.
-;;; Decision 0020's disable sweep counted thirty-two forks and measured each
-;;; one; it could not count a fork that was not there. Upstream's
-;;; `res_status_code_otherwise` has an LF arm this parser left as a flat
-;;; error:
+;;; AND A STATUS LINE WITH NO REASON PHRASE HAS A LENIENT SITE OF ITS OWN.
+;;; A disable sweep cannot find it, because it counts the forks that exist.
+;;; Upstream's `res_status_code_otherwise` has an LF arm gated on
+;;; OPTIONAL_CR_BEFORE_LF:
 ;;;
 ;;;     n('res_status_code_otherwise')
 ;;;       .match(' ', n('res_status_start'))
@@ -384,8 +371,8 @@
 ;;; NO FIXTURE UPSTREAM SHIPS REACHES IT: `Invalid response status` appears
 ;;; nowhere in the 274, which `corpus-load-tests.sps` already pins, and a
 ;;; response whose status line has NO REASON PHRASE and ends in a BARE LF is
-;;; two unusual things at once. The live differential's lenient kind found it
-;;; at two seeds.
+;;; two unusual things at once. The live differential's lenient kind reaches
+;;; it.
 ;;;
 ;;; UNLIKE THE REQUEST SIDE ABOVE, ONE FLAG IS ENOUGH -- upstream's lenient
 ;;; arm here goes straight to `onStatusComplete` rather than to a node that
@@ -406,7 +393,7 @@
     (harness-case "OPTIONAL_LF_AFTER_CR alone changes nothing"
       (lambda ()
         ;; There is no CR, so the other flag has nothing to govern -- the
-        ;; check that this site belongs to the flag it is now forked on.
+        ;; check that this site belongs to the flag it is forked on.
         (check-equal "lf-after-cr"
                      (status-line '(optional-lf-after-cr) "HTTP/1.1 200\nA: b\n\n")
                      '("off=8 version complete"

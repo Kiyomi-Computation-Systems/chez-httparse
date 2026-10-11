@@ -6,8 +6,7 @@
 ;;; arithmetic over it. That is what lets the three consumers that must agree
 ;;; import ONE source: the grammar declares the fields, the test harness
 ;;; builds a parser per fixture, and an embedder writes the `field-initials`
-;;; argument. Before byte-machine v0.5.0 the agreement was between a grammar
-;;; and a harness that each kept their own list.
+;;; argument.
 ;;;
 ;;; The numbers are llhttp's, not this project's. `lenient_flags` is its
 ;;; `enum llhttp_lenient_flags` (`src/native/api.c`, `LENIENT_HEADERS = 1 << 0`
@@ -76,8 +75,8 @@
 
   ;; llhttp's `enum llhttp_type`. `both` is llhttp's default and NOT this
   ;; parser's supported mode: its `start_req_or_res` sniffs the first bytes
-  ;; and v0.1 does not, so a parser left at `both` errors at the first byte
-  ;; rather than guessing.
+  ;; and this parser does not, so a parser left at `both` errors at the
+  ;; first byte rather than guessing.
   (define httparse-message-types '((both 0) (request 1) (response 2)))
   (define httparse-message-type-names (map car httparse-message-types))
 

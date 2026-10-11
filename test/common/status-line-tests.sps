@@ -31,8 +31,8 @@
   (make-interpreted-machine (verify-machine (make-message-machine))))
 
 ;; trace-as : Symbol String -> (Listof String)
-;; The KIND is an argument because the parser cannot be built without it, and
-;; that is the whole of what `on-message-type` does.
+;; The KIND is an argument because a parser not told it refuses at the first
+;; byte; it becomes the `type` initial `make-parser` writes.
 (define (trace-as kind input)
   (let* ((r (make-trace-recorder))
          (p (make-parser machine (trace-recorder-bindings r (list kind) #f) #f
