@@ -157,5 +157,8 @@ measurement.
 
 © [[https://kiyomicomputation.systems/][Kiyomi Computation Systems LLC]]. BSD 3-Clause; see [[file:LICENSE][LICENSE]].
 
-llhttp's conformance corpus is vendored under =test/vendor/llhttp/= as test
-data. It is MIT licensed and is not part of the distributed library.
+The parser is a port of llhttp's, and its grammars, method table and error
+reasons derive from llhttp (MIT, © 2018 Fedor Indutny). llhttp's
+conformance corpus is vendored under =test/vendor/llhttp/= as test data and is
+not part of the library. [[file:NOTICE][NOTICE]] has the attributions and
+llhttp's license text.

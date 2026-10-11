@@ -1,5 +1,8 @@
 ;;; (httparse url-grammar): llhttp's URL sub-parser, as a source machine.
 ;;;
+;;; Derived from llhttp (https://github.com/nodejs/llhttp), MIT License,
+;;; Copyright (c) 2018 Fedor Indutny. See NOTICE at the repository root.
+;;;
 ;;; BUILD TIME ONLY, like its sibling (httparse grammar). This is a SECOND
 ;;; machine and not more of the first one: llhttp builds it from `URL.build()`
 ;;; with `separateSpans = true`, loops its two exits back to its own entry, and

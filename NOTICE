@@ -1,0 +1,54 @@
+chez-httparse
+Copyright (c) 2026, Kiyomi Computation Systems LLC
+
+chez-httparse is licensed under the BSD 3-Clause License; see LICENSE.
+
+This product includes material derived from, and data taken from, third-party
+software, listed below with its license.
+
+
+llhttp
+https://github.com/nodejs/llhttp
+
+chez-httparse is a port of llhttp's HTTP/1 parser. The grammars in
+src/httparse/grammar.sls and src/httparse/url-grammar.sls follow llhttp's
+state machine; src/httparse/methods.sls, modes.sls and decisions.sls carry
+its method table, mode numbering and connection rules; and the error codes
+and reason strings are llhttp's. The generated parsers in src/generated/ are
+emitted from these sources.
+
+The conformance corpus under test/vendor/llhttp/ is llhttp's test data,
+vendored unmodified. It is used only by the test suite and is not part of
+the library.
+
+    MIT License
+
+    Copyright © 2018 Fedor Indutny
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the
+    "Software"), to deal in the Software without restriction, including
+    without limitation the rights to use, copy, modify, merge, publish,
+    distribute, sublicense, and/or sell copies of the Software, and to permit
+    persons to whom the Software is furnished to do so, subject to the
+    following conditions:
+
+    The above copyright notice and this permission notice shall be included
+    in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+    NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+    DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+    OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+    USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+byte-machine
+https://github.com/Kiyomi-Computation-Systems/byte-machine
+
+The state-machine generator and its runtime library, vendored as a git
+submodule at vendor/byte-machine. Generated parsers import its runtime.
+Same copyright holder as this project; licensed under the BSD 3-Clause
+License, whose text is in vendor/byte-machine/LICENSE.
