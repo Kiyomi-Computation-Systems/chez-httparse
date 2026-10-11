@@ -100,6 +100,12 @@ code{font-family:var(--mono);font-size:13px;background:var(--code);padding:1.5px
 table{font-family:var(--table);border-collapse:collapse;width:100%;font-size:14px;margin:8px 0 6px}
 th{text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--bd2);padding:8px 12px}
 td{border-bottom:1px solid var(--bd);padding:8px 12px;color:var(--body)}
+/* A column's alignment comes from the Markdown separator row, which the
+ * renderer emits as an `align` attribute on every cell of the column. The
+ * `th` rule above would otherwise pin headers left over a right-aligned
+ * column of numbers. */
+th[align="right"],td[align="right"]{text-align:right}
+th[align="center"],td[align="center"]{text-align:center}
 td code{font-size:12.5px}
 
 pre{font-family:var(--mono);background:var(--code);border:1px solid var(--bd);border-radius:9px;
