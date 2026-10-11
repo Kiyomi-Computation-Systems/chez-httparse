@@ -51,10 +51,10 @@ tells you, but on *two different result channels*. A dispatch on
 [`parser-result-status`](reference.md#parser-result-status-accessor) alone
 will miss one.
 
-| Hand-off                                       | Status    | Reason from           | Code                |
-|------------------------------------------------|-----------|-----------------------|---------------------|
-| CONNECT tunnel, `Connection: upgrade`, or 101  | `'paused` | `parser-result-pause` | `paused-upgrade`    |
-| HTTP/2 preface (`PRI * HTTP/2.0`)              | `'error`  | `parser-result-error` | `paused-h2-upgrade` |
+| Hand-off                                      | Status    | Reason from           | Code                |
+|:----------------------------------------------|:----------|:----------------------|:--------------------|
+| CONNECT tunnel, `Connection: upgrade`, or 101 | `'paused` | `parser-result-pause` | `paused-upgrade`    |
+| HTTP/2 preface (`PRI * HTTP/2.0`)             | `'error`  | `parser-result-error` | `paused-h2-upgrade` |
 
 The first is a pause because the parse could resume. The second is an
 `'error` because llhttp implements the h2 preface that way; its reason still

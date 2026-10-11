@@ -8,7 +8,7 @@ every chunk size.
 Of the 274:
 
 | fixtures | exercise                            |
-|---------:|-------------------------------------|
+|---------:|:------------------------------------|
 |      190 | strict request and response parsing |
 |       26 | pausing and `skipBody`              |
 |       37 | the eleven lenient flags            |

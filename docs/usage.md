@@ -1,14 +1,23 @@
 # Usage
 
-This page assumes the libraries already import; see
-[installing.md](installing.md) if they don't yet.
+You give the parser bytes. It reads them and calls your functions —
+*callbacks* — to tell you what it found: here is the method, here is a
+header name, the message is complete. It never copies your bytes and never
+keeps them, so a callback gets a position in **your** bytevector, not a
+string.
 
-The parser is a state machine plus a binding list. You hand it bytes and it
-calls you back. It allocates nothing per byte, copies no spans and keeps no
-buffer of its own, which is why a span callback receives bounds into *your*
-bytevector rather than a string.
+This page assumes the libraries already import; if they don't, start with
+[installing.md](installing.md).
 
-## Getting started
+## The four steps
+
+1. **Make a parser**, once per connection.
+2. **Feed it bytes** as they arrive, in pieces of any size.
+3. **Read the result** of each feed: carry on, stop on an error, or handle a
+   pause.
+4. **Finish** when the connection closes.
+
+## A first parse
 
 ```scheme
 (import (rnrs)
@@ -16,8 +25,7 @@ bytevector rather than a string.
         (httparse modes)
         (byte-machine runtime))
 
-;; Copy a span out of the buffer you fed. Nothing is retained after the
-;; callback returns, so take what you need before returning.
+;; Copy a span out of the bytevector you fed.
 (define (text bv from to)
   (let ((b (make-bytevector (- to from))))
     (bytevector-copy! bv from b 0 (- to from))
@@ -32,19 +40,16 @@ bytevector rather than a string.
   (make-parser
    httparse-message-machine
    (list
-    ;; A span can arrive in several pieces when the input is split across
-    ;; feeds, so append rather than assign.
+    ;; A span can arrive in pieces when the input does, so append.
     (list 'on-url-data
           (lambda (p ctx bv from to)
             (set! target (string-append target (text bv from to)))
             callback-continue))
     (list 'on-message-begin ignore-event)
     (list 'on-method-data ignore-span)
-    ;; ... and every other callback, bound the same way. All 25 are
-    ;; required: a binding list with a hole is refused here.
+    ;; ... and the other 22 callbacks, bound the same way.
     )
    #f
-   ;; Request or response: nothing in the bytes says which is coming.
    (list (cons 'type (httparse-message-type-value 'request)))))
 
 (define request
@@ -52,197 +57,154 @@ bytevector rather than a string.
 
 (parser-result-status
  (parser-feed! parser request 0 (bytevector-length request)))
-;; => need-input, and target is "/index.html"
+;; => need-input, and target is now "/index.html"
 ```
 
-The complete, runnable version is
-[`test/common/example-tests.sps`](../test/common/example-tests.sps). The
-test suite runs it, so it cannot drift from the library; it binds all 25
-callbacks, feeds a request in three pieces, reads parser fields and reads an
-error.
+The example leaves out most callbacks to stay short. The full, runnable
+version is [`test/common/example-tests.sps`](../test/common/example-tests.sps);
+the test suite runs it, so it always matches the library.
 
-The callbacks and their arguments are [callbacks.md](callbacks.md). The
-modes are [modes.md](modes.md). Errors are [errors.md](errors.md), and
-pauses and upgrade hand-offs are [pausing.md](pausing.md).
+## 1. Make a parser
 
-## What to import
+[`make-parser`](reference.md#make-parser-procedure) takes four arguments:
 
-```scheme
-(import (generated httparse-message)   ; httparse-message-machine
-        (httparse modes)               ; the mode tables, pure
-        (httparse methods)             ; the method table, pure
-        (httparse decisions)           ; keep-alive / needs-eof, pure
-        (byte-machine runtime))        ; make-parser, parser-feed!, ...
-```
+| Argument       | What to pass                                                          |
+|:---------------|:----------------------------------------------------------------------|
+| machine        | `httparse-message-machine`                                            |
+| bindings       | one `(list 'callback-name procedure)` for each of the 25 callbacks    |
+| user context   | anything you like; every callback receives it as `ctx`. `#f` is fine. |
+| field initials | the modes: request or response, and any lenient flags                 |
 
-| Library                         | You need it to                                             |
-|---------------------------------|------------------------------------------------------------|
-| `(generated httparse-message)`  | get [`httparse-message-machine`](reference.md#httparse-message-machine-value), the parser itself |
-| `(byte-machine runtime)`        | make a parser, feed it, and read results and errors        |
-| `(httparse modes)`              | spell `make-parser`'s fourth argument                      |
-| `(httparse methods)`            | turn the method number a message reports into a name      |
-| `(httparse decisions)`          | decide keep-alive or close after a message                 |
+**Bind every callback.** All 25 are required. If one is missing,
+`make-parser` refuses rather than quietly ignoring it — a parser that
+silently dropped `on-body-data` would look like a message with no body.
+[callbacks.md](callbacks.md) lists them.
 
-`src/generated/httparse-message.sls` is a derived file, emitted from
-`src/httparse/grammar.sls` and committed, so what ships is reviewable as a
-diff and loads without running a generator. It depends on
-`(byte-machine runtime)` and nothing else.
+**Always say request or response.** Nothing in the bytes tells the parser
+which is coming, so there is no safe default. [modes.md](modes.md) covers
+this and the lenient flags.
 
-`(httparse modes)` is pure and depends on nothing. It is llhttp's two mode
-tables and the arithmetic over them. The integers are llhttp's own, so a
-caller that already has one may pass it directly.
+**Keep one parser per connection.** It parses one message after another, so
+you build it once. Building one costs about 1.9 µs, which matters if you
+make one per message ([performance.md](performance.md)).
 
-`(httparse methods)` is pure in the same way: llhttp's 47 method names and
-the number it prints for each. A message reports its method as that number;
-[`httparse-method-name`](reference.md#httparse-method-name-procedure) turns
-it into a symbol for logging or routing, and
-[`httparse-method-number`](reference.md#httparse-method-number-procedure)
-goes back. An unknown name or number is refused, never defaulted: zero is
-`DELETE`, a real method, so a typo must not read as one.
-
-`(httparse decisions)` is covered in [connection.md](connection.md).
-
-## Making a parser
-
-[`make-parser`](reference.md#make-parser-procedure) takes up to four
-arguments:
-
-| Argument          | What it is                                                     |
-|-------------------|----------------------------------------------------------------|
-| machine           | `httparse-message-machine`                                     |
-| bindings          | a list of `(list 'callback-name procedure)`, one per callback  |
-| user context      | any value; handed back to every callback as `ctx`             |
-| field initials    | optional; an alist that sets the modes                         |
-
-Use the user context for the connection state you would otherwise close
-over. `#f` is fine.
-
-**Every callback must be bound.** All 25 are required, and a binding list
-with a hole is refused when the parser is made, not quietly ignored. A
-parser that silently dropped `on-body-data` would look like a message with
-no body.
-
-The fourth argument is where the modes go: request or response, and any of
-llhttp's eleven lenient flags. Request-or-response has no safe default, so
-always pass it. See [modes.md](modes.md).
-
-## Feeding bytes
+## 2. Feed it bytes
 
 ```scheme
 (parser-feed! parser bv start end)
 ```
 
-[`parser-feed!`](reference.md#parser-feed-procedure) consumes the half-open
-range `[start, end)` of `bv`. Feed as much or as little as you have. The
-parser resumes exactly where it stopped, and a token, a header or a body
-split across any number of feeds produces the same result as one whole
-buffer. One exception is measured and documented in
-[conformance.md](conformance.md).
+[`parser-feed!`](reference.md#parser-feed-procedure) reads the bytes of
+`bv` from `start` up to, not including, `end`. Feed whatever you have — a
+whole request, one byte, anything between. The parser picks up exactly where
+it stopped, and the result is the same as if all the bytes had come in one
+piece. (One rare exception, involving errors, is described in
+[conformance.md](conformance.md).)
 
-Each feed returns a result.
+## 3. Read the result
 
-## Reading the result
+Every feed returns a result. Its status tells you what to do next:
 
-| Accessor                       | What it gives                                    |
-|--------------------------------|--------------------------------------------------|
-| [`parser-result-status`](reference.md#parser-result-status-accessor)         | one of the statuses below                        |
-| [`parser-result-consumed`](reference.md#parser-result-consumed-accessor)       | bytes taken from this feed                       |
-| [`parser-result-next`](reference.md#parser-result-next-accessor)           | where to resume in this buffer                   |
-| [`parser-result-stream-offset`](reference.md#parser-result-stream-offset-accessor)  | bytes taken since the parser was made            |
-| [`parser-result-error`](reference.md#parser-result-error-accessor)          | a `ParserError` when the status is `'error`      |
-| [`parser-result-pause`](reference.md#parser-result-pause-accessor)          | the pause reason when the status is `'paused`    |
+| Status                   | What happened                                               | What you do                                                         |
+|:-------------------------|:------------------------------------------------------------|:--------------------------------------------------------------------|
+| `'need-input`            | It read everything you gave it.                             | Feed more when it arrives.                                          |
+| `'error`                 | The message is malformed, or a callback reported a failure. | Read the error ([errors.md](errors.md)).                            |
+| `'paused`                | A callback asked to pause, or the request wants an upgrade. | Resume, then feed from where it stopped ([pausing.md](pausing.md)). |
+| `'finished` / `'stopped` | The parser reached an end state.                            | Stop feeding.                                                       |
 
-`parser-result-next` shares the coordinates of the `start` and `end` you
-passed, so it feeds straight back in. `parser-result-stream-offset` is the
-absolute count, and is what you log.
+`'need-input` is the normal answer, **even after a complete message**: the
+connection may carry another one. You learn that a message is complete from
+the `on-message-complete` callback, not from the status.
 
-| Status                   | Meaning                                                          |
-|--------------------------|------------------------------------------------------------------|
-| `'need-input`            | The range is consumed; feed more.                                |
-| `'error`                 | The message is malformed, a callback failed, or the HTTP/2 preface handed off. |
-| `'paused`                | A callback returned `callback-pause`, or a CONNECT/Upgrade hand-off. |
-| `'finished` / `'stopped` | The machine reached a terminal state.                            |
+A result carries more than its status:
 
-`'need-input` is the ordinary outcome, including **after a complete
-message**: a connection may carry another one, so a completed message is
-not a status of its own. You learn of it from `on-message-complete`.
+| Accessor                                                                           | What it tells you                               |
+|:-----------------------------------------------------------------------------------|:------------------------------------------------|
+| [`parser-result-status`](reference.md#parser-result-status-accessor)               | one of the statuses above                       |
+| [`parser-result-consumed`](reference.md#parser-result-consumed-accessor)           | how many bytes this feed read                   |
+| [`parser-result-next`](reference.md#parser-result-next-accessor)                   | where to start the next feed in this bytevector |
+| [`parser-result-stream-offset`](reference.md#parser-result-stream-offset-accessor) | how many bytes it has read since it was made    |
+| [`parser-result-error`](reference.md#parser-result-error-accessor)                 | the error, when the status is `'error`          |
+| [`parser-result-pause`](reference.md#parser-result-pause-accessor)                 | why it paused, when the status is `'paused`     |
 
-On `'error`, `parser-result-error` carries the detail, and for a
-malformation the parser makes no further progress. Read its code, reason
-and offset as [errors.md](errors.md) describes.
+`parser-result-next` counts in the same positions as the `start` and `end`
+you passed, so you can feed it straight back in. The stream offset counts
+from the first byte the parser ever saw, which makes it the number to log.
 
-On `'paused`, call `parser-resume!` and feed again from
-`parser-result-next`. The resume loop, and how to tell an ordinary pause
-from an upgrade hand-off, are in [pausing.md](pausing.md). The HTTP/2
-preface hands off on the `'error` channel instead, and pausing.md covers
-that too.
+A typical feed loop looks like this:
 
 ```scheme
 (let ((r (parser-feed! parser chunk 0 (bytevector-length chunk))))
   (case (parser-result-status r)
-    ((need-input) 'feed-more)
+    ((need-input) 'read-more-from-the-socket)
     ((error) (parser-error-reason (parser-result-error r)))
     (else (parser-result-status r))))
 ```
 
-## Lifecycle
+## 4. Finish
 
-Three procedures move a parser between parses, past a pause, and to the end
-of its input.
+When the connection closes, call
+[`parser-finish!`](reference.md#parser-finish-procedure). It tells the
+parser no more bytes are coming and asks: is it all right to stop here? The
+result's status is `'finished`, `'error` or `'paused`. A finish reads no
+bytes, so the result's consumed count is 0.
 
-### Reset
+- **Stopped cleanly between messages** — the status is `'finished`.
+- **Stopped halfway through a message** — the status is `'error`, with
+  llhttp's `invalid-eof-state`, "Invalid EOF state" (code 14).
+- **A body that runs until the connection closes** — this message completes
+  here, at the finish, and nowhere else. `on-message-complete` fires during
+  the finish. These are:
+  - a response with neither `Content-Length` nor `Transfer-Encoding`
+  - a response whose `Transfer-Encoding` does not end in `chunked`
+  - a request whose `Transfer-Encoding` does not end in `chunked`, with the
+    `transfer-encoding` or `chunked-length` lenient flag set
 
-[`parser-reset!`](reference.md#parser-reset-procedure) returns the parser to
-its just-constructed state, fields included. They are restored to the
-initials the parser was **built with**: yours for the two modes, the
-machine's declared ones for everything else. Not to zero, and not back to
-the machine's defaults, so a reset keeps the request-or-response mode you
-chose.
+The body's bytes still arrive through `on-body-data` during the feeds that
+carried them; the finish runs `on-message-complete` and nothing else. A body
+that received no bytes gets no `on-body-data` call at all, not an empty one.
 
-### Resume
+[`message-needs-eof?`](reference.md#message-needs-eof-predicate) says in
+advance whether a message ends this way; see [connection.md](connection.md).
 
-[`parser-resume!`](reference.md#parser-resume-procedure) changes the
-lifecycle only. No callback runs, no input is read, and it returns an
-acknowledgement symbol rather than a result. Feed or finish again
-afterwards. Feeding a paused parser without resuming it raises.
+llhttp's test corpus never finishes a parse, so none of this is checked
+against llhttp's own traces.
+[`test/common/finish-tests.sps`](../test/common/finish-tests.sps) pins it
+instead.
 
-### Finish
+## Starting over: reset and resume
 
-[`parser-finish!`](reference.md#parser-finish-procedure) says the input has
-ended and asks whether stopping here is legal. It runs the machine with
-input exhausted, taking each state's end-of-input route, and returns a
-result whose status is `'finished`, `'error` or `'paused`. A finish reads no
-bytes, so its result's `consumed` is 0 and `next` repeats the stream
-offset.
+- [`parser-reset!`](reference.md#parser-reset-procedure) puts the parser
+  back the way it was when you made it, so you can use it for a new
+  connection. The modes you chose stay: they reset to what you passed to
+  `make-parser`, not to zero.
+- [`parser-resume!`](reference.md#parser-resume-procedure) lets a paused
+  parser continue. It reads nothing itself — feed or finish afterwards.
+  Feeding a paused parser without resuming it raises an error.
+  [pausing.md](pausing.md) has the full loop.
 
-Finishing from an unsafe, mid-message state is llhttp's
-`invalid-eof-state`, "Invalid EOF state" (code 14), the same from every such
-state.
+## What to import
 
-A body the **connection** delimits is the one message that completes at
-`parser-finish!` and nowhere else: its body runs to the close, so no feed
-can end it. That is:
+```scheme
+(import (generated httparse-message)   ; the HTTP parser
+        (byte-machine runtime)         ; make-parser, parser-feed!, results
+        (httparse modes)               ; request or response, lenient flags
+        (httparse methods)             ; method numbers <-> names
+        (httparse decisions))          ; keep-alive or close
+```
 
-- a response with neither `Content-Length` nor `Transfer-Encoding`
-- a response whose `Transfer-Encoding` does not end in `chunked`
-- a request whose `Transfer-Encoding` does not end in `chunked`, under the
-  `transfer-encoding` or `chunked-length` lenient flag
+| Library                        | You need it to                                                                            |
+|:-------------------------------|:------------------------------------------------------------------------------------------|
+| `(generated httparse-message)` | get [`httparse-message-machine`](reference.md#httparse-message-machine-value), the parser |
+| `(byte-machine runtime)`       | make a parser, feed it, and read results and errors                                       |
+| `(httparse modes)`             | say request or response, and choose lenient flags                                         |
+| `(httparse methods)`           | turn the method number a message reports into a name                                      |
+| `(httparse decisions)`         | decide keep-alive or close after a message                                                |
 
-`on-message-complete` fires on that finish, mirroring llhttp's
-`llhttp_finish` for a `SAFE_WITH_CB` body, and a pause or failure that
-callback returns is what the finish result carries.
+The last three are plain tables and small functions; they load nothing else.
+`(httparse methods)` refuses an unknown name or number rather than guessing:
+method 0 is `DELETE`, so a typo must not quietly become one.
 
-It is the only callback a finish runs. The body's bytes arrive with the
-feeds that carried them, which is where llhttp delivers them too, so by the
-finish every one has been through `on-body-data`. A body that got no bytes
-gets no `on-body-data` at all, not an empty one at the finish; llhttp's
-`on_body` does not fire for it either.
-
-llhttp's conformance corpus never calls `llhttp_finish`, so a finish's
-outcome carries no corpus evidence. The behaviour above is pinned by
-[`test/common/finish-tests.sps`](../test/common/finish-tests.sps) instead.
-Pauses from a feed are different: 24 corpus fixtures record one, and this
-parser matches all of them at every chunk size.
-
-Whether a message is close-delimited is the `message-needs-eof?` decision;
-see [connection.md](connection.md).
+`src/generated/httparse-message.sls` is generated from
+`src/httparse/grammar.sls` and checked in, so you can read the parser that
+ships and load it without running the generator.

@@ -11,11 +11,11 @@ turn one family of errors into an HTTP response status.
 
 ## Reading an error
 
-| Accessor                                                               | Gives you                                    |
-|------------------------------------------------------------------------|----------------------------------------------|
-| [`parser-error-code`](reference.md#parser-error-code-accessor)         | a symbol, e.g. `'invalid-header-token`       |
-| [`parser-error-reason`](reference.md#parser-error-reason-accessor)     | llhttp's own text, as a string               |
-| [`parser-error-offset`](reference.md#parser-error-offset-accessor)     | the stream offset where the parser refused   |
+| Accessor                                                                 | Gives you                                  |
+|:-------------------------------------------------------------------------|:-------------------------------------------|
+| [`parser-error-code`](reference.md#parser-error-code-accessor)           | a symbol, e.g. `'invalid-header-token`     |
+| [`parser-error-reason`](reference.md#parser-error-reason-accessor)       | llhttp's own text, as a string             |
+| [`parser-error-offset`](reference.md#parser-error-offset-accessor)       | the stream offset where the parser refused |
 | [`parser-error-node-name`](reference.md#parser-error-node-name-accessor) | the grammar node that refused, as a symbol |
 
 ```scheme
@@ -46,12 +46,12 @@ Every `invalid-transfer-encoding` on a request is a `400`, and the code alone
 is enough to say so. A strict parser refuses a request with that code in four
 ways:
 
-| Request                                  | Node                        | Why a `400`       |
-|------------------------------------------|-----------------------------|-------------------|
-| `Transfer-Encoding:` with an empty value | `e-empty-transfer-encoding` | §6.3, item 4      |
-| `Transfer-Encoding: chunked, deflate`    | `e-bad-te-value`            | §6.3, item 4      |
-| `Transfer-Encoding: gzip`                | `e-request-invalid-te`      | §6.3, item 4      |
-| `Content-Length`, then `Transfer-Encoding` | `e-te-with-content-length` | §6.1, §6.3 item 3 |
+| Request                                    | Node                        | Why a `400`       |
+|:-------------------------------------------|:----------------------------|:------------------|
+| `Transfer-Encoding:` with an empty value   | `e-empty-transfer-encoding` | §6.3, item 4      |
+| `Transfer-Encoding: chunked, deflate`      | `e-bad-te-value`            | §6.3, item 4      |
+| `Transfer-Encoding: gzip`                  | `e-request-invalid-te`      | §6.3, item 4      |
+| `Content-Length`, then `Transfer-Encoding` | `e-te-with-content-length`  | §6.1, §6.3 item 3 |
 
 The sections are RFC 9112's.
 

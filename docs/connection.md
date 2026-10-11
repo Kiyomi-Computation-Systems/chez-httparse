@@ -10,15 +10,15 @@ llhttp's own two decisions in `(httparse decisions)`.
 `(parser-field-ref parser name)` returns a field's current value as an
 integer. The message parser exposes these:
 
-| Field             | Value                                                     |
-|-------------------|-----------------------------------------------------------|
-| `'method`         | llhttp's method number, not an index into any list here   |
-| `'status-code`    | a response's three digits                                 |
-| `'http-major`     | the major version                                         |
-| `'http-minor`     | the minor version                                         |
-| `'flags`          | llhttp's flag bits                                        |
-| `'content-length` | *what remains to be read*, not what was declared          |
-| `'upgrade`        | 1 if this message upgrades, as `llhttp_get_upgrade`       |
+| Field             | Value                                                   |
+|:------------------|:--------------------------------------------------------|
+| `'method`         | llhttp's method number, not an index into any list here |
+| `'status-code`    | a response's three digits                               |
+| `'http-major`     | the major version                                       |
+| `'http-minor`     | the minor version                                       |
+| `'flags`          | llhttp's flag bits                                      |
+| `'content-length` | *what remains to be read*, not what was declared        |
+| `'upgrade`        | 1 if this message upgrades, as `llhttp_get_upgrade`     |
 
 A name the machine does not declare raises; it is never answered with a
 default. The access is read-only: nothing sets a field from a callback.
@@ -36,10 +36,10 @@ To turn `method` into a symbol, use `httparse-method-name` from
 `(httparse decisions)` is pure and turns those fields into llhttp's own two
 after-a-message decisions:
 
-| Procedure                                                          | Arguments                                   | Mirrors                      |
-|--------------------------------------------------------------------|---------------------------------------------|------------------------------|
-| [`should-keep-alive?`](reference.md#should-keep-alive-predicate)    | major, minor, type, status code, flags      | `llhttp_should_keep_alive`   |
-| [`message-needs-eof?`](reference.md#message-needs-eof-predicate)    | type, status code, flags                    | `llhttp_message_needs_eof`   |
+| Procedure                                                        | Arguments                              | Mirrors                    |
+|:-----------------------------------------------------------------|:---------------------------------------|:---------------------------|
+| [`should-keep-alive?`](reference.md#should-keep-alive-predicate) | major, minor, type, status code, flags | `llhttp_should_keep_alive` |
+| [`message-needs-eof?`](reference.md#message-needs-eof-predicate) | type, status code, flags               | `llhttp_message_needs_eof` |
 
 They mirror llhttp exactly. `should-keep-alive?` is the version and
 `Connection` gate *and* not needing eof, so it takes both the version and
@@ -93,16 +93,16 @@ so you can name a bit rather than hard-code `2`. The grammar imports the same
 definitions.
 
 | Constant                  | Value |
-|---------------------------|-------|
-| `F-CONNECTION-KEEP-ALIVE` | 1     |
-| `F-CONNECTION-CLOSE`      | 2     |
-| `F-CONNECTION-UPGRADE`    | 4     |
-| `F-CHUNKED`               | 8     |
-| `F-UPGRADE`               | 16    |
-| `F-CONTENT-LENGTH`        | 32    |
-| `F-SKIP-BODY`             | 64    |
-| `F-TRAILING`              | 128   |
-| `F-TRANSFER-ENCODING`     | 512   |
+|:--------------------------|------:|
+| `F-CONNECTION-KEEP-ALIVE` |     1 |
+| `F-CONNECTION-CLOSE`      |     2 |
+| `F-CONNECTION-UPGRADE`    |     4 |
+| `F-CHUNKED`               |     8 |
+| `F-UPGRADE`               |    16 |
+| `F-CONTENT-LENGTH`        |    32 |
+| `F-SKIP-BODY`             |    64 |
+| `F-TRAILING`              |   128 |
+| `F-TRANSFER-ENCODING`     |   512 |
 
 256 is deliberately absent: llhttp leaves that bit unused. `F-TRAILING` is
 set by the zero chunk, not by a header, and neither decision reads it.

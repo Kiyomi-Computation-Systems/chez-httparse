@@ -14,14 +14,14 @@ the exact binding, how is it called, and where is it exported?
 
 ## Modules
 
-| Module | Purpose | Coverage |
-|---|---|---|
-| `(generated httparse-message)` | The HTTP/1.x message parser, as a compiled machine. | every export |
-| `(generated httparse-url)` | llhttp's URL parser, which splits a request target into parts. | every export |
-| `(httparse modes)` | llhttp's request/response type and lenient-flag tables, and the arithmetic over them. | every export |
-| `(httparse methods)` | llhttp's 47 method names and the number it assigns each. | every export |
-| `(httparse decisions)` | llhttp's keep-alive and needs-EOF rules, and the flag bits they read. | every export |
-| `(byte-machine runtime)` | Parser construction, feeding, results, errors and callback outcomes. | the procedures an embedder calls |
+| Module                         | Purpose                                                                               | Coverage                         |
+|:-------------------------------|:--------------------------------------------------------------------------------------|:---------------------------------|
+| `(generated httparse-message)` | The HTTP/1.x message parser, as a compiled machine.                                   | every export                     |
+| `(generated httparse-url)`     | llhttp's URL parser, which splits a request target into parts.                        | every export                     |
+| `(httparse modes)`             | llhttp's request/response type and lenient-flag tables, and the arithmetic over them. | every export                     |
+| `(httparse methods)`           | llhttp's 47 method names and the number it assigns each.                              | every export                     |
+| `(httparse decisions)`         | llhttp's keep-alive and needs-EOF rules, and the flag bits they read.                 | every export                     |
+| `(byte-machine runtime)`       | Parser construction, feeding, results, errors and callback outcomes.                  | the procedures an embedder calls |
 
 The two generated libraries depend on `(byte-machine runtime)` and nothing
 else. The three `(httparse …)` libraries are pure and depend on nothing at
@@ -165,7 +165,7 @@ returns that status again without running.
 **Raises:** contract code `lifecycle-violation` on a paused parser;
 `reentrancy` from inside a callback; `poisoned-parser` after a callback
 escaped\
-**Details:** [Lifecycle](usage.md#lifecycle)
+**Details:** [Finishing a parse](usage.md#4-finish)
 
 ### `parser-resume!` (procedure)
 
@@ -216,12 +216,12 @@ Returns whether `object` is a result returned by `parser-feed!` or
 
 Returns how the call ended:
 
-| Status | Meaning |
-|---|---|
-| `need-input` | The range is consumed; feed more. The ordinary outcome, including after a complete message, since a connection may carry another. |
-| `error` | The message is malformed, a callback failed, or the HTTP/2 preface handed off. `parser-result-error` has the detail. |
-| `paused` | A callback returned `callback-pause`, or the parser reached a CONNECT or Upgrade hand-off. Resume with `parser-resume!`. |
-| `finished`, `stopped` | The machine reached a terminal state. |
+| Status                | Meaning                                                                                                                           |
+|:----------------------|:----------------------------------------------------------------------------------------------------------------------------------|
+| `need-input`          | The range is consumed; feed more. The ordinary outcome, including after a complete message, since a connection may carry another. |
+| `error`               | The message is malformed, a callback failed, or the HTTP/2 preface handed off. `parser-result-error` has the detail.              |
+| `paused`              | A callback returned `callback-pause`, or the parser reached a CONNECT or Upgrade hand-off. Resume with `parser-resume!`.          |
+| `finished`, `stopped` | The machine reached a terminal state.                                                                                             |
 
 **Available from:** `(byte-machine runtime)`\
 **Details:** [Usage](usage.md)
@@ -422,15 +422,15 @@ Reads one of the parser's fields, by name. It is read-only; nothing writes a
 field from outside the machine. The message machine's fields an embedder
 reads:
 
-| Field | Value |
-|---|---|
-| `method` | llhttp's method number; see `httparse-method-name` |
-| `status-code` | a response's three digits |
-| `http-major`, `http-minor` | the version |
-| `flags` | llhttp's flag bits; see the `F-*` constants |
-| `content-length` | what remains to be read, not what was declared |
-| `upgrade` | 1 if this message upgrades, as `llhttp_get_upgrade`, else 0 |
-| `type`, `lenient-flags` | the modes, as set at construction |
+| Field                      | Value                                                       |
+|:---------------------------|:------------------------------------------------------------|
+| `method`                   | llhttp's method number; see `httparse-method-name`          |
+| `status-code`              | a response's three digits                                   |
+| `http-major`, `http-minor` | the version                                                 |
+| `flags`                    | llhttp's flag bits; see the `F-*` constants                 |
+| `content-length`           | what remains to be read, not what was declared              |
+| `upgrade`                  | 1 if this message upgrades, as `llhttp_get_upgrade`, else 0 |
+| `type`, `lenient-flags`    | the modes, as set at construction                           |
 
 `content-length` counts down as the body arrives: read it in
 `on-headers-complete` for the declared length. `upgrade` is written just
@@ -507,14 +507,14 @@ Returns the bit for one lenient flag, such as 16 for `'version`.
 llhttp's eleven lenient flags and their bits, in llhttp's bit order. Each
 corresponds one-for-one to an `llhttp_set_lenient_*` function.
 
-| Name | Bit | Name | Bit |
-|---|---:|---|---:|
-| `headers` | 1 | `optional-lf-after-cr` | 64 |
-| `chunked-length` | 2 | `optional-crlf-after-chunk` | 128 |
-| `keep-alive` | 4 | `optional-cr-before-lf` | 256 |
-| `transfer-encoding` | 8 | `spaces-after-chunk-size` | 512 |
-| `version` | 16 | `header-value-relaxed` | 1024 |
-| `data-after-close` | 32 | | |
+| Name                | Bit | Name                        | Bit  |
+|:--------------------|----:|:----------------------------|:-----|
+| `headers`           |   1 | `optional-lf-after-cr`      | 64   |
+| `chunked-length`    |   2 | `optional-crlf-after-chunk` | 128  |
+| `keep-alive`        |   4 | `optional-cr-before-lf`     | 256  |
+| `transfer-encoding` |   8 | `spaces-after-chunk-size`   | 512  |
+| `version`           |  16 | `header-value-relaxed`      | 1024 |
+| `data-after-close`  |  32 |                             |      |
 
 **Available from:** `(httparse modes)`\
 **Details:** [Modes](modes.md)
@@ -808,17 +808,17 @@ The HTTP/1.x message parser, to pass to `make-parser`. It declares
 twenty-five callbacks, all required: ten span callbacks, each with its
 completion event, and six events with no span.
 
-| Span | Event |
-|---|---|
-| `on-method-data` | `on-method-complete` |
-| `on-url-data` | `on-url-complete` |
-| `on-protocol-data` | `on-protocol-complete` |
-| `on-version-data` | `on-version-complete` |
-| `on-status-data` | `on-status-complete` |
-| `on-header-field-data` | `on-header-field-complete` |
-| `on-header-value-data` | `on-header-value-complete` |
-| `on-body-data` | |
-| `on-chunk-extension-name-data` | `on-chunk-extension-name-complete` |
+| Span                            | Event                               |
+|:--------------------------------|:------------------------------------|
+| `on-method-data`                | `on-method-complete`                |
+| `on-url-data`                   | `on-url-complete`                   |
+| `on-protocol-data`              | `on-protocol-complete`              |
+| `on-version-data`               | `on-version-complete`               |
+| `on-status-data`                | `on-status-complete`                |
+| `on-header-field-data`          | `on-header-field-complete`          |
+| `on-header-value-data`          | `on-header-value-complete`          |
+| `on-body-data`                  |                                     |
+| `on-chunk-extension-name-data`  | `on-chunk-extension-name-complete`  |
 | `on-chunk-extension-value-data` | `on-chunk-extension-value-complete` |
 
 The events with no span are `on-message-begin`, `on-headers-complete`,

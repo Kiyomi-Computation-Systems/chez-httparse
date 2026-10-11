@@ -73,19 +73,19 @@ A bitset. Zero is strict, and zero is the default when you leave the row out.
 The value is the bitwise OR of the flags you name, so order does not matter
 and naming one twice changes nothing.
 
-| Flag                        | Bit    | llhttp setter                                |
-|-----------------------------|--------|----------------------------------------------|
-| `headers`                   | 1      | `llhttp_set_lenient_headers`                 |
-| `chunked-length`            | 2      | `llhttp_set_lenient_chunked_length`          |
-| `keep-alive`                | 4      | `llhttp_set_lenient_keep_alive`              |
-| `transfer-encoding`         | 8      | `llhttp_set_lenient_transfer_encoding`       |
-| `version`                   | 16     | `llhttp_set_lenient_version`                 |
-| `data-after-close`          | 32     | `llhttp_set_lenient_data_after_close`        |
-| `optional-lf-after-cr`      | 64     | `llhttp_set_lenient_optional_lf_after_cr`    |
-| `optional-crlf-after-chunk` | 128    | `llhttp_set_lenient_optional_crlf_after_chunk` |
-| `optional-cr-before-lf`     | 256    | `llhttp_set_lenient_optional_cr_before_lf`   |
-| `spaces-after-chunk-size`   | 512    | `llhttp_set_lenient_spaces_after_chunk_size` |
-| `header-value-relaxed`      | 1024   | `llhttp_set_lenient_header_value_relaxed`    |
+| Flag                        |  Bit | llhttp setter                                  |
+|:----------------------------|-----:|:-----------------------------------------------|
+| `headers`                   |    1 | `llhttp_set_lenient_headers`                   |
+| `chunked-length`            |    2 | `llhttp_set_lenient_chunked_length`            |
+| `keep-alive`                |    4 | `llhttp_set_lenient_keep_alive`                |
+| `transfer-encoding`         |    8 | `llhttp_set_lenient_transfer_encoding`         |
+| `version`                   |   16 | `llhttp_set_lenient_version`                   |
+| `data-after-close`          |   32 | `llhttp_set_lenient_data_after_close`          |
+| `optional-lf-after-cr`      |   64 | `llhttp_set_lenient_optional_lf_after_cr`      |
+| `optional-crlf-after-chunk` |  128 | `llhttp_set_lenient_optional_crlf_after_chunk` |
+| `optional-cr-before-lf`     |  256 | `llhttp_set_lenient_optional_cr_before_lf`     |
+| `spaces-after-chunk-size`   |  512 | `llhttp_set_lenient_spaces_after_chunk_size`   |
+| `header-value-relaxed`      | 1024 | `llhttp_set_lenient_header_value_relaxed`      |
 
 The bits are llhttp's `enum llhttp_lenient_flags`, in its order. Each flag
 corresponds one-for-one to its llhttp setter and does what that function's

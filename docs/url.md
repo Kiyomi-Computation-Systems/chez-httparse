@@ -16,12 +16,12 @@ It is a second, separate parser: llhttp's own URL machine, in the build its
 
 Five span callbacks, all required, and *no events at all*:
 
-| Callback               | Receives               |
-|------------------------|------------------------|
+| Callback               | Receives                |
+|:-----------------------|:------------------------|
 | `on-url-schema-data`   | the scheme, e.g. `http` |
-| `on-url-host-data`     | the whole authority    |
-| `on-url-path-data`     | the path               |
-| `on-url-query-data`    | the query, after `?`   |
+| `on-url-host-data`     | the whole authority     |
+| `on-url-path-data`     | the path                |
+| `on-url-query-data`    | the query, after `?`    |
 | `on-url-fragment-data` | the fragment, after `#` |
 
 Each is a span callback like the message parser's: `(lambda (parser ctx bv

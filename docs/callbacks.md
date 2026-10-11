@@ -15,13 +15,13 @@ delivers bytes.
 (lambda (parser ctx bv from to) outcome)   ; span
 ```
 
-| Argument | What it is                                                         |
-|----------|--------------------------------------------------------------------|
-| `parser` | the parser that is running                                          |
-| `ctx`    | the user context you passed to `make-parser`                        |
-| `bv`     | the bytevector *you* passed to `parser-feed!`                       |
-| `from`   | where this fragment starts in `bv`                                  |
-| `to`     | where it ends in `bv`, exclusive                                    |
+| Argument | What it is                                    |
+|:---------|:----------------------------------------------|
+| `parser` | the parser that is running                    |
+| `ctx`    | the user context you passed to `make-parser`  |
+| `bv`     | the bytevector *you* passed to `parser-feed!` |
+| `from`   | where this fragment starts in `bv`            |
+| `to`     | where it ends in `bv`, exclusive              |
 
 The bytes in `[from, to)` are not copied and are not retained. Copy what
 you need before returning:
@@ -49,11 +49,11 @@ raises.
 
 Every callback returns one of three outcomes:
 
-| Outcome                                                         | Effect                                                   |
-|-----------------------------------------------------------------|----------------------------------------------------------|
-| [`callback-continue`](reference.md#callback-continue-value)     | carry on parsing                                         |
-| [`callback-pause`](reference.md#callback-pause-value)           | stop this feed with status `'paused`                     |
-| `(make-callback-failure code detail)`                           | stop with status `'error`, carrying your code and detail |
+| Outcome                                                     | Effect                                                   |
+|:------------------------------------------------------------|:---------------------------------------------------------|
+| [`callback-continue`](reference.md#callback-continue-value) | carry on parsing                                         |
+| [`callback-pause`](reference.md#callback-pause-value)       | stop this feed with status `'paused`                     |
+| `(make-callback-failure code detail)`                       | stop with status `'error`, carrying your code and detail |
 
 `callback-continue` and `callback-pause` are values, not procedures:
 return them, don't call them. Resuming after a pause is
@@ -131,18 +131,18 @@ the corpus, feeding each chunk from a buffer of its own.
 
 Ten spans, each but `on-body-data` with an event that closes it:
 
-| Span                             | Event                                |
-|----------------------------------|--------------------------------------|
-| `on-method-data`                 | `on-method-complete`                 |
-| `on-url-data`                    | `on-url-complete`                    |
-| `on-protocol-data`               | `on-protocol-complete`               |
-| `on-version-data`                | `on-version-complete`                |
-| `on-status-data`                 | `on-status-complete`                 |
-| `on-header-field-data`           | `on-header-field-complete`           |
-| `on-header-value-data`           | `on-header-value-complete`           |
-| `on-body-data`                   |                                      |
-| `on-chunk-extension-name-data`   | `on-chunk-extension-name-complete`   |
-| `on-chunk-extension-value-data`  | `on-chunk-extension-value-complete`  |
+| Span                            | Event                               |
+|:--------------------------------|:------------------------------------|
+| `on-method-data`                | `on-method-complete`                |
+| `on-url-data`                   | `on-url-complete`                   |
+| `on-protocol-data`              | `on-protocol-complete`              |
+| `on-version-data`               | `on-version-complete`               |
+| `on-status-data`                | `on-status-complete`                |
+| `on-header-field-data`          | `on-header-field-complete`          |
+| `on-header-value-data`          | `on-header-value-complete`          |
+| `on-body-data`                  |                                     |
+| `on-chunk-extension-name-data`  | `on-chunk-extension-name-complete`  |
+| `on-chunk-extension-value-data` | `on-chunk-extension-value-complete` |
 
 And six events with no span: `on-message-begin`, `on-headers-complete`,
 `on-chunk-header`, `on-chunk-complete`, `on-message-complete`, `on-reset`.

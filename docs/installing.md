@@ -1,72 +1,66 @@
 # Installing
 
-There is nothing to build and no `make install`. You clone the repository
-with its submodule, put two directories on Chez's library path, and import.
+There is nothing to compile and nothing to install. You need two folders
+from this repository on Chez's library path, and then you can import.
 
-## Requirements
+## What you need
 
-- **Chez Scheme 10.4.1 or newer.** That is the floor this project verifies;
-  the build's discovery tries `scheme`, `chez` and `chezscheme` in turn.
-- **Not Petite.** Petite has no `compile-program`, so the build rejects it
-  and it is not a supported configuration.
-- **The generator submodule**, `vendor/byte-machine`. The parser's one
-  runtime dependency lives there.
+- **Chez Scheme 10.4.1 or newer.** Petite Chez won't do: it can't compile
+  programs, so the build turns it away.
+- **This repository, with its submodule.** The submodule,
+  `vendor/byte-machine`, holds the one library the parser needs at run time.
 
-## Getting the source
+## 1. Get the source
 
 ```sh
 git clone --recursive https://github.com/Kiyomi-Computation-Systems/chez-httparse.git
 ```
 
-If you already cloned without `--recursive`, fetch the submodule from the
+Already cloned without `--recursive`? Fetch the submodule from inside the
 checkout:
 
 ```sh
 git submodule update --init
 ```
 
-## The two library roots
+## 2. Know the two folders
 
-Chez finds a library by its name, under the directories on its library
-path. Two roots hold everything an embedder imports:
+Chez finds a library by its name, inside the folders on its library path.
+Everything you import lives under one of two folders:
 
-| Root                     | Holds                                                                 |
-|--------------------------|-----------------------------------------------------------------------|
-| `src/`                   | `(generated httparse-message)`, `(generated httparse-url)`, `(httparse modes)`, `(httparse methods)`, `(httparse decisions)` |
-| `vendor/byte-machine/src` | `(byte-machine runtime)`                                             |
+| Folder                    | Libraries in it                                                                                                              |
+|:--------------------------|:-----------------------------------------------------------------------------------------------------------------------------|
+| `src/`                    | `(generated httparse-message)`, `(generated httparse-url)`, `(httparse modes)`, `(httparse methods)`, `(httparse decisions)` |
+| `vendor/byte-machine/src` | `(byte-machine runtime)`                                                                                                     |
 
-At run time that is the whole dependency set. The generated parsers import
-`(rnrs)` and `(byte-machine runtime)` only, the runtime imports `(rnrs)` and
-two private libraries beside it, and the three `(httparse …)` libraries
-import `(rnrs)` alone. Nothing imports `(chezscheme)`.
+That is the whole dependency list. These libraries import `(rnrs)` and each
+other, and nothing else; none of them imports `(chezscheme)`.
 
 `src/` also holds the grammars the parsers are generated from. You never
-import those; they are for regenerating the parser (see
+import those. They matter only if you change the parser (see
 [building.md](building.md)).
 
-## Putting them on the library path
+## 3. Put them on the library path
 
-Relative paths resolve against the current directory, so the examples below
-run from the repository root. From anywhere else, give absolute paths. The
-separator between roots is `:` on Unix and `;` on Windows.
+Pick one of three ways. The examples run from the repository root, so the
+paths are relative; from anywhere else, use absolute paths. Separate the two
+folders with `:` on macOS and Linux, and `;` on Windows.
 
-**On the command line**, with `--libdirs`:
+**On the command line:**
 
 ```sh
 chez --libdirs src:vendor/byte-machine/src --program app.sps
 ```
 
-**From the environment**, with `CHEZSCHEMELIBDIRS`, which Chez reads at
-startup:
+**In the environment.** Chez reads `CHEZSCHEMELIBDIRS` when it starts:
 
 ```sh
 export CHEZSCHEMELIBDIRS=/path/to/chez-httparse/src:/path/to/chez-httparse/vendor/byte-machine/src
 chez --program app.sps
 ```
 
-**From Scheme**, with `library-directories`. A program's imports are
-resolved before its body runs, so set the path in a launcher script and
-load the program from there:
+**From Scheme.** A program's imports are resolved before its first line
+runs, so set the path in a small launcher and load your program from it:
 
 ```scheme
 ;; run.ss -- start with: chez --script run.ss
@@ -74,13 +68,7 @@ load the program from there:
 (load-program "app.sps")
 ```
 
-Leave out the second root and the import fails by name:
-
-```text
-Exception: library (byte-machine runtime) not found
-```
-
-## Checking it works
+## 4. Check it works
 
 From the repository root:
 
@@ -89,7 +77,14 @@ echo '(import (generated httparse-message)) (display "ok") (newline)' \
   | chez -q --libdirs src:vendor/byte-machine/src
 ```
 
-It prints `ok`. Your binary may be called `scheme` or `chezscheme` rather
-than `chez`.
+It prints `ok`. (Your Chez may be called `scheme` or `chezscheme` instead of
+`chez`.)
 
-Next, [usage.md](usage.md) makes a parser and feeds it a request.
+If you forget the second folder, the import fails and says which library it
+could not find:
+
+```text
+Exception: library (byte-machine runtime) not found
+```
+
+Next: [usage.md](usage.md) makes a parser and feeds it a request.

@@ -31,29 +31,29 @@ the same. Every target wraps a checked-in CMake preset, so you can run the
 `cmake` and `ctest` commands directly instead, including on Windows, where
 `make` is not in the base install.
 
-| target                | what it does                                                   |
-|-----------------------|----------------------------------------------------------------|
-| `make help`           | list these targets (shown when you run a bare `make`)          |
-| `make all`            | build the development preset                                   |
-| `make doctor`         | report the discovered Chez toolchain, then stop                |
-| `make configure`      | configure the development preset without building              |
-| `make build`          | configure and build the development preset                     |
-| `make dev`            | build, then run the harness and build-layer self-tests         |
-| `make test`           | build, then run the pull-request selection                     |
-| `make test-all`       | build, then run the complete selection                         |
-| `make prod`           | configure and build the release preset                         |
-| `make clean`          | remove all build trees                                         |
+| target                | what it does                                                      |
+|:----------------------|:------------------------------------------------------------------|
+| `make help`           | list these targets (shown when you run a bare `make`)             |
+| `make all`            | build the development preset                                      |
+| `make doctor`         | report the discovered Chez toolchain, then stop                   |
+| `make configure`      | configure the development preset without building                 |
+| `make build`          | configure and build the development preset                        |
+| `make dev`            | build, then run the harness and build-layer self-tests            |
+| `make test`           | build, then run the pull-request selection                        |
+| `make test-all`       | build, then run the complete selection                            |
+| `make prod`           | configure and build the release preset                            |
+| `make clean`          | remove all build trees                                            |
 | `make corpus-refresh` | re-vendor the llhttp corpus (needs `LLHTTP_ROOT=/path/to/llhttp`) |
-| `make parser-refresh` | re-emit the checked-in generated parser                        |
+| `make parser-refresh` | re-emit the checked-in generated parser                           |
 
 What each test target runs, as the equivalent commands:
 
-| target          | runs                                                                 |
-|-----------------|----------------------------------------------------------------------|
+| target          | runs                                                                         |
+|:----------------|:-----------------------------------------------------------------------------|
 | `make dev`      | `cmake --preset dev`, `cmake --build --preset dev`, `ctest --preset harness` |
-| `make test`     | the same build, then `ctest --preset pr`                             |
-| `make test-all` | the same build, then `ctest --preset release`                        |
-| `make prod`     | `cmake --preset prod`, `cmake --build --preset prod`                 |
+| `make test`     | the same build, then `ctest --preset pr`                                     |
+| `make test-all` | the same build, then `ctest --preset release`                                |
+| `make prod`     | `cmake --preset prod`, `cmake --build --preset prod`                         |
 
 The `ctest` calls add `CTEST_FLAGS`, which defaults to
 `--output-on-failure --no-tests=error`. Override it, or `CMAKE` and `CTEST`,
@@ -72,21 +72,21 @@ so themselves (`"noTestsAction": "error"`), so the preset path and the
 [`CMakePresets.json`](../CMakePresets.json) defines three configure presets,
 each with a build preset of the same name:
 
-| configure preset | build tree         | build type | notes                                       |
-|------------------|--------------------|------------|---------------------------------------------|
-| `dev`            | `build/dev`        | Debug      | tests on                                    |
-| `prod`           | `build/prod`       | Release    | tests on                                    |
-| `no-scheme`      | `build/no-scheme`  | —          | tests on, `HTTPARSE_REQUIRE_CHEZ=OFF`       |
+| configure preset | build tree        | build type | notes                                 |
+|:-----------------|:------------------|:-----------|:--------------------------------------|
+| `dev`            | `build/dev`       | Debug      | tests on                              |
+| `prod`           | `build/prod`      | Release    | tests on                              |
+| `no-scheme`      | `build/no-scheme` | —          | tests on, `HTTPARSE_REQUIRE_CHEZ=OFF` |
 
 The four test presets select lanes by label. All but `no-scheme` run
 against the `dev` build:
 
-| test preset | selects                                                                                                     |
-|-------------|-------------------------------------------------------------------------------------------------------------|
-| `harness`   | the `harness` layer only: the harness and build-layer self-tests                                            |
+| test preset | selects                                                                                                                                                            |
+|:------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `harness`   | the `harness` layer only: the harness and build-layer self-tests                                                                                                   |
 | `pr`        | the `harness`, `unit`, `verify`, `differential`, `property`, `determinism`, `conformance`, `portability` and `example` layers, minus anything labelled `full-scan` |
-| `release`   | every registered lane, `benchmark` and `full-scan` included                                                 |
-| `no-scheme` | every lane in the `no-scheme` build: the `cmake`-backend specifications, none of which needs a Scheme runtime |
+| `release`   | every registered lane, `benchmark` and `full-scan` included                                                                                                        |
+| `no-scheme` | every lane in the `no-scheme` build: the `cmake`-backend specifications, none of which needs a Scheme runtime                                                      |
 
 Each writes a JUnit file to `test-results/<preset>.xml` under its build
 tree.
@@ -108,7 +108,7 @@ example `httparse.benchmark.throughput.chez.aot`. The layer, backend and
 mode become labels automatically, which is what the presets filter on.
 
 | layer          | the evidence it produces                                       |
-|----------------|----------------------------------------------------------------|
+|:---------------|:---------------------------------------------------------------|
 | `harness`      | the test harness proving things about itself                   |
 | `unit`         | constructors, accessors, single-behaviour semantics            |
 | `verify`       | verifier diagnostics, positive and negative                    |
@@ -122,10 +122,10 @@ mode become labels automatically, which is what the presets filter on.
 | `benchmark`    | measured rates, reported rather than asserted                  |
 | `expected-red` | tests that must fail, proving the harness can fail             |
 
-| backend | modes                                                                  |
-|---------|------------------------------------------------------------------------|
+| backend | modes                                                                     |
+|:--------|:--------------------------------------------------------------------------|
 | `chez`  | `source`, run from source; `aot`, run from ahead-of-time compiled objects |
-| `cmake` | `direct`, run under `cmake -P` with no Scheme runtime                  |
+| `cmake` | `direct`, run under `cmake -P` with no Scheme runtime                     |
 
 `full-scan` is the one extra label: a selector with no layer, backend or
 mode meaning, used only to keep the every-chunk-size replay out of `pr`.
@@ -147,7 +147,7 @@ five valid segments, an unknown label, a duplicate name, or a missing
 quietly never runs.
 
 Why a `source` lane and an `aot` lane cost the same is in
-[performance.md](performance.md#source-and-compiled-cost-the-same-and-that-is-a-measurement).
+[performance.md](performance.md#source-and-compiled-run-at-the-same-speed).
 
 ## The live llhttp differential
 
@@ -173,7 +173,7 @@ skipped, not registered at all. To drop it again, reconfigure with
 
 [conformance.md](conformance.md#running-it-yourself) has the full clone and
 checkout steps, what the lane compares and what it has found;
-[performance.md](performance.md#taking-these-yourself) uses the same
+[performance.md](performance.md#run-them-yourself) uses the same
 binaries for llhttp's `bench` mode.
 
 ## Regenerating checked-in files
@@ -209,10 +209,10 @@ make parser-refresh
 This re-emits both generated parsers with
 [`tools/emit-machine.ss`](../tools/emit-machine.ss):
 
-| grammar                       | generated library                    |
-|-------------------------------|--------------------------------------|
-| `src/httparse/grammar.sls`    | `src/generated/httparse-message.sls` |
-| `src/httparse/url-grammar.sls`| `src/generated/httparse-url.sls`     |
+| grammar                        | generated library                    |
+|:-------------------------------|:-------------------------------------|
+| `src/httparse/grammar.sls`     | `src/generated/httparse-message.sls` |
+| `src/httparse/url-grammar.sls` | `src/generated/httparse-url.sls`     |
 
 Run it after any grammar edit, or after moving the `vendor/byte-machine`
 pin. The determinism lane, `httparse.determinism.generated-artifact.chez.source`,
