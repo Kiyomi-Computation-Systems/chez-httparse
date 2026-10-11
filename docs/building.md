@@ -56,6 +56,7 @@ The rest of the targets:
 | `make parser-refresh` | re-emit the checked-in generated parsers                          |
 | `make site`           | render docs/ into build/site/ (needs `CMARK_GFM_ROOT`)            |
 | `make check-site`     | test the site generator, then check docs/ with it                 |
+| `make check-akku`     | install with Akku as a consumer would (needs `akku`)              |
 
 Every target is a thin wrapper over checked-in CMake presets, so you can
 run `cmake` and `ctest` yourself instead — and on Windows, where `make` is
@@ -130,7 +131,7 @@ mode become labels, which is what the presets select on.
 | `conformance`  | the vendored llhttp corpus, byte for byte                 |
 | `portability`  | values crossing library boundaries; runtime identity      |
 | `example`      | the documented examples, run                              |
-| `docs`         | the documentation, checked against the code               |
+| `docs`         | the docs and the Akku manifest, checked against the tree  |
 | `benchmark`    | measured rates, printed rather than asserted              |
 | `expected-red` | tests that must fail, proving the harness can fail        |
 
@@ -214,6 +215,28 @@ home page is `site/index.md`, and the menu order is in `site/pages.sls`.
 
 Pushing a release tag publishes the site to GitHub Pages
 (`.github/workflows/pages.yml`), after running both targets.
+
+## Optional: the Akku package
+
+`Akku.manifest` describes this package for the
+[Akku](https://akkuscm.org/) package index. Two checks keep it honest:
+
+- **The `docs.akku-manifest` lane** runs on every pull request. It fails if
+  the manifest's version isn't the latest release in `CHANGELOG.md`, if the
+  manifest declares no dependency, or if a dependency's range doesn't start
+  at the version vendored under `vendor/`, which is the version every other
+  test runs against. So the release that adds a heading to `CHANGELOG.md`
+  updates the manifest too.
+- **`make check-akku`** needs the [`akku`](https://gitlab.com/akkuscm/akku)
+  command. It makes a throwaway consumer project and installs this package
+  and its dependencies into it, from the files git tracks. It fails unless
+  exactly the libraries under `src/` install, and a small program parses a
+  request using only the library path Akku sets up. `git add` a new file
+  before running it: an untracked file isn't part of the package.
+
+Akku installs every library it finds outside `test/`. `.akkuignore` keeps
+`site/` out: the site generator isn't part of this library, and
+chez-cmark-gfm ships the same library names.
 
 ## Regenerating checked-in files
 

@@ -1432,6 +1432,26 @@ foreach(mode source aot)
     LABELS docs)
 endforeach()
 
+# --- The Akku manifest -----------------------------------------------------
+#
+# Akku.manifest is what `akku publish` sends to the index. Its version must be
+# the latest release in CHANGELOG.md, and each dependency's range must start
+# at the version vendored under vendor/, the copy every other lane runs
+# against. Nothing is loaded from vendor/: the lane reads changelogs only.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.docs.akku-manifest.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/akku-manifest-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            "${CMAKE_CURRENT_LIST_DIR}/common/akku-manifest-tests.sps"
+    ENVIRONMENT "HTTPARSE_AKKU_MANIFEST=${CMAKE_SOURCE_DIR}/Akku.manifest"
+                "HTTPARSE_CHANGELOG=${CMAKE_SOURCE_DIR}/CHANGELOG.md"
+                "HTTPARSE_VENDOR_ROOT=${CMAKE_SOURCE_DIR}/vendor"
+    TIMEOUT 120
+    LABELS docs)
+endforeach()
+
 # --- Finishing a close-delimited body ---------------------------------------
 #
 # The one completion the corpus cannot reach: `parser-finish!` on a body the

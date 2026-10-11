@@ -22,6 +22,14 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   and `make check-site` fails on a page missing from the nav, a dangling link
   or anchor, a leaked `.md` link, or reflowed code. The generator is copied
   from chez-cmark-gfm's. A release tag publishes the site to GitHub Pages.
+- **An Akku package manifest.** `Akku.manifest` describes chez-httparse for
+  the [Akku](https://akkuscm.org/) package index. The package installs the
+  libraries under `src/` and depends on byte-machine `^0.8.0`.
+  `.akkuignore` keeps the docs site's generator out of it. The
+  `docs.akku-manifest` lane holds the manifest's version to the latest
+  release here and its dependency floor to the vendored copy, and
+  `make check-akku` installs the package into a throwaway consumer and
+  parses a request with only Akku's library path.
 - **`NOTICE`**, crediting llhttp, from which the parser derives, with its MIT
   license text.
 
