@@ -27,6 +27,17 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The pin moves to byte-machine `v0.8.0`, its first public release.** The
+  regenerated message parser checks each digit of the status code, the
+  `Content-Length` and a chunk size for overflow against a constant the
+  generator works out in advance, where it used to compute
+  `(div (- 18446744073709551615 d) 10)` per digit. Six lines change in
+  `src/generated/httparse-message.sls`; the URL parser is byte-identical, the
+  ABI stays 9 and the IR fingerprint is unchanged. A `POST` with a body now
+  allocates 2,864 B whatever its length: 2,912 and 2,960 B before, for a
+  10-byte and a 10,000-byte body. The source lane's few bytes of drift on
+  those two figures went away with the bignums. Every corpus fixture still
+  passes at every chunk size.
 - **The documentation is Markdown, split by task.** `docs/api.org` is now
   `usage.md`, `callbacks.md`, `modes.md`, `errors.md`, `pausing.md`,
   `connection.md` and `url.md`; `conformance.org` and `performance.org` are

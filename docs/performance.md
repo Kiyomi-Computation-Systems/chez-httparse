@@ -9,7 +9,7 @@ Chez Scheme 10.4.1 (`tarm64osx`), at the generator pin each section names.
 
 | Characteristic                                   | Measured                                                   |
 |:-------------------------------------------------|:-----------------------------------------------------------|
-| Memory does not grow with the size of a body     | 2,912 B per parse with a 10-byte body; 2,960 B with 10,000 |
+| Memory does not grow with the size of a body     | 2,864 B per parse, for a 10-byte or a 10,000-byte body     |
 | Feeding in small pieces does not build up        | 444 B per feed on a 50-byte message; 384 B on 10,043 bytes |
 | A header name cannot be used to inflate memory   | 0 B extra, however much of a known name it matches         |
 | Speed, a typical request in one piece            | 80–82 MB/s, about 275,000 requests a second                |
@@ -44,22 +44,28 @@ Nothing is copied, so a large body costs what a small one does.
 
 | Message                        | Allocated per whole-buffer parse |
 |:-------------------------------|---------------------------------:|
-| `POST` with a 10-byte body     |                          2,912 B |
-| `POST` with a 10,000-byte body |                          2,960 B |
+| `POST` with a 10-byte body     |                          2,864 B |
+| `POST` with a 10,000-byte body |                          2,864 B |
 
-A thousand times more body, 1.6% more memory. A parser that copied spans
-would show a thousandfold difference.
+A thousand times more body, not one byte more memory. A parser that copied
+spans would show a thousandfold difference.
 
 Both messages carry the same headers, so a cost paid once per header is in
-both figures and cancels out. The generator keeps two such costs out of the
-parse: a callback answers with its next state rather than a freshly
-allocated `(goto TARGET)`, and the keyword tables that read `POST`,
-`HTTP/1.1` and `Content-Length` match in place rather than copying the
-prefix at every byte.
+both figures and cancels out. The generator keeps three such costs out of
+the parse:
 
-These are the compiled lane's figures, identical on all 40 runs measured.
-The source lane can read a few bytes higher on the two `POST`s; see
-[Source and compiled run at the same speed](#source-and-compiled-run-at-the-same-speed).
+- a callback answers with its next state rather than a freshly allocated
+  `(goto TARGET)`;
+- the keyword tables that read `POST`, `HTTP/1.1` and `Content-Length` match
+  in place rather than copying the prefix at every byte;
+- each digit of `Content-Length` is checked for overflow against a constant
+  the generator works out in advance, so no digit costs a bignum. At the
+  generator's `v0.7.0` it did, and the two figures above were 2,912 and
+  2,960 B.
+
+These figures were measured with the generator pinned at `v0.8.0`. They
+were identical on all 30 runs, and the source and compiled lanes agree on
+them.
 
 ### Small feeds do not add up
 
@@ -98,8 +104,8 @@ bytes of `Transfer-Encoding` (compiled lane):
 | Extra memory    | 0 B | 0 B | 0 B | 0 B | 0 B |
 
 The whole parse is 2,928 bytes at every k. The check allows 32 bytes of
-drift — half the 64 bytes one matched byte would cost a copying table —
-because the source and compiled lanes' averages can differ by a few bytes.
+drift — half the 64 bytes one matched byte would cost a copying table — so
+it does not depend on the source and compiled lanes agreeing to the byte.
 
 ## Speed
 
@@ -372,15 +378,11 @@ their mode beside every figure; nothing compares them automatically, because
 a parser whose cost depended on when it was compiled is not worth inventing
 a check for.
 
-The two lanes agree on four of the six allocation figures. On the two
-`POST`s, over 40 runs each, the source lane read 2,917 or 2,918 B on 26 runs
-where the compiled lane read 2,912 on all 40, and 2,965 once against 2,960.
-The runtime's `abandon-span!` is involved: with its body emptied, or cut to
-either of its two reads, the source lane reads 2,912. A garbage collection
-forced just before the region removes the difference, and so does measuring
-each of the 200 parses separately; padding the heap or deepening the stack
-does not. The cause is not known. It is 0.2%, nothing the lane checks is
-near it, and the compiled lane, which is what ships, does not show it.
+The two lanes agree on all six allocation figures. At the generator's
+`v0.7.0` they did not: on the two `POST`s the source lane read a few bytes
+high (2,917 against 2,912; 2,965 against 2,960), for a cause never pinned
+down. The difference went away at `v0.8.0`, when the `Content-Length`
+overflow check stopped doing bignum arithmetic.
 
 ### Run them yourself
 
