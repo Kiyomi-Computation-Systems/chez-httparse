@@ -219,14 +219,19 @@ Pushing a release tag publishes the site to GitHub Pages
 ## Optional: the Akku package
 
 `Akku.manifest` describes this package for the
-[Akku](https://akkuscm.org/) package index. Two checks keep it honest:
+[Akku](https://akkuscm.org/) package index. `Akku.lock`, written by
+`akku lock`, records the exact dependency versions `akku install` fetches in
+a checkout. Two checks keep them honest:
 
-- **The `docs.akku-manifest` lane** runs on every pull request. It fails if
-  the manifest's version isn't the latest release in `CHANGELOG.md`, if the
-  manifest declares no dependency, or if a dependency's range doesn't start
-  at the version vendored under `vendor/`, which is the version every other
-  test runs against. So the release that adds a heading to `CHANGELOG.md`
-  updates the manifest too.
+- **The `docs.akku-manifest` lane** runs on every pull request. It fails if:
+  - the manifest's version isn't the latest release in `CHANGELOG.md`;
+  - the manifest declares no dependency;
+  - a dependency's range doesn't start at the version vendored under
+    `vendor/`, which is the version every other test runs against;
+  - `Akku.lock` doesn't lock a dependency at that same version.
+
+  So the release that adds a heading to `CHANGELOG.md` updates the manifest
+  too, and a pin bump updates the manifest's range and runs `akku lock`.
 - **`make check-akku`** needs the [`akku`](https://gitlab.com/akkuscm/akku)
   command. It makes a throwaway consumer project and installs this package
   and its dependencies into it, from the files git tracks. It fails unless

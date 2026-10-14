@@ -24,9 +24,8 @@ CMakeUserPresets.json
 *.so
 *.wpo
 
-# Akku's install directory, written by `akku install`. Akku.manifest is
-# tracked. Akku.lock is not committed yet: it is generated against the Akku
-# index, which must list this package's dependency first.
+# Akku's install directory, written by `akku install`. Akku.manifest and
+# Akku.lock are tracked.
 /.akku/
 
 # Editor and platform noise

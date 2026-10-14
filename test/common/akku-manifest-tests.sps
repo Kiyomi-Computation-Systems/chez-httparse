@@ -1,14 +1,16 @@
 ;;; docs.akku-manifest: Akku.manifest against the versions it must agree with.
 ;;;
-;;; The manifest is what `akku publish` sends to the index, so two of its
-;;; numbers have to match something else in the tree, and nothing else
-;;; notices when they stop:
+;;; The manifest is what `akku publish` sends to the index, and Akku.lock is
+;;; what `akku install` in a checkout fetches. Their versions have to match
+;;; something else in the tree, and nothing else notices when they stop:
 ;;;
 ;;;   - the package version is the latest release in CHANGELOG.md, so the
 ;;;     release that adds a heading also moves the manifest;
 ;;;   - each dependency's range is a caret range whose floor is the version
 ;;;     vendored in vendor/<name>, the copy the test suite runs against. A
-;;;     consumer can then resolve no version older than the one tested here.
+;;;     consumer can then resolve no version older than the one tested here;
+;;;   - Akku.lock locks each dependency at that same vendored version, so a
+;;;     pin bump that forgets `akku lock` fails here.
 ;;;
 ;;; A manifest with no dependency is also refused: the generated parsers
 ;;; import the generator's runtime, so a package without it installs and
@@ -103,6 +105,47 @@
                                (else (list (list 'dependency-not-vendored name))))))
                      depends))))))
 
+;; The version Akku.lock's datums lock `name` at, read from its archive URL
+;; (".../<name>_<version>_repack.tar.xz"), or #f when it is not locked.
+;; String (Listof Datum) -> (U String #f)
+(define (locked-version name datums)
+  (let* ((projects (cond ((assq 'projects (filter pair? datums)) => cdr)
+                         (else '())))
+         (entry (find (lambda (e) (equal? (assq 'name e) (list 'name name)))
+                      projects))
+         (location (and entry (assq 'location entry)))
+         (url (and location (pair? (cdr location))
+                   (let ((l (cadr location)))
+                     (and (pair? l) (eq? 'url (car l)) (cadr l)))))
+         (key (string-append "/" name "_")))
+    (and url
+         (let scan ((i 0))
+           (cond ((> (+ i (string-length key)) (string-length url)) #f)
+                 ((string=? key (substring url i (+ i (string-length key))))
+                  (let ((start (+ i (string-length key))))
+                    (let end ((j start))
+                      (cond ((= j (string-length url)) #f)
+                            ((char=? #\_ (string-ref url j)) (substring url start j))
+                            (else (end (+ j 1)))))))
+                 (else (scan (+ i 1))))))))
+
+;; Every dependency the lock does not hold at its vendored version.
+;; (U Datum #f) (String -> (U String #f)) (String -> (U String #f))
+;;   -> (Listof Diagnostic)
+(define (lock-diagnostics pkg locked vendored-version)
+  (if (not pkg)
+      '()
+      (apply append
+             (map (lambda (dep)
+                    (let* ((name (car dep))
+                           (v (vendored-version name))
+                           (l (locked name)))
+                      (cond ((not v) '())
+                            ((not l) (list (list 'dependency-not-locked name)))
+                            ((string=? l v) '())
+                            (else (list (list 'lock-version-mismatch name l v))))))
+                  (package-depends pkg)))))
+
 ;; --- the cases --------------------------------------------------------------
 
 (define (pkg version . depends)
@@ -174,13 +217,48 @@
                                            "0.4.5" vendored)
                      '((dependency-not-vendored "other")))))))
 
+(define lock
+  '((import (akku format lockfile))
+    (projects
+     ((name "dep")
+      (location (url "https://archive.example/pkg/d/dep_1.2.0_repack.tar.xz"))
+      (content (sha256 "00"))))))
+
+(harness-group "the lock"
+  (lambda ()
+    (harness-case "reading a locked version from the archive URL"
+      (lambda ()
+        (check-equal "dep" (locked-version "dep" lock) "1.2.0")
+        (check-equal "absent" (locked-version "other" lock) #f)))
+    (harness-case "a lock at the vendored version produces none"
+      (lambda ()
+        (check-equal "clean"
+                     (lock-diagnostics (pkg "0.4.5" '("dep" "^1.2.0"))
+                                       (lambda (n) (locked-version n lock))
+                                       vendored)
+                     '())))
+    (harness-case "a dependency the lock does not hold"
+      (lambda ()
+        (check-equal "not locked"
+                     (lock-diagnostics (pkg "0.4.5" '("dep" "^1.2.0"))
+                                       (lambda (n) #f) vendored)
+                     '((dependency-not-locked "dep")))))
+    (harness-case "a lock left at an older version"
+      (lambda ()
+        (check-equal "stale lock"
+                     (lock-diagnostics (pkg "0.4.5" '("dep" "^1.2.0"))
+                                       (lambda (n) "1.1.0") vendored)
+                     '((lock-version-mismatch "dep" "1.1.0" "1.2.0")))))))
+
 (harness-group "the real manifest"
   (lambda ()
-    (harness-case "Akku.manifest agrees with CHANGELOG.md and vendor/"
+    (harness-case "Akku.manifest and Akku.lock agree with CHANGELOG.md and vendor/"
       (lambda ()
         (let* ((manifest (adapter-environment-variable "HTTPARSE_AKKU_MANIFEST"))
                (changelog (adapter-environment-variable "HTTPARSE_CHANGELOG"))
                (vendor (adapter-environment-variable "HTTPARSE_VENDOR_ROOT"))
+               (lockfile (adapter-environment-variable "HTTPARSE_AKKU_LOCK"))
+               (lock-datums (read-datums (read-text lockfile)))
                (pkg (find-package (read-datums (read-text manifest))))
                (vendored-version
                 (lambda (name)
@@ -188,10 +266,15 @@
                     (and (file-exists? path)
                          (changelog-latest-release (read-text path)))))))
           (check-equal "diagnostics"
-                       (manifest-diagnostics
-                        pkg
-                        (changelog-latest-release (read-text changelog))
-                        vendored-version)
+                       (append
+                        (manifest-diagnostics
+                         pkg
+                         (changelog-latest-release (read-text changelog))
+                         vendored-version)
+                        (lock-diagnostics
+                         pkg
+                         (lambda (name) (locked-version name lock-datums))
+                         vendored-version))
                        '())
           (when pkg
             (display (string-append

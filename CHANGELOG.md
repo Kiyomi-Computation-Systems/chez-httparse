@@ -25,9 +25,11 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - **An Akku package manifest.** `Akku.manifest` describes chez-httparse for
   the [Akku](https://akkuscm.org/) package index. The package installs the
   libraries under `src/` and depends on byte-machine `^0.8.0`.
-  `.akkuignore` keeps the docs site's generator out of it. The
-  `docs.akku-manifest` lane holds the manifest's version to the latest
-  release here and its dependency floor to the vendored copy, and
+  `.akkuignore` keeps the docs site's generator out of it, and `Akku.lock`
+  locks byte-machine 0.8.0 from the index, so `akku install` in a clone sets
+  everything up. The `docs.akku-manifest` lane holds the manifest's version
+  to the latest release here, and its dependency floor and the lock to the
+  vendored copy, and
   `make check-akku` installs the package into a throwaway consumer and
   parses a request with only Akku's library path.
 - **`NOTICE`**, crediting llhttp, from which the parser derives, with its MIT

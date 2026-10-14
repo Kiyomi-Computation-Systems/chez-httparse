@@ -1446,6 +1446,7 @@ foreach(mode source aot)
     SOURCES ${HTTPARSE_HARNESS_MANIFEST}
             "${CMAKE_CURRENT_LIST_DIR}/common/akku-manifest-tests.sps"
     ENVIRONMENT "HTTPARSE_AKKU_MANIFEST=${CMAKE_SOURCE_DIR}/Akku.manifest"
+                "HTTPARSE_AKKU_LOCK=${CMAKE_SOURCE_DIR}/Akku.lock"
                 "HTTPARSE_CHANGELOG=${CMAKE_SOURCE_DIR}/CHANGELOG.md"
                 "HTTPARSE_VENDOR_ROOT=${CMAKE_SOURCE_DIR}/vendor"
     TIMEOUT 120

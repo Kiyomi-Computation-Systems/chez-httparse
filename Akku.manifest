@@ -13,8 +13,8 @@
 ;; grammars under src/httparse/ import (byte-machine graph). The range's
 ;; floor is the version vendored in vendor/byte-machine, which is the
 ;; version the test suite runs against. The docs.akku-manifest lane holds
-;; this version to the latest release in CHANGELOG.md, and that floor to the
-;; vendored copy's.
+;; this version to the latest release in CHANGELOG.md, that floor to the
+;; vendored copy's, and Akku.lock to the same version.
 ;;
 ;; No `scripts` clause: there is nothing to build.
 (akku-package ("chez-httparse" "0.4.5")
