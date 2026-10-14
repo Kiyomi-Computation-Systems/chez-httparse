@@ -186,6 +186,10 @@ you need to know whether a rule applies.
   correct a claim, search for the claim across `src/`, `docs/`, `README.org`
   and test comments, not just the file in front of you. When rewriting docs,
   re-check every sentence you carry over.
+- **A file copied from a sibling carries the sibling's claims.** Rewording it
+  to fit this repository gets it past the rename audit without making it
+  true. When you copy a file, check each sentence and each rule against this
+  tree: a rule that matches no file is a claim too.
 - **A version surface is anywhere the text asserts a relationship to the
   release.** Before a release, search for "unreleased", "on `main`", "not yet
   shipped", "deferred to" — not just the version number.
