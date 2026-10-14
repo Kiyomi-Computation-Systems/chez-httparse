@@ -2,9 +2,13 @@
 
 [[https://github.com/Kiyomi-Computation-Systems/chez-httparse/actions/workflows/ci.yml][https://github.com/Kiyomi-Computation-Systems/chez-httparse/actions/workflows/ci.yml/badge.svg]]
 
-An HTTP/1.x parser for Chez Scheme: a byte-level state machine, checked
-against [[https://github.com/nodejs/llhttp][llhttp]] by replaying llhttp's recorded conformance traces and
-comparing them byte for byte, at every chunk size.
+An HTTP/1.x parser for Chez Scheme: a byte-level state machine useful for web
+servers reading bytes off the wire. Its based on and checked against [[https://github.com/nodejs/llhttp][llhttp]] by
+replaying llhttp's recorded conformance traces and comparing them byte for byte,
+at every chunk size.
+
+This library was generated with [[https://kiyomi-computation-systems.github.io/byte-machine/][byte-machine]] [[https://github.com/Kiyomi-Computation-Systems/byte-machine][(source)]] a Scheme state machine
+generator modeled after [[https://github.com/nodejs/llparse][llparse]].
 
 #+begin_quote
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
@@ -12,7 +16,7 @@ comparing them byte for byte, at every chunk size.
 
 * What it is
 
-- *A state machine, not a reader.* You feed it bytes and it calls you back.
+- *A state machine, not a reader.* You feed it bytes which trigger callbacks.
   It keeps no buffer, copies no spans, and allocates nothing in proportion to
   the input: a 10 KB body costs what a 10-byte one does.
 - *Resumable.* A token, header or body split across any number of feeds
