@@ -7,21 +7,26 @@
 # what Akku's archive serves for a tag (for the vendored dependency's 0.8.0,
 # its archive and `git archive v0.8.0` list the same 210 files): this
 # checkout, and, for each dependency Akku.manifest names, the copy vendored
-# at vendor/<name>. So .gitattributes' export-ignore rules apply. `git stash create` snapshots
-# tracked files as they are on disk, so uncommitted edits to them, and new
-# files once `git add`ed, are what gets tested. Then:
+# at vendor/<name>. So .gitattributes' export-ignore rules apply. `git stash
+# create` snapshots tracked files as they are on disk, so uncommitted edits
+# to them, and new files once `git add`ed, are what gets tested. Before
+# installing:
 #
-#   0. neither .plans nor AGENTS.md may be in the archive. The docs site's
-#      generator, site/, does ship; check 1 is what keeps its (site ...)
-#      libraries off a consumer's library path, through .akkuignore.
+#   0. the archive must leave out the design records and agent instructions
+#      (.plans, AGENTS.md) and still hold the libraries, so that an empty
+#      archive cannot pass. `akku install` unpacks the whole package into a
+#      consumer's .akku/src/<name>/, not only its libraries, so whatever the
+#      archive holds reaches every consumer. The docs site's generator,
+#      site/, does ship; check 1 keeps its (site ...) libraries uninstalled.
 #
-# and, after `akku install`:
+# After `akku install`:
 #
 #   1. this package's libraries in .akku/list must be exactly the .sls files
 #      git tracks under src/. A test, site or tool library would land on
 #      every consumer's library path, and a missing one would fail at import.
-#      Akku reads .akkuignore from the unpacked archive, so this is where its
-#      `site` line is tested.
+#      The docs site generator's (site ...) libraries are named first: Akku
+#      reads .akkuignore from the unpacked archive, and its `site` line is
+#      what keeps them out.
 #   2. every dependency must have installed at least one library.
 #   3. test/akku/consumer.sps, run with only the library path that
 #      .akku/bin/activate sets, must parse a request.
@@ -38,15 +43,15 @@ trap 'rm -rf "$work"' EXIT
 fail() { echo "check-akku: $*" >&2; exit 1; }
 
 # copy_archive SRC DEST: `git archive` of SRC's tracked files as they are on
-# disk, unpacked into DEST. `git stash create` commits the working tree
-# without touching it, and prints nothing when the tree is clean. A
-# pipeline's status is its last command's, so the archive goes through a
-# file in $work: under set -e, a failing git or tar fails the script.
+# disk, kept as DEST.tar and unpacked into DEST. `git stash create` commits
+# the working tree without touching it, and prints nothing when the tree is
+# clean. A pipeline's status is its last command's, so the archive goes
+# through a file: under set -e, a failing git or tar fails the script.
 copy_archive() {
   mkdir -p "$2"
   ref=$(cd "$1" && git stash create)
-  (cd "$1" && git archive --format=tar "${ref:-HEAD}") > "$work/archive.tar"
-  (cd "$2" && tar -xf -) < "$work/archive.tar"
+  (cd "$1" && git archive --format=tar "${ref:-HEAD}") > "$2.tar"
+  (cd "$2" && tar -xf -) < "$2.tar"
 }
 
 # The package's name and version, then one dependency name per line.
@@ -71,11 +76,16 @@ depends=$(echo "$manifest" | sed '1d')
 
 copy_archive "$root" "$work/pkg/$package"
 
-# 0. Nothing project-internal is distributed.
-for internal in .plans AGENTS.md; do
-  [ ! -e "$work/pkg/$package/$internal" ] ||
-    fail "$internal is in the release archive (.gitattributes export-ignore?)"
+# 0. What the archive ships: no design records, and the libraries.
+tar -tf "$work/pkg/$package.tar" > "$work/archive.txt"
+awk -F/ '!seen[$1]++ { print $1 }' "$work/archive.txt" > "$work/archive-top.txt"
+for record in .plans AGENTS.md; do
+  if grep -qxF "$record" "$work/archive-top.txt"; then
+    fail "the package would ship $record; .gitattributes must mark it export-ignore"
+  fi
 done
+grep -qxF src/generated/httparse-message.sls "$work/archive.txt" ||
+  fail "the archive holds no src/generated/httparse-message.sls, so it cannot be what the package is built from"
 
 lock="((name \"$package\") (location (directory \"$work/pkg/$package\")))"
 for dep in $depends; do
@@ -109,6 +119,9 @@ echo "check-akku: installing $package $version and its dependencies: $depends"
 # 1. This package's libraries are exactly src/.
 awk -F '\t' -v p="$package" '$2 == p && $3 == "r6rs-library" { sub("^\\.akku/lib/", "", $1); print $1 }' \
   .akku/list | sort > installed.txt
+site=$(awk '/^site\// { printf "%s%s", sep, $0; sep = " " }' installed.txt)
+[ -z "$site" ] ||
+  fail "$package installs the docs site generator's libraries ($site): .akkuignore must list site"
 (cd "$root" && git ls-files -- 'src/*.sls' | sed 's#^src/##' | sort) > expected.txt
 diff -u expected.txt installed.txt > libraries.diff ||
   { cat libraries.diff >&2; fail "$package installs a different set of libraries than src/ (- missing, + extra)"; }

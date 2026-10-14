@@ -108,8 +108,10 @@ check-site: cmark-gfm-root   ## test the site generator, then check docs/ with i
 	@CHEZSCHEMELIBDIRS=$(SITE_LIBDIRS) SITE_REF="$(SITE_REF)" \
 	  $(CHEZ) --program test/site/site-check.sps
 
-# Installs this package with Akku as a consumer would, from the files git
-# tracks, then checks that exactly the libraries under src/ install and that a
-# program parses a request with only Akku's library path. Needs akku.
+# Builds this package with `git archive`, as Akku's archive does, and checks
+# that the archive leaves out .plans and AGENTS.md. Then installs it with Akku
+# as a consumer would, and checks that exactly the libraries under src/
+# install and that a program parses a request with only Akku's library path.
+# Needs akku.
 check-akku:   ## install with Akku as a consumer would, and check what lands
 	@AKKU="$(AKKU)" CHEZ="$(CHEZ)" sh test/akku/check-akku.sh

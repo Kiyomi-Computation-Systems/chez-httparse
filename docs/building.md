@@ -236,10 +236,12 @@ a checkout. Two checks keep them honest:
   command. It packs this repository and each vendored dependency with
   `git archive`, which is exactly what Akku's archive serves for a tag, and
   installs them into a throwaway consumer project. It fails if `.plans/` or
-  `AGENTS.md` is in the archive, if anything but exactly the libraries under
-  `src/` installs, or if a small program can't parse a request using only
-  the library path Akku sets up. `git add` a new file before
-  running it: an untracked file isn't part of the package.
+  `AGENTS.md` is in the archive, or the archive holds no library, if
+  anything but exactly the libraries under `src/` installs (a `site/`
+  library is named, with its fix: `.akkuignore` must list `site`), or if a
+  small program can't parse a request using only the library path Akku sets
+  up. `git add` a new file before running it: an untracked file isn't part
+  of the package.
 
 What ships is decided by `.gitattributes`: its `export-ignore` rules leave
 `.plans/` and `AGENTS.md` out. The site generator ships, but Akku installs
