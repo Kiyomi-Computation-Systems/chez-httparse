@@ -27,8 +27,10 @@ test/fixtures/** -text
 # a plausible message while testing the wrong grammar. -text is enough forever.
 test/vendor/** -text
 
-# Project-internal notes, left out of release archives (`git archive`, and the
-# source tarballs GitHub builds from a tag). The design records, lessons and
+# Project-internal notes, left out of release archives: `git archive`, the
+# source tarballs GitHub builds from a tag, and the Akku archive, which
+# serves exactly `git archive` of the tag. The design records, lessons and
 # agent instructions are for working on this repository, not for using it.
+# `make check-akku` fails if either ships.
 /.plans export-ignore
 /AGENTS.md export-ignore

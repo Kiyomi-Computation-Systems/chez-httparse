@@ -233,15 +233,21 @@ a checkout. Two checks keep them honest:
   So the release that adds a heading to `CHANGELOG.md` updates the manifest
   too, and a pin bump updates the manifest's range and runs `akku lock`.
 - **`make check-akku`** needs the [`akku`](https://gitlab.com/akkuscm/akku)
-  command. It makes a throwaway consumer project and installs this package
-  and its dependencies into it, from the files git tracks. It fails unless
-  exactly the libraries under `src/` install, and a small program parses a
-  request using only the library path Akku sets up. `git add` a new file
-  before running it: an untracked file isn't part of the package.
+  command. It packs this repository and each vendored dependency with
+  `git archive`, which is exactly what Akku's archive serves for a tag, and
+  installs them into a throwaway consumer project. It fails if `.plans/` or
+  `AGENTS.md` is in the archive, if anything but exactly the libraries under
+  `src/` installs, or if a small program can't parse a request using only
+  the library path Akku sets up. `git add` a new file before
+  running it: an untracked file isn't part of the package.
 
-Akku installs every library it finds outside `test/`. `.akkuignore` keeps
-`site/` out: the site generator isn't part of this library, and
-chez-cmark-gfm ships the same library names.
+What ships is decided by `.gitattributes`: its `export-ignore` rules leave
+`.plans/` and `AGENTS.md` out. The site generator ships, but Akku installs
+every library it finds outside `test/`, so `.akkuignore` keeps `site/` from
+being installed. Akku reads it from the package, so it applies to a
+consumer's install and to `akku install` in a clone alike. The generator's
+`(site ...)` libraries aren't part of this library, and chez-cmark-gfm
+ships the same library names.
 
 ## Regenerating checked-in files
 

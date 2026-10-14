@@ -30,8 +30,13 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   everything up. The `docs.akku-manifest` lane holds the manifest's version
   to the latest release here, and its dependency floor and the lock to the
   vendored copy, and
-  `make check-akku` installs the package into a throwaway consumer and
-  parses a request with only Akku's library path.
+  `make check-akku` packs the package with `git archive`, as Akku's archive
+  does, installs it into a throwaway consumer, and parses a request with only
+  Akku's library path.
+- **Links into `.plans/` resolve from a release archive.** Release archives,
+  the Akku package among them, leave out `.plans/` and `AGENTS.md`, and
+  `make check-akku` now fails if either ships. Links from `CHANGELOG.md` and
+  `README.org` into `.plans/` point at GitHub instead.
 - **`NOTICE`**, crediting llhttp, from which the parser derives, with its MIT
   license text.
 
@@ -73,7 +78,7 @@ A whole-buffer parse is unchanged to within a tick of the millisecond clock.
 
 - **The pin moves to byte-machine `v0.7.0`, whose parse errors name the span
   they abandoned**
-  ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  ([0005](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
   item 3). Upstream range `5c1cb7e..c338a57`, seven commits: PRs #143, #144 and
   #146 to #150. This bump carries upstream
   [issue #145](https://github.com/Kiyomi-Computation-Systems/byte-machine/issues/145),
@@ -289,7 +294,7 @@ parse is 35–80% faster.
 
 - **The pin moves to byte-machine `v0.6.1`, and a header name costs the same
   however much of a keyword it matches**
-  ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  ([0005](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
   item 3). Upstream range `0245db3..5c1cb7e`, three commits: PR #140 (the fix),
   #141 (its reflection) and #142 (the release). This bump delivers upstream
   [issue #139](https://github.com/Kiyomi-Computation-Systems/byte-machine/issues/139),
@@ -528,7 +533,7 @@ record.
 ### Changed
 
 - **The pin moves to `114a1ab`, and a byte-at-a-time parse gets 77% faster**
-  ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  ([0005](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
   item 3). Upstream range `df16902..114a1ab`, one commit: PR #136. The last
   linear scan in the generated parser -- `%dispatch`, which answers the one
   target that cannot be a literal because the state comes from the parser --
@@ -566,7 +571,7 @@ record.
 
 - **The pin moves to `df16902`, the parser gets 2.6x faster again, and the
   generated ABI becomes 9**
-  ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  ([0005](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
   item 3). Upstream range `69276b5..df16902`, four commits: PRs #134 and #135
   and their close-outs. Three more dispatches, all the same defect one level
   further out each time.
@@ -609,9 +614,9 @@ record.
   the previous pin, and the 274-fixture conformance ratchet is bit-exact.
 
 - **The byte-machine pin moves to `69276b5`, and the parser gets four times
-  faster** ([0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  faster** ([0005](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
   item 3; the bump exists to deliver
-  [0027](.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md)).
+  [0027](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md)).
   Upstream range `bce3a6b..69276b5`, two commits: byte-machine's PR #133 and
   its close-out. That project's decisions 0048 and 0049 replace the emitted
   `(case st ...)` -- which Chez compiles as a linear scan -- with one procedure
@@ -681,7 +686,7 @@ record.
   that 4.5x is unexplained.
 
 - **The 4.5x is state numbering, and the cause is recorded**
-  ([0027](.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md)).
+  ([0027](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0027-the-cost-is-dispatch-position-not-grammar.md)).
   Chez compiles `(case st ...)` over integer keys as a linear scan -- ~0.31 ns
   per arm skipped, the total arm count irrelevant, identical at every optimize
   level. The emitted message machine has 530 states with its hot scanning
@@ -711,7 +716,7 @@ record.
 
 - **A bare LF after a request's version needs BOTH `OPTIONAL_CR_BEFORE_LF`
   and `OPTIONAL_LF_AFTER_CR`**
-  ([0026](.plans/decisions/0026-the-lenient-flags-are-combined-and-the-init-hook-is-ours.md)).
+  ([0026](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0026-the-lenient-flags-are-combined-and-the-init-hook-is-ours.md)).
   With the first alone llhttp still refuses — at the same offset and with the
   same reason as strict, and a different code: `Expected CRLF after version`
   as `strict` (2) rather than as `invalid-version` (9). This parser accepted
@@ -729,7 +734,7 @@ record.
   appears nowhere in the 274.
 
 - **A host may hold two `@` if they are not adjacent**
-  ([0024](.plans/decisions/0024-the-url-input-generator-and-the-second-at.md)).
+  ([0024](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0024-the-url-input-generator-and-the-second-at.md)).
   llhttp accepts `http://a@b@c/p` — the host is `a@b@c` — and refuses only
   `a@@b` with `Double @ in url`. This parser refused the second `@` wherever
   it fell.
@@ -747,7 +752,7 @@ record.
 ### Changed
 
 - **The generated-input lanes combine the lenient flags**
-  ([0026](.plans/decisions/0026-the-lenient-flags-are-combined-and-the-init-hook-is-ours.md)).
+  ([0026](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0026-the-lenient-flags-are-combined-and-the-init-hook-is-ours.md)).
   Upstream's harness picks its init hook with a `-D` at compile time and
   ships one per (kind, single flag), so no combination can be asked of it at
   all — and `lenient_all` sets nine of the eleven, leaving
@@ -764,7 +769,7 @@ record.
   one flag, rather than argued into place.
 
 - **Both generated-input properties are now asked of both machines**
-  ([0025](.plans/decisions/0025-both-properties-are-asked-of-both-machines.md)).
+  ([0025](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0025-both-properties-are-asked-of-both-machines.md)).
   The property lane is a merge gate and was message-only, so nothing compared
   the emitted url parser against its interpreted twin over input the corpus
   does not contain — the one place a compiler bug could hide from the
@@ -782,7 +787,7 @@ record.
   across chunk sizes.
 
 - **The live differential compares a third kind, and sweeps three seeds**
-  ([0024](.plans/decisions/0024-the-url-input-generator-and-the-second-at.md)).
+  ([0024](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0024-the-url-input-generator-and-the-second-at.md)).
   `generate-urls` assembles urls from llhttp's own decision points, `url.md`
   entire is a mutation base, and a third oracle binary is built the way
   `test/md-test.ts`'s `buildURL()` builds it — the program `url.md` was
@@ -798,7 +803,7 @@ record.
 
 - **The request target is parsed, not just carried — and the parser is
   STRICTER for it**
-  ([0023](.plans/decisions/0023-the-request-target-is-parsed-not-carried.md)).
+  ([0023](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0023-the-request-target-is-parsed-not-carried.md)).
   llhttp's URL machine now runs over the request target, entering at the
   authority form for `CONNECT` and the general form otherwise, so a target
   whose structure llhttp rejects is an error here too:
@@ -827,7 +832,7 @@ record.
 - **The url sub-parser, and with it every fixture llhttp ships.** The ratchet
   stands at **274 of 274** and the deferral list is EMPTY, for the first time
   since decision 0009 wrote it with 84 entries
-  ([0022](.plans/decisions/0022-the-url-sub-parser-is-a-second-machine.md)).
+  ([0022](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0022-the-url-sub-parser-is-a-second-machine.md)).
 
   A SECOND MACHINE, not more of the first. `url.md`'s fixtures carry no HTTP
   framing: upstream builds a separate binary from `llhttp.URL(p, true)` with
@@ -857,7 +862,7 @@ record.
 
 - **The two modes an embedder chooses are settable FIELDS, written at
   `make-parser`, not callbacks the parser asks**
-  ([0021](.plans/decisions/0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md)).
+  ([0021](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0021-the-modes-are-settable-fields-and-the-fourth-brief-is-discharged.md)).
   The pin moved to the generator's `v0.5.0`, which answers this project's
   fourth upstream brief, and the surface collapses to llhttp's own:
 
@@ -899,7 +904,7 @@ record.
 - **Lenient modes — all eleven flags, and with them every HTTP fixture llhttp
   ships.** The ratchet stands at **253 of 253**; the 21 that remain are
   `url.md`, which is a separate parser
-  ([0020](.plans/decisions/0020-lenient-modes-a-flag-at-a-time.md)).
+  ([0020](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0020-lenient-modes-a-flag-at-a-time.md)).
 
   Each flag arrives as an OPTIONAL decision callback asked once, ahead of the
   machine's entry, and sets a bit in a `lenient-flags` field of its own —
@@ -923,7 +928,7 @@ record.
   three errors at the same three offsets and could not print `v=5/6`.
 
 - **Pausing, and `skipBody`** — M9, the 26 fixtures decision
-  [0009](.plans/decisions/0009-v01-is-strict-request-and-response-parsing.md)
+  [0009](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0009-v01-is-strict-request-and-response-parsing.md)
   deferred past v0.1. The ratchet stands at **216 of 253** HTTP fixtures, from
   190; the 58 that remain are 37 lenient-mode and 21 URL.
 
@@ -932,7 +937,7 @@ record.
   binary per mode, and the two modes are exclusive in the C preprocessor. Here
   that is one required argument — `#f`, `(pause <name>)` or `(skip-body)` —
   rather than two flags that could represent a build nobody can make.
-  ([0019](.plans/decisions/0019-the-harness-mode-and-the-two-kinds-of-pause.md))
+  ([0019](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0019-the-harness-mode-and-the-two-kinds-of-pause.md))
 
 - **`off=N pause`, told apart from the machine's own pause.** Upstream prints
   a callback's pause as the bare word and an upgrade pause as an error line,
@@ -980,7 +985,7 @@ conformance corpus, replayed at every chunk size from 1 to the input length.
 The remaining 63 and the 21 URL fixtures are enumerated, vendored and
 ratcheted rather than omitted — see
 [docs/conformance.org](docs/conformance.org) and decision
-[0009](.plans/decisions/0009-v01-is-strict-request-and-response-parsing.md).
+[0009](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0009-v01-is-strict-request-and-response-parsing.md).
 
 Gate 0 and Slice 1: project bootstrap, then the milestone ladder in
 `.plans/2026-09-13-gate0-http-parser-milestone-plan.md`.
@@ -992,7 +997,7 @@ the bootstrap slice design is
 ### Added
 
 - **The live llhttp differential**, local and opt-in
-  ([0010](.plans/decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md)):
+  ([0010](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0010-the-live-llhttp-oracle-is-local-and-opt-in.md)):
   `HTTPARSE_LLHTTP_ROOT` points at a built llhttp checkout and the lane
   builds its oracle with llhttp's OWN test harness — the program that
   produced the vendored corpus — rather than a driver of ours printing the
@@ -1002,7 +1007,7 @@ the bootstrap slice design is
   events by `(httparse test oracle)`, whose calibration is all 253 recorded
   blocks round-tripping unchanged and which needs no llhttp.
 - **A divergence is named and witnessed or it fails the lane**
-  ([0018](.plans/decisions/0018-a-divergence-is-named-and-witnessed-or-it-fails-the-lane.md)).
+  ([0018](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0018-a-divergence-is-named-and-witnessed-or-it-fails-the-lane.md)).
   Two classes remain for v0.1 and both are published with the reduced input
   and both traces: the deferred URL sub-parser, and a completion event at
   the exact end of the input, in both directions.
@@ -1026,11 +1031,11 @@ the bootstrap slice design is
 
 
 - Gate 0 decision records: project naming and the mechanical rename map
-  ([0001](.plans/decisions/0001-project-name-and-rename-map.md)), how
+  ([0001](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0001-project-name-and-rename-map.md)), how
   byte-machine is consumed and the generated-ABI v2 target
-  ([0002](.plans/decisions/0002-byte-machine-consumption-and-abi.md)), and
+  ([0002](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0002-byte-machine-consumption-and-abi.md)), and
   Slice 1 scope with its five exit criteria
-  ([0003](.plans/decisions/0003-slice-1-scope-and-exit-criteria.md)).
+  ([0003](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0003-slice-1-scope-and-exit-criteria.md)).
 - The test harness and build layer, ported from
   [byte-machine](https://github.com/Kiyomi-Computation-Systems/byte-machine)
   under decision 0001's rename map: the CMake build (presets `dev`/`prod`/
@@ -1059,8 +1064,8 @@ the bootstrap slice design is
   the no-scheme lane. macOS arm64 is verified locally on the maintainer's
   laptop rather than on a hosted runner.
 - Decision record
-  ([0004](.plans/decisions/0004-ci-covers-the-linux-cell-alone.md)) amending
-  [0003](.plans/decisions/0003-slice-1-scope-and-exit-criteria.md)'s criterion
+  ([0004](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0004-ci-covers-the-linux-cell-alone.md)) amending
+  [0003](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0003-slice-1-scope-and-exit-criteria.md)'s criterion
   4: from this date, a slice closes on the Linux cell green in CI plus a
   recorded local macOS run, not on two CI cells.
 
@@ -1088,11 +1093,11 @@ the bootstrap slice design is
   `url complete` and the error. Before the bump that line was simply absent
   from our trace, and a consumer could not tell "present and empty" from
   "never opened". The gap was found by Milestone 2 Slice 1, recorded under
-  [0006](.plans/decisions/0006-upstream-first-for-general-gaps.md), and
+  [0006](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0006-upstream-first-for-general-gaps.md), and
   briefed upstream in
-  [.plans/2026-09-13-upstream-empty-span-brief.md](.plans/2026-09-13-upstream-empty-span-brief.md);
+  [.plans/2026-09-13-upstream-empty-span-brief.md](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/8d796a484bb71c31801e9445030bf79a994d300d/.plans/2026-09-13-upstream-empty-span-brief.md);
   this bump is the ritual
-  [0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  [0005](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
   item 3 describes, and its first exercise.
 
   Measured across the bump here rather than taken from the upstream release
@@ -1115,12 +1120,12 @@ the bootstrap slice design is
   table became **one `keyword-table` node** instead of a 242-node hand-built
   trie. byte-machine's Milestone 11 added the node kind, opened from this
   project's second upstream brief
-  ([.plans/2026-09-13-upstream-keyword-trie-brief.md](.plans/2026-09-13-upstream-keyword-trie-brief.md))
-  under [0006](.plans/decisions/0006-upstream-first-for-general-gaps.md); with
+  ([.plans/2026-09-13-upstream-keyword-trie-brief.md](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/8d796a484bb71c31801e9445030bf79a994d300d/.plans/2026-09-13-upstream-keyword-trie-brief.md))
+  under [0006](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0006-upstream-first-for-general-gaps.md); with
   the empty-span change at `v0.2.0`, **both briefs are now discharged**. The ABI
   move is recorded in
-  [0012](.plans/decisions/0012-generated-abi-6-and-keyword-tables.md), amending
-  [0005](.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
+  [0012](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0012-generated-abi-6-and-keyword-tables.md), amending
+  [0005](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0005-byte-machine-pinned-by-gitlink-generated-abi-5.md)
   item 2.
 
   The swap replaces one node and is measured, not estimated:
@@ -1156,8 +1161,8 @@ the bootstrap slice design is
   digits-and-dot loop accepted `1.1.1`.
 
 - **Error identity is llhttp's `(code, reason)` pair**
-  ([0013](.plans/decisions/0013-error-identity-is-llhttps-code-and-reason-pair.md)),
-  refining [0008](.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
+  ([0013](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0013-error-identity-is-llhttps-code-and-reason-pair.md)),
+  refining [0008](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
   items 2 and 3. One code symbol per llhttp error number, llhttp's reason text
   verbatim, and both halves checked. Over the corpus there are 42 distinct
   `(code, reason)` pairs across 17 codes and 41 reasons, eight codes carry more
@@ -1175,7 +1180,7 @@ the bootstrap slice design is
 
   Two lanes register it — `extremes` (chunk size 1 and the whole buffer) on
   every pull request and `full` (every size) on release, per
-  [0008](.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
+  [0008](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
   item 5. The driver calls `parser-finish!` only for the `*-finish` fixture
   types, which is what llhttp's own harness does.
 
@@ -1226,7 +1231,7 @@ the bootstrap slice design is
 
   `headers complete` now renders. Its four numbers are read off the parser's
   own fields, the way llhttp's callback reads its own struct
-  ([0014](.plans/decisions/0014-the-adapter-may-read-parser-fields.md)) — the
+  ([0014](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0014-the-adapter-may-read-parser-fields.md)) — the
   adapter may READ parser state and still may not DERIVE it, and a field it was
   not given is a refusal rather than a zero.
 
@@ -1250,17 +1255,17 @@ the bootstrap slice design is
   and prints it as `error code=22 reason="Pause on CONNECT/Upgrade"`; a
   byte-machine pause carries neither, so the adapter refuses and nine fixtures
   wait. Recorded as
-  [the third upstream brief](.plans/2026-09-14-upstream-pause-reason-brief.md)
-  under [0006](.plans/decisions/0006-upstream-first-for-general-gaps.md). An
+  [the third upstream brief](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/8d796a484bb71c31801e9445030bf79a994d300d/.plans/2026-09-14-upstream-pause-reason-brief.md)
+  under [0006](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0006-upstream-first-for-general-gaps.md). An
   error node would give a bit-identical trace and would be wrong — a paused
   parser is resumable — and no test in the corpus could tell.
 
 - **byte-machine pinned at `v0.4.0`** (`9c027fd..18fcc8b`, two commits), and
   **the generated ABI moves 6 → 7**
-  ([0015](.plans/decisions/0015-generated-abi-7-and-a-pause-carries-its-reason.md),
-  amending [0012](.plans/decisions/0012-generated-abi-6-and-keyword-tables.md)
+  ([0015](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0015-generated-abi-7-and-a-pause-carries-its-reason.md),
+  amending [0012](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0012-generated-abi-6-and-keyword-tables.md)
   item 1). The bump delivers this project's **third** upstream ask,
-  [the pause-reason brief](.plans/2026-09-14-upstream-pause-reason-brief.md):
+  [the pause-reason brief](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/8d796a484bb71c31801e9445030bf79a994d300d/.plans/2026-09-14-upstream-pause-reason-brief.md):
   a pause now carries its own `(code, reason)`, read through the new
   `parser-result-pause`.
 
@@ -1332,8 +1337,8 @@ the bootstrap slice design is
   `flags & CONTENT_LENGTH`.
 
   **A `*-finish` fixture prints a field, it does not end a parse**
-  ([0016](.plans/decisions/0016-a-finish-fixture-prints-a-field-not-an-ending.md),
-  amending [0008](.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
+  ([0016](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0016-a-finish-fixture-prints-a-field-not-an-ending.md),
+  amending [0008](https://github.com/Kiyomi-Computation-Systems/chez-httparse/blob/main/.plans/decisions/0008-bit-exact-trace-conformance-and-the-ratchet.md)
   item 5). llhttp's hook is one line and prints `s->finish`; it never calls
   `llhttp_finish`. The driver had modelled it as an ending since M1 and drove
   this parser to its end-of-input states, producing an `unexpected-eof` the
