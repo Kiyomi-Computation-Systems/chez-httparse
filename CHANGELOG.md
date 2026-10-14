@@ -35,8 +35,10 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   Akku's library path.
 - **Links into `.plans/` resolve from a release archive.** Release archives,
   the Akku package among them, leave out `.plans/` and `AGENTS.md`, and
-  `make check-akku` now fails if either ships. Links from `CHANGELOG.md` and
-  `README.org` into `.plans/` point at GitHub instead.
+  `make check-akku` now fails if either ships, or if the archive holds no
+  library, so an empty archive cannot pass. It names any `site/` library
+  that installs, and says `.akkuignore` must list `site`. Links from
+  `CHANGELOG.md` and `README.org` into `.plans/` point at GitHub instead.
 - **`NOTICE`**, crediting llhttp, from which the parser derives, with its MIT
   license text.
 
