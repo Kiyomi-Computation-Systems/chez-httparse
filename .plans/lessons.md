@@ -1009,6 +1009,36 @@ change. And when you split or rewrite documentation, treat every sentence
 you carry over as a claim to re-check, not text to preserve: the source page
 is evidence of what someone believed, not of what the code does.
 
+### A file copied from a sibling carries the sibling's claims
+
+`.gitattributes` came over from byte-machine when this repository was
+bootstrapped on its harness. byte-machine's file says `-text` matters because
+"the private request fixture is CRLF-framed". The copy was reworded to
+"request fixtures are CRLF-framed", which reads as a statement about this
+tree. It never was one. `test/fixtures/` holds a fingerprint sample and a
+stale library root, no tracked file contains a CR byte, and the llhttp corpus
+writes CRLF as the four characters `\r\n`. The copy also kept
+`*.expected -text`, a rule for files that have never been tracked here (nor
+in byte-machine's tree at v0.8.0).
+
+The sentence lasted nearly seven weeks and survived the comment sweep for the
+public release. That sweep edited the next paragraph down, taking a decision
+number out of the corpus comment, and left the fixture sentence alone: it was
+reading for labels and dates, not for truth. It was found from the other end.
+uriparse's `.gitattributes`, copied from this one word for word, described an
+llhttp corpus, a decision record and HTTP fixtures that uriparse does not
+have, and checking this file the same way showed the original was no truer.
+
+The rewording is what let it through. The rename audit scans
+`.gitattributes`, and byte-machine's own wording fails it ("upstream project
+token leaked into '.gitattributes'"); "request fixtures" passes every check
+that reads names and none that reads the tree. So when you copy a file from a
+sibling (a config, a harness, a Makefile target, a CI step), **check each
+sentence and each rule against this tree before the copy is committed**: does
+the path exist, does anything match the rule, is the reason it gives true
+here. A rule that matches nothing is the cheapest claim to check:
+`git ls-files '*.expected'` printed nothing.
+
 ### A version surface is anywhere the text asserts a relationship to the release
 
 Cutting v0.2.0 meant moving the version string in `CHANGELOG.md` and the
