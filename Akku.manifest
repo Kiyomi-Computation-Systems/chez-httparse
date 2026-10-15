@@ -1,0 +1,28 @@
+#!r6rs ; -*- scheme -*-
+(import (akku format manifest))
+
+;; The package installs the libraries under src/. Everything under test/ is
+;; test code and is not installed. The docs site's generator under site/ is
+;; left out by .akkuignore, since it is not part of the library and its
+;; library names are not ours to claim. Programs install only from bin/,
+;; demos/ or programs/, and this repository has none of those, so none
+;; install. `make check-akku` installs the package as a consumer would and
+;; checks that set.
+;;
+;; depends: the generated parsers import (byte-machine runtime), and the
+;; grammars under src/httparse/ import (byte-machine graph). The range's
+;; floor is the version vendored in vendor/byte-machine, which is the
+;; version the test suite runs against. The docs.akku-manifest lane holds
+;; this version to the latest release in CHANGELOG.md, that floor to the
+;; vendored copy's, and Akku.lock to the same version.
+;;
+;; No `scripts` clause: there is nothing to build.
+(akku-package ("chez-httparse" "0.4.5")
+  (synopsis "An HTTP/1.x parser for Chez Scheme, checked against llhttp")
+  (description
+   "A byte-level HTTP/1.x request and response parser. It is resumable: feed it bytes as they arrive, split anywhere, and it calls you back with events and with spans into your own bytevector. It never copies or keeps your input."
+   "It is checked against llhttp's own test corpus, byte for byte, at every chunk size, and ships a URL parser beside it. The libraries an embedder imports need only (rnrs) and the generator's runtime.")
+  (authors "Kiyomi Computation Systems LLC")
+  (homepage "https://github.com/Kiyomi-Computation-Systems/chez-httparse")
+  (license "BSD-3-Clause")
+  (depends ("byte-machine" "^0.8.0")))

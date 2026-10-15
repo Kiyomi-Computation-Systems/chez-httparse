@@ -12,23 +12,27 @@
 # so no filter, no autocrlf setting, and no future .gitattributes edit can touch
 # them. eol=lf above would be enough today; -text is enough forever.
 #
-# HTTP is the reason this matters concretely: request fixtures are
-# CRLF-framed, and a fixture whose CRLFs became LFs would still parse as a
-# plausible message while testing the wrong grammar.
+# test/fixtures/ holds the fingerprint sample, whose length, bytes and
+# recorded fingerprint the harness self-tests check, so a translated line
+# ending would fail them for a reason that has nothing to do with the
+# harness. Beside it is the divergent library root the stale-artifact lane
+# compiles from.
 test/fixtures/** -text
-*.expected -text
 
-# The vendored llhttp corpus is upstream's bytes, never edited, checksummed
-# in test/vendor/llhttp/PROVENANCE and verified by a registered spec. It is
-# marked binary for the same reason as the fixtures above, one step earlier:
-# no fixture in it contains a CR byte *today*, so eol=lf would be harmless
-# now -- but these are HTTP fixtures, upstream adds to them, and the first one
-# carrying a literal CR would either break every checksum or, worse, parse as
-# a plausible message while testing the wrong grammar. -text is enough forever.
+# The vendored llhttp corpus is upstream's bytes, never edited. Each file's
+# sha256 is in test/vendor/llhttp/PROVENANCE, and the corpus-provenance lane
+# checks them. No file in it contains a CR byte *today* -- the fixtures write
+# CRLF as the text \r\n -- so eol=lf would be harmless now. But upstream adds
+# to them, and the first file carrying a literal CR would either break its
+# checksum or, worse, parse as a plausible message while testing the wrong
+# grammar. -text is enough forever.
 test/vendor/** -text
 
-# Project-internal notes, left out of release archives (`git archive`, and the
-# source tarballs GitHub builds from a tag). The design records, lessons and
-# agent instructions are for working on this repository, not for using it.
+# Kept in the repository, left out of what is distributed: `git archive`, the
+# source tarballs GitHub builds from a tag, and the Akku archive, which serves
+# exactly `git archive` of the tag. `akku install` unpacks the whole package
+# into a consumer's .akku/src/<name>/, not only its libraries. The design
+# records, lessons and agent instructions are for working on this repository,
+# not for using it. `make check-akku` fails if either would ship.
 /.plans export-ignore
 /AGENTS.md export-ignore

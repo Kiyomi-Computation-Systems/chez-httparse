@@ -21,13 +21,14 @@ CTEST_FLAGS ?= --output-on-failure --no-tests=error
 # Chez as well as on the version the library's own build requires. SITE_REF
 # is the git ref that ../ links in docs/ are pinned to on GitHub.
 CHEZ ?= chez
+AKKU ?= akku
 SITE_REF ?= main
 SITE_LIBDIRS = .:test/site:test/support/harness:$(CMARK_GFM_ROOT)/src
 
 # Bare 'make' prints the target list rather than building; 'make all' still builds.
 .DEFAULT_GOAL := help
 
-.PHONY: all help doctor configure build dev test test-all prod clean corpus-refresh parser-refresh site check-site cmark-gfm-root
+.PHONY: all help doctor configure build dev test test-all prod clean corpus-refresh parser-refresh site check-site cmark-gfm-root check-akku
 
 all: build   ## build the development preset
 
@@ -106,3 +107,11 @@ check-site: cmark-gfm-root   ## test the site generator, then check docs/ with i
 	@CHEZSCHEMELIBDIRS=$(SITE_LIBDIRS) $(CHEZ) --program test/site/test-site-render.sps
 	@CHEZSCHEMELIBDIRS=$(SITE_LIBDIRS) SITE_REF="$(SITE_REF)" \
 	  $(CHEZ) --program test/site/site-check.sps
+
+# Builds this package with `git archive`, as Akku's archive does, and checks
+# that the archive leaves out .plans and AGENTS.md. Then installs it with Akku
+# as a consumer would, and checks that exactly the libraries under src/
+# install and that a program parses a request with only Akku's library path.
+# Needs akku.
+check-akku:   ## install with Akku as a consumer would, and check what lands
+	@AKKU="$(AKKU)" CHEZ="$(CHEZ)" sh test/akku/check-akku.sh

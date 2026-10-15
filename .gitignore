@@ -24,6 +24,10 @@ CMakeUserPresets.json
 *.so
 *.wpo
 
+# Akku's install directory, written by `akku install`. Akku.manifest and
+# Akku.lock are tracked.
+/.akku/
+
 # Editor and platform noise
 .DS_Store
 *~

@@ -166,7 +166,7 @@ Start with installing and usage; the rest is by task.
 - [[file:docs/conformance.md][Conformance]]: what is checked against llhttp, and how
 - [[file:docs/performance.md][Performance]]: allocation and throughput, measured
 - [[file:docs/building.md][Building and testing]]: presets, lanes and the opt-in checks
-- =.plans/decisions/=: design decision records
+- [[https://github.com/Kiyomi-Computation-Systems/chez-httparse/tree/main/.plans/decisions][Design decision records]]: why the code is the way it is (in the repository, not in release archives)
 - =CHANGELOG.md=: release history
 
 * License

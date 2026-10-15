@@ -56,6 +56,7 @@ The rest of the targets:
 | `make parser-refresh` | re-emit the checked-in generated parsers                          |
 | `make site`           | render docs/ into build/site/ (needs `CMARK_GFM_ROOT`)            |
 | `make check-site`     | test the site generator, then check docs/ with it                 |
+| `make check-akku`     | install with Akku as a consumer would (needs `akku`)              |
 
 Every target is a thin wrapper over checked-in CMake presets, so you can
 run `cmake` and `ctest` yourself instead — and on Windows, where `make` is
@@ -130,7 +131,7 @@ mode become labels, which is what the presets select on.
 | `conformance`  | the vendored llhttp corpus, byte for byte                 |
 | `portability`  | values crossing library boundaries; runtime identity      |
 | `example`      | the documented examples, run                              |
-| `docs`         | the documentation, checked against the code               |
+| `docs`         | the docs and the Akku manifest, checked against the tree  |
 | `benchmark`    | measured rates, printed rather than asserted              |
 | `expected-red` | tests that must fail, proving the harness can fail        |
 
@@ -214,6 +215,41 @@ home page is `site/index.md`, and the menu order is in `site/pages.sls`.
 
 Pushing a release tag publishes the site to GitHub Pages
 (`.github/workflows/pages.yml`), after running both targets.
+
+## Optional: the Akku package
+
+`Akku.manifest` describes this package for the
+[Akku](https://akkuscm.org/) package index. `Akku.lock`, written by
+`akku lock`, records the exact dependency versions `akku install` fetches in
+a checkout. Two checks keep them honest:
+
+- **The `docs.akku-manifest` lane** runs on every pull request. It fails if:
+  - the manifest's version isn't the latest release in `CHANGELOG.md`;
+  - the manifest declares no dependency;
+  - a dependency's range doesn't start at the version vendored under
+    `vendor/`, which is the version every other test runs against;
+  - `Akku.lock` doesn't lock a dependency at that same version.
+
+  So the release that adds a heading to `CHANGELOG.md` updates the manifest
+  too, and a pin bump updates the manifest's range and runs `akku lock`.
+- **`make check-akku`** needs the [`akku`](https://gitlab.com/akkuscm/akku)
+  command. It packs this repository and each vendored dependency with
+  `git archive`, which is exactly what Akku's archive serves for a tag, and
+  installs them into a throwaway consumer project. It fails if `.plans/` or
+  `AGENTS.md` is in the archive, or the archive holds no library, if
+  anything but exactly the libraries under `src/` installs (a `site/`
+  library is named, with its fix: `.akkuignore` must list `site`), or if a
+  small program can't parse a request using only the library path Akku sets
+  up. `git add` a new file before running it: an untracked file isn't part
+  of the package.
+
+What ships is decided by `.gitattributes`: its `export-ignore` rules leave
+`.plans/` and `AGENTS.md` out. The site generator ships, but Akku installs
+every library it finds outside `test/`, so `.akkuignore` keeps `site/` from
+being installed. Akku reads it from the package, so it applies to a
+consumer's install and to `akku install` in a clone alike. The generator's
+`(site ...)` libraries aren't part of this library, and chez-cmark-gfm
+ships the same library names.
 
 ## Regenerating checked-in files
 

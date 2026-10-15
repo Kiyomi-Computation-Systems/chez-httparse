@@ -88,4 +88,26 @@ could not find:
 Exception: library (byte-machine runtime) not found
 ```
 
+## Or let Akku do it
+
+[Akku](https://akkuscm.org/), a Scheme package manager, can fetch the
+dependency and set the library path for you. chez-httparse is not on Akku's
+index yet, so install it from a clone. You don't need `--recursive`: Akku
+downloads byte-machine from its index instead of the submodule.
+
+```sh
+git clone https://github.com/Kiyomi-Computation-Systems/chez-httparse.git
+cd chez-httparse
+akku install
+. .akku/bin/activate
+```
+
+`akku install` puts the libraries under `.akku/lib/`, and `activate` sets
+`CHEZSCHEMELIBDIRS` to that folder for the rest of your shell session. Then
+no `--libdirs` is needed:
+
+```sh
+echo '(import (generated httparse-message)) (display "ok") (newline)' | chez -q
+```
+
 Next: [usage.md](usage.md) makes a parser and feeds it a request.
