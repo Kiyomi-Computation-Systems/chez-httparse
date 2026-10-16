@@ -18,9 +18,9 @@
 ;;
 ;; No `scripts` clause: there is nothing to build.
 (akku-package ("chez-httparse" "0.4.5")
-  (synopsis "An HTTP/1.x parser for Chez Scheme, checked against llhttp")
+  (synopsis "HTTP/1.x parser for Chez Scheme, in portable R6RS")
   (description
-   "A byte-level HTTP/1.x request and response parser. It is resumable: feed it bytes as they arrive, split anywhere, and it calls you back with events and with spans into your own bytevector. It never copies or keeps your input."
+   "A byte-level HTTP/1.x request and response parser. It is resumable: feed it bytes as they arrive, split anywhere, and it calls back with events and with spans into your own bytevector. It never copies or keeps your input."
    "It is checked against llhttp's own test corpus, byte for byte, at every chunk size, and ships a URL parser beside it. The libraries an embedder imports need only (rnrs) and the generator's runtime.")
   (authors "Kiyomi Computation Systems LLC")
   (homepage "https://github.com/Kiyomi-Computation-Systems/chez-httparse")
