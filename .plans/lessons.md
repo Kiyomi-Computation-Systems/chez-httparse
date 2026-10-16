@@ -954,6 +954,29 @@ trailing newlines, so llhttp would have been benchmarked on requests whose
 `\r\n\r\n` had lost its last `\n` and never completed. Asserting the three
 input lengths caught it before any rate was read.
 
+### A headline figure should measure the loop an embedder runs
+
+The throughput lane built a new parser for every message it timed, and its
+figures headed `docs/performance.md`: "80–82 MB/s, about 275,000 requests
+a second" for a 308-byte request. A paragraph below the table said the
+figures included building a parser per message, and that reusing one would
+roughly double the rate. Every guide page tells an embedder to keep one
+parser per connection, so the headline measured a loop nobody runs.
+
+It survived the v0.8.0 re-take because that re-take asked whether the
+numbers were right, not whether they were the right numbers. The llhttp comparison
+had been fixed for exactly this (`a comparison is only as fair as its
+loop`) and the lesson was applied there and not to the table beside it. The
+user asking whether we really build a parser per message was the first
+time anyone asked it of our own lane.
+
+A second lane now keeps one parser for the whole loop and checks that its
+timed region builds none; the page leads with it (144–150 MB/s for the same
+request) and shows the per-message figures beside it, where the 1.6 µs
+difference is the cost of building a parser. **Before a figure goes in a
+headline, write down the loop it measures and ask whether a user runs it.**
+A caveat paragraph does not travel with a number that gets quoted.
+
 ### Something you did not change is your noise floor
 
 The byte-machine v0.8.0 bump changed six lines of the message parser and
