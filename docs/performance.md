@@ -12,11 +12,11 @@ Chez Scheme 10.4.1 (`tarm64osx`), at the generator pin each section names.
 | Memory does not grow with the size of a body     | 2,864 B per parse, for a 10-byte or a 10,000-byte body     |
 | Feeding in small pieces does not build up        | 444 B per feed on a 50-byte message; 384 B on 10,043 bytes |
 | A header name cannot be used to inflate memory   | 0 B extra, however much of a known name it matches         |
-| Speed, a typical request in one piece            | 80–82 MB/s, about 275,000 requests a second                |
-| Speed, a response with a 1 KB body               | 390–401 MB/s, about 355,000 responses a second             |
-| Speed, the worst case: one byte per feed         | 13 MB/s, about 44,000 requests a second                    |
-| Building a new parser                            | about 1.9 µs — keep one per connection                     |
-| Compared with llhttp, on llhttp's own benchmark  | llhttp is 8.8–12.2× faster                                 |
+| Speed, a typical request in one piece            | 144–150 MB/s, about 500,000 requests a second              |
+| Speed, a response with a 1 KB body               | 1,035–1,054 MB/s, about 930,000 responses a second         |
+| Speed, the worst case: one byte per feed         | 14 MB/s, about 48,000 requests a second                    |
+| Building a new parser                            | about 1.6–1.8 µs — keep one per connection                 |
+| Compared with llhttp, on llhttp's own benchmark  | llhttp is 8.3–12.1× faster                                 |
 | Compiled ahead of time versus loaded from source | the same speed                                             |
 | Wrapping llhttp through the FFI instead          | a straightforward wrapper is no faster than this parser    |
 
@@ -25,7 +25,8 @@ What this means when you embed it:
 - **Feed whatever the socket gives you.** Small reads cost more calls, not
   more memory per call, and the result is the same as one big read.
 - **Keep one parser per connection.** It parses message after message; a new
-  parser per message adds about 1.9 µs each time.
+  parser per message adds about 1.6–1.8 µs each time, nearly doubling the
+  cost of a typical request.
 - **Large bodies are free to pass through.** A body callback gets a position
   in your buffer, never a copy.
 
@@ -109,48 +110,57 @@ it does not depend on the source and compiled lanes agreeing to the byte.
 
 ## Speed
 
-The throughput lane, `httparse.benchmark.throughput`, prints its figures but
-does not fail a pull request on them: a rate moves with the machine and with
-whatever else is running. It fails only on a change of **kind** — an
-accidental quadratic, a per-byte allocation, a rescan.
+Two throughput lanes print their figures but do not fail a pull request on
+them: a rate moves with the machine and with whatever else is running. They
+fail only on a change of **kind** — an accidental quadratic, a per-byte
+allocation, a rescan. `httparse.benchmark.throughput-reuse` keeps one parser
+for every message, as a server keeps one per connection.
+`httparse.benchmark.throughput` builds a new parser for each message, and
+checks that it did.
 
-With the generator pinned at `v0.7.0`, building a new parser for each
-message:
+With the generator pinned at `v0.8.0`:
 
-| Input                                        |      Messages/s |    MB/s |
-|:---------------------------------------------|----------------:|--------:|
-| 308-byte request, 8 headers, in one piece    | 272,340–278,260 |   80–82 |
-| 1,166-byte response, 1 KB body, in one piece | 350,684–360,563 | 390–401 |
-| the same request, one byte per feed          |   43,835–44,444 |      13 |
+| Input                                        | One parser, msg/s |        MB/s | New parser each, msg/s |    MB/s |
+|:---------------------------------------------|------------------:|------------:|-----------------------:|--------:|
+| 308-byte request, 8 headers, in one piece    |   492,307–512,000 |     144–150 |        278,260–281,318 |   81–82 |
+| 1,166-byte response, 1 KB body, in one piece |   930,909–948,148 | 1,035–1,054 |        376,470–382,089 | 418–424 |
+| the same request, one byte per feed          |     47,761–48,484 |          14 |          44,444–45,070 |      13 |
 
-The ranges are the middle half of 80 runs. Single runs can stall — the
-slowest read 17,021 messages a second on the one-byte row — so read these
-as an order of magnitude, not a specification.
+The ranges are the middle half of 80 runs of each lane. Single runs can
+stall — one per-message run read 66,321 requests a second, under a quarter
+of its median — so read these as an order of magnitude, not a
+specification.
 
-**One byte per feed is the worst case**, and it is about six times slower,
-because the parser pays its per-feed costs 308 times instead of once. Each
-feed re-enters the generated parser through its entry dispatch, and makes
-one bookkeeping call costing about 2 ns. A whole-buffer parse pays these
-once and cannot see them.
+**Building a parser costs about 1.6 µs.** That is the whole difference
+between the two halves of the table: 1.56 µs a message on the request,
+1.58 on the response. Built per message, it is nearly half a 308-byte
+request's time. Keep one parser per connection.
 
-**These figures include building a parser per message.** That costs about
-1.9 µs — more than half of a 308-byte request's time at this speed. Reusing
-one parser, as llhttp's benchmark below does, roughly doubles the rate.
+**One byte per feed is the worst case**, about ten times slower than a whole
+buffer, because the parser pays its per-feed costs 308 times instead of
+once. Each feed re-enters the generated parser through its entry dispatch,
+and makes one bookkeeping call costing about 2 ns. A whole-buffer parse
+pays these once and cannot see them.
+
+In the per-message lane, the response row is 4–6% faster than at `v0.7.0`
+(4.4% and 5.9% in two sittings): its `Content-Length` has four digits, and each one no longer
+costs a bignum. The request rows, which carry no length, read the same at
+both pins in the same sittings, to within one tick of the clock.
 
 ## Compared with llhttp
 
 llhttp is a C parser generated from a state-machine description, and it is
 what this parser's behaviour is checked against. On llhttp's own benchmark,
-llhttp is **8.8 to 12.2 times faster**.
+llhttp is **8.3 to 12.1 times faster**.
 
 | Input                                |     llhttp | chez-httparse | Ratio |
 |:-------------------------------------|-----------:|--------------:|------:|
-| 703 B request, 8 headers, big cookie | 2,515 MB/s |    205.6 MB/s | 12.2× |
-| 520 B chunked `POST`                 | 1,654 MB/s |    165.1 MB/s | 10.0× |
-| 52 B URL                             | 2,020 MB/s |    229.8 MB/s |  8.8× |
+| 703 B request, 8 headers, big cookie | 2,602 MB/s |    215.3 MB/s | 12.1× |
+| 520 B chunked `POST`                 | 1,730 MB/s |    172.7 MB/s | 10.0× |
+| 52 B URL                             | 2,074 MB/s |    251.4 MB/s |  8.3× |
 
 Chez 10.4.1 at `optimize-level 0`, llhttp 9.4.3, the generator pinned at
-`v0.7.0`. Each figure is the median of seven rounds, llhttp's binaries and
+`v0.8.0`. Each figure is the median of seven rounds, llhttp's binaries and
 the Scheme program alternating within each round. Both sides count a
 megabyte as 2²⁰ bytes, as llhttp's output does, and every one of the
 381,842 and 516,222 repetitions of the two requests completed a message.
@@ -177,9 +187,9 @@ the parser is never reset, so from the second repetition on both parsers
 read each copy as more fragment bytes. That is what upstream's loop
 measures, and the Scheme side reproduces it rather than correcting it.
 
-**A parser per message costs about 1.9 µs.** Building a fresh parser for
-each repetition instead gives 130.7 and 101.2 MB/s on the two requests —
-19.2× and 16.3× — and the extra time per message is the same on both.
+**A parser per message costs about 1.8 µs.** Building a fresh parser for
+each repetition instead gives 137.6 and 107.5 MB/s on the two requests —
+18.9× and 16.1× — and the extra time per message is the same on both.
 
 ### Why the gap is what it is
 
@@ -226,8 +236,8 @@ For the 703-byte request, llhttp fires **47 callbacks** and parses in
 crossings take 7.0 µs against 0.25 µs of parsing: **96% of a naive
 wrapper's time is the boundary, not the parse.**
 
-**This parser reads the whole 703-byte request in 3.3 µs** (205.6 MB/s,
-above). A naive wrapper's crossings alone take twice as long.
+**This parser reads the whole 703-byte request in 3.1 µs** (215.3 MB/s,
+above). A naive wrapper's crossings alone take more than twice as long.
 
 The same 47 callbacks into C are almost free: a shim recording every event
 runs at 1,934 MB/s against 2,546 with nothing bound — 347 ns against 263 ns,
@@ -253,10 +263,10 @@ message.
 `foreign-callable` bodies and the decoding loop as well as this parser.
 
 **Only the first row depends on this parser, and it has moved since.** The
-current figure for the 703-byte request is 205.6 MB/s at level 0 reusing one
-parser, or 130.7 with a new parser per message. Against that, the naive
+current figure for the 703-byte request is 215.3 MB/s at level 0 reusing one
+parser, or 137.6 with a new parser per message. Against that, the naive
 wrapper runs at under half the speed of pure Scheme, and the batched
-wrapper's lead at level 0 shrinks to about 1.2×. The llhttp rows do not
+wrapper's lead at level 0 shrinks to about 1.1×. The llhttp rows do not
 depend on this parser and stand. The comparisons below are against the row
 as measured.
 
@@ -355,8 +365,11 @@ case doubles its repetitions until the region takes 50 ms, and prints the
 count it reached; two runs need not agree on it. A 10 ms floor catches
 calibration giving up.
 
-The ranges come from 80 runs, 40 in each mode, alternating with a second
-build in the same sitting, so a slow drift in the machine lands on both.
+The ranges come from 80 runs of each lane, 40 in each mode, with the two
+lanes alternating with a build at the previous pin in the same sitting, so a
+slow drift in the machine lands on all three.
+The second build is the previous pin: what did not change between the two
+is the sitting's noise floor, and only a difference above it is reported.
 
 ### Source and compiled run at the same speed
 

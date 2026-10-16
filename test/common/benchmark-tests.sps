@@ -9,6 +9,15 @@
 ;;; input. Anything subtler belongs in a comparison between two runs, not in
 ;;; a pass or a fail.
 ;;;
+;;; THE PARSER IS BUILT EITHER PER MESSAGE OR ONCE. HTTPARSE_BENCHMARK_PARSER
+;;; names the mode, and the lane registered for each sets it: `fresh` builds a
+;;; parser for every message, inside the timed region, as a server that made
+;;; one per request would; `reuse` builds one before the region and feeds it
+;;; the message again and again, as a server keeping one per connection does,
+;;; and as llhttp's own benchmark does. The difference is the cost of building
+;;; a parser. Each case checks how many parsers the timed region built, so a
+;;; reuse lane that started building them again would fail, not just slow down.
+;;;
 ;;; AND THE PARSE MUST BE A REAL ONE. A benchmark that measures a parser
 ;;; erroring on the first byte is fast and meaningless, so each case checks
 ;;; that the message actually completed before it reports a rate.
@@ -27,6 +36,17 @@
         (byte-machine runtime))
 
 (define completed 0)
+
+;; The parser mode, from the lane's environment. There is no default: a lane
+;; registered without one is a registration mistake, not a fresh-parser lane.
+(define parser-mode
+  (let ((v (adapter-environment-variable "HTTPARSE_BENCHMARK_PARSER")))
+    (cond ((equal? v "fresh") 'fresh)
+          ((equal? v "reuse") 'reuse)
+          (else (error 'benchmark "HTTPARSE_BENCHMARK_PARSER must be fresh or reuse" v)))))
+
+;; Parsers built since the timed region began.
+(define built 0)
 
 (define (bindings)
   (define (event p ctx) callback-continue)
@@ -89,9 +109,15 @@
 ;; Parse `bv` `reps` times in `chunk`-byte feeds; returns elapsed milliseconds.
 (define (parse-n bv kind chunk reps)
   (let ((len (bytevector-length bv)))
+    (define (new-parser)
+      (set! built (+ built 1))
+      (make-parser httparse-message-machine (bindings) #f
+                   (list (cons 'type (httparse-message-type-value kind)))))
+    ;; In reuse mode the one parser is built here, before the region, and
+    ;; reads each repetition as the next message on the same connection.
+    (define shared (and (eq? parser-mode 'reuse) (new-parser)))
     (define (one)
-      (let ((p (make-parser httparse-message-machine (bindings) #f
-                            (list (cons 'type (httparse-message-type-value kind))))))
+      (let ((p (or shared (new-parser))))
         (let loop ((at 0))
           (when (< at len)
             (let* ((end (min (+ at chunk) len))
@@ -103,6 +129,7 @@
     ;; parse as many times as it likes without the completion check having to
     ;; know how many attempts it took.
     (set! completed 0)
+    (set! built 0)
     (let ((start (adapter-real-time)))
       (let loop ((i 0)) (when (< i reps) (one) (loop (+ i 1))))
       ;; The RAW reading, zero included. Guarding against dividing by it is
@@ -156,6 +183,7 @@
          (per-sec (div (* 1000 reps) ms))
          (mb-per-sec (div (* 1000 bytes reps) (* ms 1048576))))
     (display (string-append "httparse-benchmark: " (adapter-execution-mode)
+                            " parser=" (symbol->string parser-mode)
                             " " label
                             " " (number->string bytes) "B x" (number->string reps)
                             " in " (number->string ms) "ms = "
@@ -164,7 +192,15 @@
     (adapter-flush-output)
     mb-per-sec))
 
-(harness-begin "benchmark.throughput")
+;; check-built : Nat -> Void
+;; The timed region built a parser per message (fresh) or none (reuse).
+(define (check-built reps)
+  (check-equal "parsers built in the timed region" built
+               (if (eq? parser-mode 'reuse) 0 reps)))
+
+(harness-begin (if (eq? parser-mode 'reuse)
+                   "benchmark.throughput-reuse"
+                   "benchmark.throughput"))
 
 (harness-group "whole-buffer throughput"
   (lambda ()
@@ -173,6 +209,7 @@
         (let*-values (((reps ms) (measure request 'request (bytevector-length request))))
           (let ((rate (report "request/whole" (bytevector-length request) reps ms)))
             (check-equal "every repetition completed a message" completed reps)
+            (check-built reps)
             (check-measurable "request/whole" ms)
             ;; The floor is a change of KIND, not a regression threshold.
             (check (string-append "above 1 MB/s (measured " (number->string rate) ")")
@@ -182,6 +219,7 @@
         (let*-values (((reps ms) (measure response 'response (bytevector-length response))))
           (let ((rate (report "response/whole" (bytevector-length response) reps ms)))
             (check-equal "every repetition completed a message" completed reps)
+            (check-built reps)
             (check-measurable "response/whole" ms)
             (check (string-append "above 1 MB/s (measured " (number->string rate) ")")
                    (>= rate 1))))))))
@@ -195,6 +233,7 @@
         (let*-values (((reps ms) (measure request 'request 1)))
           (let ((rate (report "request/1-byte-feeds" (bytevector-length request) reps ms)))
             (check-equal "every repetition completed a message" completed reps)
+            (check-built reps)
             (check-measurable "request/1-byte-feeds" ms)
             (check (string-append "above 0.1 MB/s (measured " (number->string rate) ")")
                    (>= (* 10 rate) 1))))))))
