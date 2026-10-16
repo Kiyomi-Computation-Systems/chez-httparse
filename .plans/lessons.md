@@ -217,6 +217,26 @@ across several seeds rather than from the first number you see — ours is 15
 against a worst observed 26 — and print the per-kind tally beside the check,
 so a reader can see which member is carrying it.
 
+### A check that something is absent passes on nothing
+
+`make check-akku` packs the package with `git archive`, as Akku's archive
+does, and its first check asked that `.plans` and `AGENTS.md` not be in it.
+It was watched failing: with the `.plans` export rule removed, it went red on
+`.plans`. So it looked tested.
+
+But "X is absent" is also true of an archive that holds nothing — a wrong
+ref, an empty tar, an unpack into the wrong directory. Every one of those
+would have passed step 0, and the watched failure could not show it: making
+a check go red proves it can fail, not that it cannot pass for the wrong
+reason. The fix (#71) reads the archive's own listing and also requires
+`src/generated/httparse-message.sls` to be in it, so an archive that is not
+the package fails before the absence question is asked.
+
+This is the vacuity floor again, in a shape that is easy to miss. A
+property over a set needs a floor on the set's size; an absence check needs
+a presence check beside it, on the same input. **When a check forbids
+something, ask what an empty input would make of it.**
+
 ### One seed is not a lane
 
 The live differential runs generated input from a seed, and the seed had been
@@ -933,6 +953,33 @@ And check the bytes the harness actually received: `$(cat file)` strips
 trailing newlines, so llhttp would have been benchmarked on requests whose
 `\r\n\r\n` had lost its last `\n` and never completed. Asserting the three
 input lengths caught it before any rate was read.
+
+### Something you did not change is your noise floor
+
+The byte-machine v0.8.0 bump changed six lines of the message parser and
+none of the URL parser. Re-taking the llhttp comparison, seven rounds with
+the old-pin and new-pin trees alternating, gave message-parser deltas of a
+few per cent either way — and the URL parser, byte-identical in both trees,
+read 240.2 MB/s in one and 227.6 in the other. A 5% difference in code that
+did not change is the sitting's noise, so no message-parser delta smaller
+than that meant anything. llhttp's own figures read 5–10% below their
+recorded values, with a 703-byte spread of 1,962–2,525 MB/s.
+
+The load average was 5.8, 7.4 and 8.9, one core was pinned by an unrelated
+process, and a source-lane sample started mid-sitting had already forced
+one restart.
+Nothing in the figures themselves said so; the control did. The exact
+allocation counts, which load cannot move, went on the page; the speed and
+llhttp tables kept their v0.7.0 figures and label.
+
+**Time something you did not change beside what you did, in the same
+sitting.** A pin bump usually leaves one machine or one row byte-identical,
+and that is a free control. Where nothing is unchanged — the throughput
+lane's three rows all ran the regenerated parser — say that the delta has
+no floor under it. The 4% response-row gain reported in #69 was read in the
+same loaded sitting with no control beside it, and should be re-taken before
+it is repeated. Read `uptime` before starting, and start nothing else until
+the last round finishes.
 
 ## Writing it down
 

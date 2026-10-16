@@ -71,6 +71,9 @@ you need to know whether a rule applies.
 - **A floor that guards a lane is satisfied by its easiest member.** When a
   lane gains a kind of input, give each kind its own vacuity floor, picked
   from measured counts over several seeds, and print the per-kind tally.
+- **A check that something is absent passes on nothing.** An empty or
+  mis-pointed input has none of the forbidden things either. Pair every
+  absence check with a check that something which must be there is.
 - **One seed is not a lane.** Vary the seed before trusting a generated-input
   lane. Run the given seed and its successors, derived, not hand-picked.
 - **Closing a divergence should turn something red.** Anchor a tolerated
@@ -172,6 +175,10 @@ you need to know whether a rule applies.
   carries between iterations (a reused parser, a reset). Rebuild the old
   figure at the old pin before trusting a new one, and check the bytes the
   harness actually received.
+- **Something you did not change is your noise floor.** Time a component
+  that is byte-identical on both sides in the same sitting; if it moves, the
+  sitting cannot support a claim about the change. Read the load average
+  first, and run nothing else while it times.
 
 ### Writing it down
 
