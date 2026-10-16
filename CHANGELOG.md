@@ -6,6 +6,20 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-16
+
+**The first public release, packaged for Akku, with a docs site.**
+chez-httparse installs with [Akku](https://akkuscm.org/), depending on
+byte-machine `^0.8.0` from the index; `make check-akku` installs the package as
+a consumer would and parses a request with nothing but Akku's library path.
+The documentation is now Markdown pages split by task, a checked API
+reference, and a site published to GitHub Pages on each release tag. The pin
+moves to byte-machine `v0.8.0`: six lines of the message parser change, so a
+digit of `Content-Length`, a chunk size or the status code no longer costs a
+bignum, and a `POST` with a body allocates 2,864 B whatever its length. The
+URL parser is byte-identical, the generated-runtime ABI is still 9, and
+conformance holds at **274 of 274** at every chunk size.
+
 ### Added
 
 - **An API reference**, `docs/reference.md`: every export of this project's
@@ -29,10 +43,9 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   locks byte-machine 0.8.0 from the index, so `akku install` in a clone sets
   everything up. The `docs.akku-manifest` lane holds the manifest's version
   to the latest release here, and its dependency floor and the lock to the
-  vendored copy, and
-  `make check-akku` packs the package with `git archive`, as Akku's archive
-  does, installs it into a throwaway consumer, and parses a request with only
-  Akku's library path.
+  vendored copy, and `make check-akku` packs the package with `git archive`,
+  as Akku's archive does, installs it into a throwaway consumer, and parses a
+  request with only Akku's library path.
 - **Links into `.plans/` resolve from a release archive.** Release archives,
   the Akku package among them, leave out `.plans/` and `AGENTS.md`, and
   `make check-akku` now fails if either ships, or if the archive holds no
