@@ -7,8 +7,12 @@ servers reading bytes off the wire. Its based on and checked against [[https://g
 replaying llhttp's recorded conformance traces and comparing them byte for byte,
 at every chunk size.
 
+You could combine this with [[https://github.com/Kiyomi-Computation-Systems/chez-libuv][chez-libuv]] to build an HTTP/1.x server.
+
 This library was generated with [[https://kiyomi-computation-systems.github.io/byte-machine/][byte-machine]] [[https://github.com/Kiyomi-Computation-Systems/byte-machine][(source)]] a Scheme state machine
 generator modeled after [[https://github.com/nodejs/llparse][llparse]].
+
+📖 [[https://kiyomi-computation-systems.github.io/chez-libuv/index.html][Read the docs]]
 
 #+begin_quote
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
