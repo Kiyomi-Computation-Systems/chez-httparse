@@ -165,5 +165,46 @@
                                     '(*TOP* (h1 "Home")) '() #f #f))
         "class=\"pagenav\"")))
 
+;; --- template: the top bar, the head, and the theme script ----------------
+;; index-of / offsets-of : where NEEDLE occurs in HAY, from START / everywhere.
+(define (index-of hay needle start)
+  (let ((n (string-length needle)) (h (string-length hay)))
+    (let loop ((i start))
+      (cond ((> (+ i n) h) #f)
+            ((string=? needle (substring hay i (+ i n))) i)
+            (else (loop (+ i 1)))))))
+(define (offsets-of hay needle)
+  (let loop ((i (index-of hay needle 0)) (acc '()))
+    (if i (loop (index-of hay needle (+ i 1)) (cons i acc)) (reverse acc))))
+
+;; The text of the first <script> element.
+(define (script-of html)
+  (let* ((open (index-of html "<script>" 0))
+         (start (+ open (string-length "<script>"))))
+    (substring html start (index-of html "</script>" start))))
+
+;; Each `localStorage` in SCRIPT that no try block holds: no `try{` comes
+;; before it, or a `}` closes something between the last `try{` and it.
+(define (unguarded-storage script)
+  (filter (lambda (at)
+            (let ((tries (filter (lambda (t) (< t at)) (offsets-of script "try{"))))
+              (or (null? tries)
+                  (index-of (substring script (apply max tries) at) "}" 0))))
+          (offsets-of script "localStorage")))
+
+;; A browser that refuses page storage (site data blocked, some private
+;; modes) throws from localStorage. Unguarded, that ends the script before
+;; it wires the toggle, and the toggle does nothing.
+(test-equal "the theme script reaches localStorage twice, each time inside a try block"
+  '(2 ())
+  (let ((js (script-of (sxml->html doc-out))))
+    (list (length (offsets-of js "localStorage")) (unguarded-storage js))))
+(test-assert "the top bar links the source code"
+  (string-contains-sub?
+   (sxml->html doc-out)
+   "class=\"source-link\" href=\"https://github.com/Kiyomi-Computation-Systems/chez-httparse\""))
+(test-assert "the head describes the project"
+  (string-contains-sub? (sxml->html doc-out) "name=\"description\""))
+
 (test-end "site")
 (exit (if (zero? (test-runner-fail-count runner)) 0 1))
