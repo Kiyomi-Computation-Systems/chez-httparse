@@ -1222,3 +1222,21 @@ None is obvious from reading the code.
   clears all of it. The general form: **a red lane whose failures include
   something the change could not possibly touch is a build-state failure
   until proven otherwise.** Rebuild, then read.
+* `akku publish` runs `gpg --sign --detach --no-armor` on the package record
+  (akku's `lib/publish.scm`), so it signs with whatever key gpg picks by
+  default. This machine's `gpg.conf` names no `default-key`, and the first
+  secret key in the ring is the maintainer's personal one, not the Kiyomi
+  Computation Systems release key (`CC2923E50902E936049B696B9EBA259B8EAC5130`).
+  The v0.5.0 submission put a `gpg` wrapper first on `PATH` that adds
+  `--local-user` with the release key, and checked the result:
+  `gpg --verify chez-httparse_0.5.0.akku.sig chez-httparse_0.5.0.akku`
+  reported the release key. akku's own output says only "Signing" and
+  "Queued", so a submission signed with the wrong key would have looked
+  exactly like the right one. The general form: **when a tool picks an
+  identity for you, name it explicitly, and read back which one it used.**
+* `akku publish` decides whether it is in a git repository by looking for a
+  `.git` directory (`is-git-repository?` in akku's `lib/git.scm` is
+  `file-directory?` on `dir/.git`). In a `git worktree`, `.git` is a file, so it fails with
+  "Publishing from non-git repositories is not yet supported", even with the
+  tag checked out. A fresh `git clone` of the public repository, checked out
+  at the tag, works; it also gives akku an https remote to record.
