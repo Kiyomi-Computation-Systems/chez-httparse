@@ -231,3 +231,8 @@ you need to know whether a rule applies.
 - `make parser-refresh` configures but does not build. A red lane the change
   could not have touched is a stale build until proven otherwise: run
   `make build`, then read.
+- `akku publish` signs with gpg's default key, and here that is the personal
+  key, not the Kiyomi release key. Nothing in its output names the key: pass
+  the release key explicitly, then read the `.sig` with `gpg --verify`.
+- `akku publish` refuses a git worktree ("Publishing from non-git
+  repositories"): run it from a fresh clone checked out at the tag.
