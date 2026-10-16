@@ -6,6 +6,22 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The speed table measures a reused parser.** A new lane,
+  `httparse.benchmark.throughput-reuse`, keeps one parser for every message,
+  as a server keeps one per connection; the existing lane builds one per
+  message and now checks that it does, and the reuse lane checks that it
+  builds none in the timed region. `docs/performance.md` shows both: a
+  308-byte request at 144–150 MB/s with one parser, 81–82 MB/s with a new
+  one each time. Building a parser costs about 1.6 µs.
+- **`docs/performance.md`'s speed and llhttp tables are re-taken at
+  byte-machine `v0.8.0`**, alternating with a build at `v0.7.0` whose
+  unchanged parts set the noise floor. The per-message response row is 4–6%
+  faster (its `Content-Length` digits no longer cost a bignum) while the
+  request rows, which carry no length, read the same at both pins. llhttp is
+  now 8.3 to 12.1 times faster on its own benchmark.
+
 ## [0.5.0] - 2026-10-16
 
 **The first public release, packaged for Akku, with a docs site.**

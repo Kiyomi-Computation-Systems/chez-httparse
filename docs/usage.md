@@ -85,7 +85,7 @@ which is coming, so there is no safe default. [modes.md](modes.md) covers
 this and the lenient flags.
 
 **Keep one parser per connection.** It parses one message after another, so
-you build it once. Building one costs about 1.9 µs, which matters if you
+you build it once. Building one costs about 1.6–1.8 µs, which matters if you
 make one per message ([performance.md](performance.md)).
 
 ## 2. Feed it bytes

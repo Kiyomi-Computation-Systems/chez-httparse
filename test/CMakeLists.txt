@@ -1604,6 +1604,24 @@ foreach(mode source aot)
             ${HTTPARSE_GENERATOR_SOURCES}
             ${HTTPARSE_GENERATED_PARSER}
             "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
+    ENVIRONMENT "HTTPARSE_BENCHMARK_PARSER=fresh"
+    TIMEOUT 300
+    LABELS benchmark)
+endforeach()
+
+# The same program with one parser kept for the whole loop, as a server keeps
+# one per connection and as llhttp's own benchmark does. The difference from
+# the lane above is the cost of building a parser per message.
+foreach(mode source aot)
+  httparse_add_scheme_lane(
+    NAME httparse.benchmark.throughput-reuse.chez.${mode}
+    BACKEND chez
+    PROGRAM "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
+    SOURCES ${HTTPARSE_HARNESS_MANIFEST}
+            ${HTTPARSE_GENERATOR_SOURCES}
+            ${HTTPARSE_GENERATED_PARSER}
+            "${CMAKE_CURRENT_LIST_DIR}/common/benchmark-tests.sps"
+    ENVIRONMENT "HTTPARSE_BENCHMARK_PARSER=reuse"
     TIMEOUT 300
     LABELS benchmark)
 endforeach()
