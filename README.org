@@ -159,7 +159,7 @@ measurement.
 
 Start with installing and usage; the rest is by task.
 
-- [[file:docs/installing.md][Installing]]: putting the libraries on Chez's library path
+- [[file:docs/installing.md][Installing]]: with Akku, or putting the libraries on Chez's library path
 - [[file:docs/usage.md][Usage]]: making a parser, feeding it, reading results, its lifecycle
 - [[file:docs/callbacks.md][Callbacks]]: the 25 callbacks, spans and stream offsets
 - [[file:docs/modes.md][Modes]]: request or response, and llhttp's lenient flags
