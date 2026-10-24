@@ -57,6 +57,7 @@ The rest of the targets:
 | `make site`           | render docs/ into build/site/ (needs `CMARK_GFM_ROOT`)            |
 | `make check-site`     | test the site generator, then check docs/ with it                 |
 | `make check-akku`     | install with Akku as a consumer would (needs `akku`)              |
+| `make check-help`     | check help lines, and the targets CONTRIBUTING.md quotes          |
 
 Every target is a thin wrapper over checked-in CMake presets, so you can
 run `cmake` and `ctest` yourself instead — and on Windows, where `make` is
@@ -298,3 +299,9 @@ tests instead of shipping a stale parser.
 build. Run `make build` — or `make test`, which builds first — before calling
 `ctest` directly. Otherwise the tests run the new parsers against stale
 compiled objects, and fail in places your change could not have touched.
+
+## Contributing
+
+[CONTRIBUTING.md](../CONTRIBUTING.md) has the rest of what a pull request
+needs: the checks CI runs, what to do when you change a grammar, the pin or
+the docs, and the house rules for code and tests.

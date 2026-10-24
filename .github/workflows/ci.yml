@@ -35,6 +35,12 @@ jobs:
       # the submodule.
       - uses: actions/checkout@v4
 
+      # Needs only make and a shell, so it runs before anything is built:
+      # every target has a `make help` line, and CONTRIBUTING.md and the
+      # pull-request template quote only targets that exist.
+      - name: Check make help and the targets the contributor docs quote
+        run: make check-help
+
       # vendor/byte-machine at the commit the gitlink pins. The rewrite sends
       # only the org's URLs through the read token, and it lives in this step's
       # environment, not a config file: git hands GIT_CONFIG_* to the

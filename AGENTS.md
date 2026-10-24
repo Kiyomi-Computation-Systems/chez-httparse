@@ -20,6 +20,9 @@
   work-in-progress notes are not kept in the repository.
 - `CHANGELOG.md` gets an entry for each release. The `Makefile` has a `help`
   target listing every command.
+- `CONTRIBUTING.md` and `.github/PULL_REQUEST_TEMPLATE.md` restate these
+  rules for people; change them with the rules. `make check-help` fails when
+  either quotes a `make` target the Makefile lacks.
 - Comments describe the code as it is now. Versions belong in `CHANGELOG.md`
   and reasoning in a decision record — not dates, phase names or PR numbers in
   a comment.

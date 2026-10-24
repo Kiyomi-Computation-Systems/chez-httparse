@@ -173,6 +173,15 @@ Start with installing and usage; the rest is by task.
 - [[https://github.com/Kiyomi-Computation-Systems/chez-httparse/tree/main/.plans/decisions][Design decision records]]: why the code is the way it is (in the repository, not in release archives)
 - =CHANGELOG.md=: release history
 
+* Contributing
+
+[[file:CONTRIBUTING.md][CONTRIBUTING.md]] says how to set up, which checks a pull request must pass,
+and the house rules.
+
+* Security
+
+Report a vulnerability privately; [[file:SECURITY.md][SECURITY.md]] says how.
+
 * License
 
 © [[https://kiyomicomputation.systems/][Kiyomi Computation Systems LLC]]. BSD 3-Clause; see [[file:LICENSE][LICENSE]].

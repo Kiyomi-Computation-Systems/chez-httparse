@@ -6,6 +6,18 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **CONTRIBUTING.md, SECURITY.md and GitHub templates.** CONTRIBUTING.md
+  says how to set up, which checks a pull request must pass, what to do when
+  changing a grammar, the pin, the corpus, an export or `docs/`, and the
+  house rules. SECURITY.md says how to report a vulnerability privately.
+  `.github/` gains a pull-request template and bug and feature issue
+  templates. README.org links both files.
+- **`make check-help`.** It fails when a target has no description in
+  `make help`, or when CONTRIBUTING.md or the pull-request template quotes a
+  `make` target the Makefile lacks. CI runs it.
+
 ### Changed
 
 - **The speed table measures a reused parser.** A new lane,
