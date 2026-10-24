@@ -4,6 +4,9 @@ An HTTP/1.x parser for Chez Scheme: a byte-level state machine, checked
 against [llhttp](https://github.com/nodejs/llhttp) by replaying llhttp's
 recorded conformance traces byte for byte, at every chunk size.
 
+You could combine this with [chez-libuv](https://github.com/Kiyomi-Computation-Systems/chez-libuv)
+to build an HTTP/1.x server like [chez-http-server](https://github.com/Kiyomi-Computation-Systems/chez-http-server).
+
 You feed it bytes and it calls you back. It keeps no buffer, copies no spans,
 and allocates nothing in proportion to the input. A request split across any
 number of reads parses exactly as one whole buffer does.
