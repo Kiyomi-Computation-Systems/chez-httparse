@@ -1,16 +1,42 @@
 # Installing
 
-There is nothing to compile and nothing to install. You need two folders
-from this repository on Chez's library path, and then you can import.
+There is nothing to compile. Either let [Akku](https://akkuscm.org/), a
+Scheme package manager, fetch the library and set Chez's library path, or
+clone this repository and put two of its folders on the path yourself.
 
-## What you need
+## With Akku
+
+From your project's folder:
+
+```sh
+akku install chez-httparse
+. .akku/bin/activate
+```
+
+`akku install` adds chez-httparse to your project's `Akku.manifest`,
+creating one if there is none, and records the exact versions in
+`Akku.lock`. It installs chez-httparse and the one library it needs,
+byte-machine's runtime, under `.akku/lib/`. `activate` sets
+`CHEZSCHEMELIBDIRS` to that folder for the rest of your shell session, so
+no `--libdirs` is needed:
+
+```sh
+echo '(import (generated httparse-message)) (display "ok") (newline)' | chez -q
+```
+
+It prints `ok`. (Your Chez may be called `scheme` or `chezscheme` instead of
+`chez`.) Skip to [usage.md](usage.md).
+
+## From a clone
+
+### What you need
 
 - **Chez Scheme 10.4.1 or newer.** Petite Chez won't do: it can't compile
   programs, so the build turns it away.
 - **This repository, with its submodule.** The submodule,
   `vendor/byte-machine`, holds the one library the parser needs at run time.
 
-## 1. Get the source
+### 1. Get the source
 
 ```sh
 git clone --recursive https://github.com/Kiyomi-Computation-Systems/chez-httparse.git
@@ -23,7 +49,7 @@ checkout:
 git submodule update --init
 ```
 
-## 2. Know the two folders
+### 2. Know the two folders
 
 Chez finds a library by its name, inside the folders on its library path.
 Everything you import lives under one of two folders:
@@ -40,7 +66,7 @@ other, and nothing else; none of them imports `(chezscheme)`.
 import those. They matter only if you change the parser (see
 [building.md](building.md)).
 
-## 3. Put them on the library path
+### 3. Put them on the library path
 
 Pick one of three ways. The examples run from the repository root, so the
 paths are relative; from anywhere else, use absolute paths. Separate the two
@@ -69,7 +95,7 @@ runs, so set the path in a small launcher and load your program from it:
 (load-program "app.sps")
 ```
 
-## 4. Check it works
+### 4. Check it works
 
 From the repository root:
 
@@ -88,26 +114,17 @@ could not find:
 Exception: library (byte-machine runtime) not found
 ```
 
-## Or let Akku do it
+### Akku in a clone
 
-[Akku](https://akkuscm.org/), a Scheme package manager, can fetch the
-dependency and set the library path for you. chez-httparse is not on Akku's
-index yet, so install it from a clone. You don't need `--recursive`: Akku
-downloads byte-machine from its index instead of the submodule.
+Akku also works inside a clone, which is handy when you work on
+chez-httparse itself. You don't need `--recursive`: Akku downloads
+byte-machine from its index instead of the submodule.
 
 ```sh
 git clone https://github.com/Kiyomi-Computation-Systems/chez-httparse.git
 cd chez-httparse
 akku install
 . .akku/bin/activate
-```
-
-`akku install` puts the libraries under `.akku/lib/`, and `activate` sets
-`CHEZSCHEMELIBDIRS` to that folder for the rest of your shell session. Then
-no `--libdirs` is needed:
-
-```sh
-echo '(import (generated httparse-message)) (display "ok") (newline)' | chez -q
 ```
 
 Next: [usage.md](usage.md) makes a parser and feeds it a request.

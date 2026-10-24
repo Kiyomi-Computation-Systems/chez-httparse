@@ -46,7 +46,7 @@ test suite runs.
 
 ## Read next
 
-- [Installing](installing.md) — put the two library directories on Chez's path.
+- [Installing](installing.md) — `akku install chez-httparse`, or put two folders from a clone on Chez's path.
 - [Usage](usage.md) — make a parser, feed it, read results, finish a parse.
 - [API reference](reference.md) — every documented binding, by module.
 - [Callbacks](callbacks.md) — the 25 callbacks, spans and stream offsets.

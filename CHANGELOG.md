@@ -20,6 +20,8 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **chez-httparse is on Akku's index.** `docs/installing.md` leads with
+  `akku install chez-httparse`; the clone and its two folders come second.
 - **CI clones the generator without a token.** byte-machine is public, so
   the step that required the `SUBMODULES_READ_TOKEN` secret and the URL
   rewrite that used it are gone; `git submodule update --init` clones it
