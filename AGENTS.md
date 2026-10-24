@@ -175,6 +175,10 @@ you need to know whether a rule applies.
   carries between iterations (a reused parser, a reset). Rebuild the old
   figure at the old pin before trusting a new one, and check the bytes the
   harness actually received.
+- **A headline figure should measure the loop an embedder runs.** A
+  benchmark's setup choice (a parser built per message) becomes the number
+  readers quote. Ask what a user's loop does, measure that, and keep any
+  other loop as a labelled second figure, not a footnote.
 - **Something you did not change is your noise floor.** Time a component
   that is byte-identical on both sides in the same sitting; if it moves, the
   sitting cannot support a claim about the change. Read the load average
