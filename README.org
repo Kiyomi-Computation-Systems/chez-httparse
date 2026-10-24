@@ -13,7 +13,7 @@ You could combine this with [[https://github.com/Kiyomi-Computation-Systems/chez
 This library was generated with [[https://kiyomi-computation-systems.github.io/byte-machine/][byte-machine]] [[https://github.com/Kiyomi-Computation-Systems/byte-machine][(source)]] a Scheme state machine
 generator modeled after [[https://github.com/nodejs/llparse][llparse]].
 
-📖 [[https://kiyomi-computation-systems.github.io/chez-libuv/index.html][Read the docs]]
+📖 [[https://kiyomi-computation-systems.github.io/chez-httparse/][Read the docs]]
 
 #+begin_quote
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
@@ -173,6 +173,15 @@ Start with installing and usage; the rest is by task.
 - [[file:docs/building.md][Building and testing]]: presets, lanes and the opt-in checks
 - [[https://github.com/Kiyomi-Computation-Systems/chez-httparse/tree/main/.plans/decisions][Design decision records]]: why the code is the way it is (in the repository, not in release archives)
 - =CHANGELOG.md=: release history
+
+* Contributing
+
+[[file:CONTRIBUTING.md][CONTRIBUTING.md]] says how to set up, which checks a pull request must pass,
+and the house rules.
+
+* Security
+
+Report a vulnerability privately; [[file:SECURITY.md][SECURITY.md]] says how.
 
 * License
 

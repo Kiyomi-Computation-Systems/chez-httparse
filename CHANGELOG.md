@@ -6,8 +6,26 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **CONTRIBUTING.md, SECURITY.md and GitHub templates.** CONTRIBUTING.md
+  says how to set up, which checks a pull request must pass, what to do when
+  changing a grammar, the pin, the corpus, an export or `docs/`, and the
+  house rules. SECURITY.md says how to report a vulnerability privately.
+  `.github/` gains a pull-request template and bug and feature issue
+  templates. README.org links both files.
+- **`make check-help`.** It fails when a target has no description in
+  `make help`, or when CONTRIBUTING.md or the pull-request template quotes a
+  `make` target the Makefile lacks. CI runs it.
+
 ### Changed
 
+- **CI clones the generator without a token.** byte-machine is public, so
+  the step that required the `SUBMODULES_READ_TOKEN` secret and the URL
+  rewrite that used it are gone; `git submodule update --init` clones it
+  directly.
+- **README.org's "Read the docs" link** goes to this project's site, not
+  chez-libuv's.
 - **The speed table measures a reused parser.** A new lane,
   `httparse.benchmark.throughput-reuse`, keeps one parser for every message,
   as a server keeps one per connection; the existing lane builds one per
