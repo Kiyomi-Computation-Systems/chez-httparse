@@ -20,6 +20,12 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **CI clones the generator without a token.** byte-machine is public, so
+  the step that required the `SUBMODULES_READ_TOKEN` secret and the URL
+  rewrite that used it are gone; `git submodule update --init` clones it
+  directly.
+- **README.org's "Read the docs" link** goes to this project's site, not
+  chez-libuv's.
 - **The speed table measures a reused parser.** A new lane,
   `httparse.benchmark.throughput-reuse`, keeps one parser for every message,
   as a server keeps one per connection; the existing lane builds one per

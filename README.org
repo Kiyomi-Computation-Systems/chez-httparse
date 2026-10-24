@@ -12,7 +12,7 @@ You could combine this with [[https://github.com/Kiyomi-Computation-Systems/chez
 This library was generated with [[https://kiyomi-computation-systems.github.io/byte-machine/][byte-machine]] [[https://github.com/Kiyomi-Computation-Systems/byte-machine][(source)]] a Scheme state machine
 generator modeled after [[https://github.com/nodejs/llparse][llparse]].
 
-📖 [[https://kiyomi-computation-systems.github.io/chez-libuv/index.html][Read the docs]]
+📖 [[https://kiyomi-computation-systems.github.io/chez-httparse/][Read the docs]]
 
 #+begin_quote
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
