@@ -41,6 +41,16 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   faster (its `Content-Length` digits no longer cost a bignum) while the
   request rows, which carry no length, read the same at both pins. llhttp is
   now 8.3 to 12.1 times faster on its own benchmark.
+- **The pin moves to byte-machine `v0.9.0`, and the Akku dependency to
+  `^0.9.0`.** byte-machine 0.9.0 renders a state that advances back to itself
+  on a class of bytes as a loop of its own (its decision 0059). The
+  regenerated message parser reads 27 runs that way, through 12 byte tables,
+  and the URL parser 5, through 4. Every line the diff removes is one of
+  those self-advancing transitions. The ABI stays 9, the IR fingerprint is
+  unchanged, and every corpus fixture still passes at every chunk size. The
+  speed, allocation and llhttp tables keep their `v0.8.0` figures and label. Akku reads `^0.8.0` as below 0.9.0, so this is
+  what lets an application install chez-httparse beside a library that
+  needs byte-machine 0.9.
 
 ## [0.5.0] - 2026-10-16
 
