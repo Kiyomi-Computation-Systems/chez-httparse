@@ -4,8 +4,8 @@
 #
 # A consumer project is made in a temporary directory. Its Akku.lock points
 # each package at a directory unpacked from `git archive`, which is exactly
-# what Akku's archive serves for a tag (for the vendored dependency's 0.8.0,
-# its archive and `git archive v0.8.0` list the same 210 files): this
+# what Akku's archive serves for a tag (for the vendored dependency's 0.9.0,
+# its archive and `git archive v0.9.0` hold the same 215 files): this
 # checkout, and, for each dependency Akku.manifest names, the copy vendored
 # at vendor/<name>. So .gitattributes' export-ignore rules apply. `git stash
 # create` snapshots tracked files as they are on disk, so uncommitted edits

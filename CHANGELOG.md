@@ -6,6 +6,20 @@ uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-11
+
+**A pin bump, so chez-httparse installs beside libraries that need
+byte-machine 0.9.** Akku reads 0.5.0's dependency, byte-machine `^0.8.0`, as
+below 0.9.0, so an application could not install chez-httparse 0.5.0 beside
+a library that needs 0.9. The pin moves to byte-machine `v0.9.0` and the
+dependency to `^0.9.0`. byte-machine 0.9.0 renders a state that advances
+back to itself on a class of bytes as a loop of its own, and both parsers
+are regenerated with it. The grammars and exports are unchanged, the
+generated-runtime ABI is still 9, and conformance holds at **274 of 274** at
+every chunk size. The install guide now leads with
+`akku install chez-httparse`, the speed table measures a reused parser, and
+the repository gains CONTRIBUTING.md, SECURITY.md and `make check-help`.
+
 ### Added
 
 - **CONTRIBUTING.md, SECURITY.md and GitHub templates.** CONTRIBUTING.md

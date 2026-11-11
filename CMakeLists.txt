@@ -14,7 +14,7 @@
 cmake_minimum_required(VERSION 3.26)
 
 project(chez-httparse
-  VERSION 0.1.0
+  VERSION 0.6.0
   DESCRIPTION "HTTP/1 parser for Chez Scheme"
   HOMEPAGE_URL "https://github.com/Kiyomi-Computation-Systems/chez-httparse"
   LANGUAGES NONE)
