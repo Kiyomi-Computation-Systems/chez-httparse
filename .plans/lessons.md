@@ -1131,6 +1131,15 @@ a tag exists, and none of them looks like one. The byte-machine side of this
 project makes the same point from the other direction: its release checklist
 names its surfaces as a list *because* they cannot be found by searching.
 
+Cutting v0.6.0 found a surface that *is* a version string and was still
+missed: `CMakeLists.txt`'s `project(chez-httparse VERSION 0.1.0)`. It came
+with byte-machine's harness at bootstrap and said 0.1.0 through v0.5.0, so
+every configure printed `chez-httparse 0.1.0`. Once a surface misses one
+release, a search for the version being replaced never finds it again. **So
+also search for every version-shaped string, and read each hit.** A check
+would be better: the `docs.akku-manifest` lane holds `Akku.manifest` to the
+CHANGELOG, but nothing holds `CMakeLists.txt` yet.
+
 ## CI and merging
 
 ### A gate that has not run has not passed
